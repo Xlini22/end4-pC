@@ -14,17 +14,21 @@ import qs.modules.common.widgets
 Item {
     id: root
     property bool mirrored: false
+    readonly property bool centerWorkspaces: Config.options.bar.dynamicIsland.centerWorkspaces && !root.vertical
+    readonly property real workspaceSpacing: 8
+    readonly property real badgesWidth: root.badgeProviders.length > 0
+        ? root.badgeProviders.length * root.badgeSize + (root.badgeProviders.length - 1) * root.badgeSpacing : 0
 
     readonly property real pillHeight: 32
     readonly property real idleCollapsedWidth: 144
     readonly property real sessionWidth: 164
     property real idleTextContentWidth: 0
     readonly property real idleWidth: Math.max(root.idleCollapsedWidth, root.idleTextContentWidth)
-    readonly property real mediaCollapsedWidth: 140
+    property real mediaCollapsedWidth: 72
     readonly property real mediaExpandedWidthCap: 220
     property real mediaTextContentWidth: 0
-    property bool mediaTrackInfoVisible: mediaHoverHandler.hovered || mediaTrackChangeTimer.running
-    readonly property real mediaExpandedWidth: Math.min(root.mediaExpandedWidthCap, root.mediaTextContentWidth)
+    property bool mediaTrackInfoVisible: root.componentInteractionReady && mediaHoverHandler.hovered
+    readonly property real mediaExpandedWidth: Math.max(root.mediaCollapsedWidth, Math.min(root.mediaExpandedWidthCap, root.mediaTextContentWidth))
     readonly property real mediaWidth: root.mediaTrackInfoVisible ? root.mediaExpandedWidth : root.mediaCollapsedWidth
     readonly property real timerWidth: 130
     readonly property real osdWidth: 132
@@ -136,18 +140,6 @@ Item {
         onTriggered: root.batteryAlertActive = false
     }
 
-    Timer {
-        id: mediaTrackChangeTimer
-        interval: 3000
-        repeat: false
-    }
-
-    Connections {
-        target: root.activePlayer
-        function onTrackTitleChanged() { mediaTrackChangeTimer.restart() }
-        function onTrackArtistChanged() { mediaTrackChangeTimer.restart() }
-    }
-
     function triggerBatteryAlert(kind) {
         root.batteryAlertKind = kind
         root.batteryAlertActive = true
@@ -238,43 +230,130 @@ Item {
 
     readonly property string activeContentId: root.displayedProvider?.id ?? "idle"
 
-    implicitHeight: root.pillHeight
-    implicitWidth: (root.displayedProvider?.width ?? root.idleWidth)
-        + (!root.vertical && root.badgeProviders.length > 0
-            ? root.badgeProviders.length * (root.badgeSpacing + root.badgeSize)
-            : 0)
+    // BarContent also feeds hover from the complete central bar area. The
+    // local handler remains useful when this component is used elsewhere.
+    property bool barHovered: false
+    readonly property bool expanded: root.barHovered || islandHover.hovered
+    property bool componentInteractionReady: false
 
-    Behavior on implicitWidth {
-        NumberAnimation {
-            duration: 350
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+    onExpandedChanged: {
+        if (expanded) {
+            componentInteractionTimer.restart();
+        } else {
+            componentInteractionTimer.stop();
+            componentInteractionReady = false;
         }
     }
 
+    Timer {
+        id: componentInteractionTimer
+        interval: 350
+        repeat: false
+        onTriggered: root.componentInteractionReady = true
+    }
+    readonly property real contentPadding: 8
+    property real primaryWidth: root.displayedProvider?.width ?? root.idleWidth
+    Behavior on primaryWidth {
+        NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+    }
+    readonly property real leftContentWidth: leftWidgets.implicitWidth
+        + (leftWidgets.implicitWidth > 0 ? root.workspaceSpacing : 0) + root.primaryWidth
+    readonly property real rightContentWidth: root.badgesWidth
+        + (root.badgesWidth > 0 && rightWidgets.implicitWidth > 0 ? root.workspaceSpacing : 0)
+        + rightWidgets.implicitWidth
+    readonly property real wingWidth: Math.max(root.leftContentWidth, root.rightContentWidth)
+    readonly property real leftStart: root.contentPadding
+    readonly property real rightStart: root.width - root.contentPadding - root.rightContentWidth
+
+    implicitHeight: root.pillHeight
+    implicitWidth: 2 * root.contentPadding + (root.centerWorkspaces
+        ? workspaceLoader.implicitWidth + 2 * (root.workspaceSpacing + root.wingWidth)
+        : root.leftContentWidth + root.rightContentWidth + (root.rightContentWidth > 0 ? root.workspaceSpacing : 0))
+
+    HoverHandler { id: islandHover }
+
+    Rectangle {
+        anchors.fill: parent
+        radius: height / 2
+        color: root.isMaterial ? "transparent" : Config.options.bar.followFrameColor
+            ? Appearance.getColorFromName(Config.options.bar.frameColor) : Appearance.colors.colLayer0
+    }
+
+    component SideWidgets: RowLayout {
+        id: sideWidgetsRoot
+        property var widgets: []
+        spacing: root.workspaceSpacing
+        Repeater {
+            model: sideWidgetsRoot.widgets.filter(name => name !== "dynamicIsland"
+                && !(name === "workspaces" && root.centerWorkspaces))
+            delegate: Loader {
+                id: sideLoader
+                required property string modelData
+                readonly property bool supportsExpansion: ["clockWidget", "resources"].includes(modelData)
+                readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
+                // Side-widget hover/click behavior starts after the island has
+                // completed its opening animation.
+                enabled: root.componentInteractionReady
+                Layout.alignment: Qt.AlignVCenter
+                source: Qt.resolvedUrl("./" + modelData.charAt(0).toUpperCase() + modelData.slice(1) + ".qml")
+                Binding {
+                    target: sideLoader.supportsExpansion ? sideLoader.item : null
+                    property: "islandMode"
+                    value: true
+                    when: sideLoader.supportsExpansion && sideLoader.status === Loader.Ready
+                }
+                Binding {
+                    target: sideLoader.supportsExpansion ? sideLoader.item : null
+                    property: "islandExpanded"
+                    value: sideLoader.displayMode === "expanded"
+                        || (sideLoader.displayMode !== "compact" && root.expanded)
+                    when: sideLoader.supportsExpansion && sideLoader.status === Loader.Ready
+                }
+            }
+        }
+    }
+
+    SideWidgets {
+        id: leftWidgets
+        widgets: Config.options.bar.dynamicIsland.leftWidgets
+        x: root.leftStart
+        anchors.verticalCenter: parent.verticalCenter
+    }
+    SideWidgets {
+        id: rightWidgets
+        widgets: Config.options.bar.dynamicIsland.rightWidgets
+        x: root.rightStart + root.badgesWidth
+            + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
+        anchors.verticalCenter: parent.verticalCenter
+    }
+
+    // Symmetric side reservations keep the workspace strip on the screen center
+    // even while the primary activity changes width or secondary badges appear.
+    Loader {
+        id: workspaceLoader
+        active: root.centerWorkspaces
+        anchors.centerIn: parent
+        // Preserve Workspaces' native bar dimensions, as in the regular bar.
+        // Forcing the island's pill height offsets icons relative to indicators.
+        sourceComponent: Workspaces {}
+    }
+
+    // Animate content widths at their source. The island and its positions follow
+    // those widths directly, keeping both outer margins equal on every frame.
     Rectangle {
         id: pill
-        anchors.left: parent.left
-        width: root.displayedProvider?.width ?? root.idleWidth
+        x: root.leftStart + leftWidgets.implicitWidth
+            + (leftWidgets.implicitWidth > 0 ? root.workspaceSpacing : 0)
+        width: root.primaryWidth
         height: root.pillHeight
-        color: root.isMaterial || (GlobalStates.barCenterOnly && Config.options.bar.cornerStyle === 0) ? "transparent" : Config.options.bar.followFrameColor
-            ? Appearance.getColorFromName(Config.options.bar.frameColor)
-            : Appearance.colors.colLayer0
+        color: "transparent"
         radius: height / 2
         clip: true
         visible: !root.vertical
 
-        Behavior on width {
-            NumberAnimation {
-                duration: 350
-                easing.type: Easing.BezierSpline
-                easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
-            }
-        }
-
         HoverHandler {
             id: mediaHoverHandler
-            enabled: root.activeContentId === "media"
+            enabled: root.activeContentId === "media" && root.componentInteractionReady
         }
 
         WheelHandler {
@@ -424,11 +503,8 @@ Item {
     Row {
         id: badgesRow
         visible: root.badgeProviders.length > 0 && !root.vertical
-        anchors {
-            left: pill.right
-            leftMargin: root.badgeSpacing
-            verticalCenter: pill.verticalCenter
-        }
+        x: root.rightStart
+        anchors.verticalCenter: parent.verticalCenter
         spacing: root.badgeSpacing
 
         Repeater {

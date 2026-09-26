@@ -234,13 +234,6 @@ ButtonMouseArea {
                         }
                     }
 
-                    Circle {
-                        id: iconMask
-                        visible: false
-                        layer.enabled: true
-                        diameter: appIcon.implicitSize
-                    }
-
                     Loader { // Somehow putting this multieffect in a loader prevents it from not showing up
                         id: colorizer
                         anchors.fill: appIcon
@@ -248,7 +241,7 @@ ButtonMouseArea {
                             implicitWidth: appIcon.implicitWidth
                             implicitHeight: appIcon.implicitHeight
                             colorizationColor: Appearance.m3colors.darkmode ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colOnPrimary
-                            colorization: Config.options.bar.workspaces.monochromeIcons ? 0.8 : 0.5
+                            colorization: Config.options.bar.workspaces.monochromeIcons ? 0.8 : 0
                             brightness: 0
                             source: appIcon
 
@@ -263,10 +256,6 @@ ButtonMouseArea {
                                 animation: Appearance.animation.elementMoveSmall.numberAnimation.createObject(this)
                             }
 
-                            maskEnabled: true
-                            maskSource: iconMask
-                            maskThresholdMin: 0.5
-                            maskSpreadAtMin: 1
                         }
                     }
                 }
@@ -373,6 +362,7 @@ ButtonMouseArea {
 
         FadeLoader {
             shown: !wsNum.showingNumbers
+                && !(Config.options?.bar.workspaces.showAppIcons && wsNum.hasBiggestWindow)
             anchors.centerIn: parent
             Loader {
                 anchors.centerIn: parent

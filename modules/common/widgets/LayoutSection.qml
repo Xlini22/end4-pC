@@ -3,6 +3,7 @@ import qs.modules.common.widgets
 import qs.services
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 
 ContentSubsection {
     id: root
@@ -12,6 +13,9 @@ ContentSubsection {
     property var getWidgetName: (id) => id
     property var availableWidgets: []
     property var onUpdate: (list) => {}
+    property var modeWidgets: []
+    property var widgetModes: ({})
+    property var onModeChanged: (widget, mode) => {}
 
     title: sectionTitle
     Layout.fillWidth: true
@@ -35,84 +39,150 @@ ContentSubsection {
                     id: itemRepeater
                     model: root.layout
 
-                    delegate: SelectionGroupButton {
+                    delegate: Rectangle {
+                        id: widgetChip
                         required property var modelData
                         required property int index
-                        isDragging: dragHandler.active
-                        leftmost: true; rightmost: true
-                        buttonIcon: "close"
-                        buttonText: root.getWidgetName(modelData)
-                        toggled: !dragHandler.active
+                        readonly property bool hasModes: root.modeWidgets.includes(modelData)
+                        implicitWidth: chipContent.implicitWidth + (hasModes ? 6 : 0)
+                        implicitHeight: chipContent.implicitHeight
+                        radius: height / 2
+                        color: hasModes ? Appearance.colors.colPrimary : "transparent"
 
-                        DragHandler {
-                            id: dragHandler
-                            target: null
+                        RowLayout {
+                            id: chipContent
+                            anchors.fill: parent
+                            anchors.rightMargin: widgetChip.hasModes ? 6 : 0
+                            spacing: 0
 
-                            function findNewIndex(dragX, dragY) {
-                                let newIndex = index
-                                let minDist = Infinity
+                            SelectionGroupButton {
+                                isDragging: dragHandler.active
+                                colBackgroundToggled: widgetChip.hasModes ? "transparent" : Appearance.colors.colPrimary
+                                leftmost: true; rightmost: true
+                                buttonIcon: "close"
+                                buttonText: root.getWidgetName(modelData)
+                                toggled: !dragHandler.active
 
-                                for (let i = 0; i < itemRepeater.count; i++) {
-                                    if (i === index) continue
-                                    const child = itemRepeater.itemAt(i)
-                                    if (!child) continue
-                                    const childCenter = child.mapToItem(null, child.width / 2, child.height / 2)
-                                    const dx = dragX - childCenter.x
-                                    const dy = dragY - childCenter.y
-                                    const dist = Math.sqrt(dx * dx + dy * dy)
-                                    if (dist < minDist) {
-                                        minDist = dist
-                                        newIndex = i
+                                DragHandler {
+                                    id: dragHandler
+                                    target: null
+
+                                    function findNewIndex(dragX, dragY) {
+                                        let newIndex = index
+                                        let minDist = Infinity
+
+                                        for (let i = 0; i < itemRepeater.count; i++) {
+                                            if (i === index) continue
+                                            const child = itemRepeater.itemAt(i)
+                                            if (!child) continue
+                                            const childCenter = child.mapToItem(null, child.width / 2, child.height / 2)
+                                            const dx = dragX - childCenter.x
+                                            const dy = dragY - childCenter.y
+                                            const dist = Math.sqrt(dx * dx + dy * dy)
+                                            if (dist < minDist) {
+                                                minDist = dist
+                                                newIndex = i
+                                            }
+                                        }
+                                        return newIndex
+                                    }
+
+                                    onActiveChanged: {
+                                        if (!active) {
+                                            dropIndicator.visible = false
+                                            dropIndicator.targetIndex = -1
+                                            const dragX = dragHandler.centroid.scenePosition.x
+                                            const dragY = dragHandler.centroid.scenePosition.y
+                                            const newIndex = findNewIndex(dragX, dragY)
+                                            if (newIndex !== index) {
+                                                let list = root.layout.slice()
+                                                const item = list.splice(index, 1)[0]
+                                                list.splice(newIndex, 0, item)
+                                                root.onUpdate(list)
+                                            }
+                                        }
+                                    }
+
+                                    onCentroidChanged: {
+                                        if (!active) return
+                                        const dragX = dragHandler.centroid.scenePosition.x
+                                        const dragY = dragHandler.centroid.scenePosition.y
+                                        const newIndex = findNewIndex(dragX, dragY)
+
+                                        if (newIndex !== index) {
+                                            const refChild = itemRepeater.itemAt(newIndex)
+                                            if (refChild) {
+                                                const refLocal = refChild.mapToItem(itemFlow, 0, 0)
+                                                dropIndicator.x = newIndex < index
+                                                    ? refLocal.x - 5
+                                                    : refLocal.x + refChild.width + 1
+                                                dropIndicator.y = refLocal.y
+                                                dropIndicator.height = refChild.height
+                                                dropIndicator.visible = true
+                                                dropIndicator.targetIndex = newIndex
+                                            }
+                                        } else {
+                                            dropIndicator.visible = false
+                                            dropIndicator.targetIndex = -1
+                                        }
                                     }
                                 }
-                                return newIndex
-                            }
 
-                            onActiveChanged: {
-                                if (!active) {
-                                    dropIndicator.visible = false
-                                    dropIndicator.targetIndex = -1
-                                    const dragX = dragHandler.centroid.scenePosition.x
-                                    const dragY = dragHandler.centroid.scenePosition.y
-                                    const newIndex = findNewIndex(dragX, dragY)
-                                    if (newIndex !== index) {
-                                        let list = root.layout.slice()
-                                        const item = list.splice(index, 1)[0]
-                                        list.splice(newIndex, 0, item)
-                                        root.onUpdate(list)
+                                onClicked: {
+                                    let list = root.layout.slice()
+                                    list.splice(index, 1)
+                                    root.onUpdate(list)
+                                }
+                            }
+                            RowLayout {
+                                visible: widgetChip.hasModes
+                                spacing: 1
+                                Repeater {
+                                    model: [
+                                        { label: "D", mode: "dynamic", title: Translation.tr("Dynamic: expand on hover") },
+                                        { label: "C", mode: "compact", title: Translation.tr("Always compact") },
+                                        { label: "E", mode: "expanded", title: Translation.tr("Always expanded") }
+                                    ]
+                                    delegate: SelectionGroupButton {
+                                        required property var modelData
+                                        buttonText: modelData.label
+                                        contentItem: StyledText {
+                                            text: parent.buttonText
+                                            color: parent.colText
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                        horizontalPadding: 0
+                                        verticalPadding: 0
+                                        implicitWidth: 26
+                                        implicitHeight: 26
+                                        Layout.minimumWidth: 26
+                                        Layout.maximumWidth: 26
+                                        Layout.minimumHeight: 26
+                                        Layout.maximumHeight: 26
+                                        Layout.alignment: Qt.AlignVCenter
+                                        Layout.fillWidth: false
+                                        Layout.fillHeight: false
+                                        leftRadius: 13
+                                        rightRadius: 13
+                                        colBackground: "transparent"
+                                        colBackgroundHover: Appearance.colors.colPrimaryHover
+                                        colBackgroundActive: Appearance.colors.colPrimaryActive
+                                        colBackgroundToggled: Appearance.colors.colOnPrimary
+                                        colBackgroundToggledHover: Appearance.colors.colOnPrimary
+                                        colBackgroundToggledActive: Appearance.colors.colOnPrimary
+                                        colText: toggled ? Appearance.colors.colPrimary : Appearance.colors.colOnPrimary
+                                        leftmost: true
+                                        rightmost: true
+                                        toggled: (root.widgetModes[widgetChip.modelData] ?? "dynamic") === modelData.mode
+                                        onClicked: root.onModeChanged(widgetChip.modelData, modelData.mode)
+                                        StyledToolTip {
+                                            text: parent.modelData.title
+                                            delay: 400
+                                        }
                                     }
                                 }
                             }
-
-                            onCentroidChanged: {
-                                if (!active) return
-                                const dragX = dragHandler.centroid.scenePosition.x
-                                const dragY = dragHandler.centroid.scenePosition.y
-                                const newIndex = findNewIndex(dragX, dragY)
-
-                                if (newIndex !== index) {
-                                    const refChild = itemRepeater.itemAt(newIndex)
-                                    if (refChild) {
-                                        const refLocal = refChild.mapToItem(itemFlow, 0, 0)
-                                        dropIndicator.x = newIndex < index
-                                            ? refLocal.x - 5
-                                            : refLocal.x + refChild.width + 1
-                                        dropIndicator.y = refLocal.y
-                                        dropIndicator.height = refChild.height
-                                        dropIndicator.visible = true
-                                        dropIndicator.targetIndex = newIndex
-                                    }
-                                } else {
-                                    dropIndicator.visible = false
-                                    dropIndicator.targetIndex = -1
-                                }
-                            }
-                        }
-
-                        onClicked: {
-                            let list = root.layout.slice()
-                            list.splice(index, 1)
-                            root.onUpdate(list)
                         }
                     }
                 }

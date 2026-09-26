@@ -18,6 +18,8 @@ Scope {
     PanelWindow {
         id: panelWindow
         property string searchingText: ""
+        property bool presented: GlobalStates.overviewOpen
+        property bool contentShown: GlobalStates.overviewOpen
         readonly property HyprlandMonitor monitor: Hyprland.monitorFor(panelWindow.screen)
         readonly property bool barCenterOnly: Config.options.bar.layouts.leftLayout.length === 0
             && Config.options.bar.layouts.rightLayout.length === 0
@@ -28,7 +30,7 @@ Scope {
             && !Config.options.bar.bottom
             && !Config.options.bar.autoHide.enable
         property bool monitorIsFocused: (Hyprland.focusedMonitor?.id == monitor?.id)
-        visible: GlobalStates.overviewOpen
+        visible: panelWindow.presented
 
         WlrLayershell.namespace: "quickshell:overview"
         WlrLayershell.layer: WlrLayer.Top
@@ -36,7 +38,7 @@ Scope {
         color: "transparent"
 
         mask: Region {
-            item: GlobalStates.overviewOpen ? columnLayout : null
+            item: GlobalStates.overviewOpen ? overviewInputArea : null
         }
 
         anchors {
@@ -50,13 +52,21 @@ Scope {
             target: GlobalStates
             function onOverviewOpenChanged() {
                 if (!GlobalStates.overviewOpen) {
+                    panelWindow.contentShown = false;
+                    closeAnimationTimer.restart();
                     searchWidget.disableExpandAnimation();
                     overviewScope.dontAutoCancelSearch = false;
                     GlobalFocusGrab.dismiss();
                 } else {
-                    if (!overviewScope.dontAutoCancelSearch) {
+                    closeAnimationTimer.stop();
+                    panelWindow.presented = true;
+                    panelWindow.contentShown = false;
+                    Qt.callLater(function() {
+                        if (GlobalStates.overviewOpen)
+                            panelWindow.contentShown = true;
+                    });
+                    if (!overviewScope.dontAutoCancelSearch)
                         searchWidget.cancelSearch();
-                    }
                     GlobalFocusGrab.addDismissable(panelWindow);
                 }
             }
@@ -71,25 +81,81 @@ Scope {
         implicitWidth: columnLayout.implicitWidth
         implicitHeight: columnLayout.implicitHeight
 
+        Timer {
+            id: closeAnimationTimer
+            interval: 420
+            onTriggered: {
+                if (!GlobalStates.overviewOpen)
+                    panelWindow.presented = false;
+            }
+        }
+
         function setSearchingText(text) {
             searchWidget.setSearchingText(text);
             searchWidget.focusFirstItem();
         }
 
+        Item {
+            id: overviewInputArea
+            anchors.fill: parent
+            z: 0
+        }
+
+        MouseArea {
+            anchors {
+                top: parent.top
+                bottom: columnLayout.top
+                left: parent.left
+                right: parent.right
+            }
+            onClicked: GlobalStates.overviewOpen = false
+        }
+
+        MouseArea {
+            anchors {
+                top: columnLayout.bottom
+                bottom: parent.bottom
+                left: parent.left
+                right: parent.right
+            }
+            onClicked: GlobalStates.overviewOpen = false
+        }
+
+        MouseArea {
+            anchors {
+                top: columnLayout.top
+                bottom: columnLayout.bottom
+                left: parent.left
+                right: columnLayout.left
+            }
+            onClicked: GlobalStates.overviewOpen = false
+        }
+
+        MouseArea {
+            anchors {
+                top: columnLayout.top
+                bottom: columnLayout.bottom
+                left: columnLayout.right
+                right: parent.right
+            }
+            onClicked: GlobalStates.overviewOpen = false
+        }
+
         Column {
             id: columnLayout
-            visible: GlobalStates.overviewOpen
-            opacity: GlobalStates.overviewOpen ? 1 : 0
-            scale: GlobalStates.overviewOpen ? 1 : 0.85
+            z: 1
+            visible: panelWindow.presented
+            opacity: panelWindow.contentShown ? 1 : 0
+            scale: panelWindow.contentShown ? 1 : 0.85
             transformOrigin: Item.Top
             anchors {
                 horizontalCenter: parent.horizontalCenter
                 top: parent.top
-                topMargin: panelWindow.barOverlapActive
+                topMargin: (panelWindow.barOverlapActive
                     ? Appearance.sizes.barHeight - Config.options.bar.frameThickness
-                    : 0
+                    : 0) + 40
             }
-            spacing: -8
+            spacing: 6
 
             Behavior on opacity {
                 NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
@@ -120,14 +186,14 @@ Scope {
 
             Loader {
                 id: overviewLoader
-                active: GlobalStates.overviewOpen && (Config?.options.overview.enable ?? true)
+                active: panelWindow.visible && (Config?.options.overview.enable ?? true)
                 sourceComponent: (Config?.options.overview.style ?? "default") === "niri" ? niriComponent : defaultComponent
 
                 Component {
                     id: defaultComponent
                     OverviewWidget {
                         screen: panelWindow.screen
-                        visible: (panelWindow.searchingText == "")
+                        visible: panelWindow.searchingText === ""
                     }
                 }
 
@@ -136,9 +202,17 @@ Scope {
                     NiriOverview {
                         screen: panelWindow.screen
                         panelWindow: panelWindow
-                        visible: (panelWindow.searchingText == "")
+                        visible: panelWindow.searchingText === ""
                     }
                 }
+            }
+
+            ApplicationGrid {
+                id: applicationGrid
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: panelWindow.searchingText === ""
+                gridWidth: Math.max(760, overviewLoader.implicitWidth
+                    - Appearance.sizes.elevationMargin * 2 - 100)
             }
         }
     }
@@ -237,37 +311,29 @@ Scope {
         }
     }
     CompositorGlobalShortcut {
-        name: "searchToggleReleaseInterrupt"
-        description: "Interrupts possibility of search being toggled on release. " + "This is necessary because GlobalShortcut.onReleased in quickshell triggers whether or not you press something else while holding the key. " + "To make sure this works consistently, use binditn = MODKEYS, catchall in an automatically triggered submap that includes everything."
-
-        onPressed: {
-            GlobalStates.superReleaseMightTrigger = false;
-        }
-    }
-    CompositorGlobalShortcut {
         name: "overviewClipboardToggle"
         description: "Toggle clipboard query on overview widget"
-
-        onPressed: {
-            overviewScope.toggleClipboard();
-        }
+        onPressed: overviewScope.toggleClipboard()
     }
 
     CompositorGlobalShortcut {
         name: "overviewEmojiToggle"
         description: "Toggle emoji query on overview widget"
-
-        onPressed: {
-            overviewScope.toggleEmojis();
-        }
+        onPressed: overviewScope.toggleEmojis()
     }
 
     CompositorGlobalShortcut {
         name: "overviewSymbolsToggle"
         description: "Toggle material symbols search on overview widget"
+        onPressed: overviewScope.toggleSymbols()
+    }
+
+    CompositorGlobalShortcut {
+        name: "searchToggleReleaseInterrupt"
+        description: "Interrupts possibility of search being toggled on release. " + "This is necessary because GlobalShortcut.onReleased in quickshell triggers whether or not you press something else while holding the key. " + "To make sure this works consistently, use binditn = MODKEYS, catchall in an automatically triggered submap that includes everything."
 
         onPressed: {
-            overviewScope.toggleSymbols();
+            GlobalStates.superReleaseMightTrigger = false;
         }
     }
 }

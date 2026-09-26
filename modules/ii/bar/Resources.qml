@@ -7,7 +7,15 @@ import QtQuick.Layouts
 BarWidgetSwitcherArea {
     id: root
     property bool alwaysShowAllResources: false
-    horizontalExtraPadding: 12
+    property bool islandMode: false
+    property bool islandExpanded: false
+    property real valueReveal: Config.options.bar.resources.showValue
+        && (!islandMode || islandExpanded) ? 1 : 0
+    Behavior on valueReveal {
+        enabled: root.islandMode
+        NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+    }
+    horizontalExtraPadding: islandMode ? 0 : 12
 
     hoverEnabled: !Config.options.bar.tooltips.clickToShow
 
@@ -15,12 +23,14 @@ BarWidgetSwitcherArea {
         RowLayout {
             spacing: 0
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "memory"
                 shown: Config.options.bar.resources.alwaysShowRam
                 percentage: ResourceUsage.memoryUsedPercentage
                 warningThreshold: Config.options.bar.resources.memoryWarningThreshold
             }
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "planner_review"
                 shown: Config.options.bar.resources.alwaysShowCpu
                 percentage: ResourceUsage.cpuUsage
@@ -28,18 +38,21 @@ BarWidgetSwitcherArea {
                 warningThreshold: Config.options.bar.resources.cpuWarningThreshold
             }
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "thermostat"
                 shown: Config.options.bar.resources.alwaysShowCpuTemp
                 percentage: ResourceUsage.cpuTemp / 100
                 Layout.leftMargin: shown ? 6 : 0
             }
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "hard_drive"
                 shown: Config.options.bar.resources.alwaysShowDisk
                 percentage: ResourceUsage.diskUsedPercentage
                 Layout.leftMargin: shown ? 6 : 0
             }
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "swap_horiz"
                 shown: Config.options.bar.resources.alwaysShowSwap
                 percentage: ResourceUsage.swapUsedPercentage
@@ -53,12 +66,14 @@ BarWidgetSwitcherArea {
         RowLayout {
             spacing: 0
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "memory"
                 shown: Config.options.bar.resources.alwaysShowRam
                 percentage: ResourceUsage.memoryUsedPercentage
                 warningThreshold: Config.options.bar.resources.memoryWarningThreshold
             }
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "planner_review"
                 shown: Config.options.bar.resources.alwaysShowCpu
                 percentage: ResourceUsage.cpuUsage
@@ -66,18 +81,21 @@ BarWidgetSwitcherArea {
                 warningThreshold: Config.options.bar.resources.cpuWarningThreshold
             }
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "thermostat"
                 shown: Config.options.bar.resources.alwaysShowCpuTemp
                 percentage: ResourceUsage.cpuTemp / 100
                 Layout.leftMargin: shown ? 6 : 0
             }
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "hard_drive"
                 shown: Config.options.bar.resources.alwaysShowDisk
                 percentage: ResourceUsage.diskUsedPercentage
                 Layout.leftMargin: shown ? 6 : 0
             }
             Resource {
+                valueReveal: root.valueReveal
                 iconName: "swap_horiz"
                 shown: Config.options.bar.resources.alwaysShowSwap
                 percentage: ResourceUsage.swapUsedPercentage
@@ -91,6 +109,7 @@ BarWidgetSwitcherArea {
         ColumnLayout {
             spacing: 7
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "memory"
                 vertical: true
@@ -99,6 +118,7 @@ BarWidgetSwitcherArea {
                 warningThreshold: Config.options.bar.resources.memoryWarningThreshold
             }
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "planner_review"
                 vertical: true
@@ -107,6 +127,7 @@ BarWidgetSwitcherArea {
                 warningThreshold: Config.options.bar.resources.cpuWarningThreshold
             }
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "thermostat"
                 vertical: true
@@ -114,6 +135,7 @@ BarWidgetSwitcherArea {
                 percentage: ResourceUsage.cpuTemp / 100
             }
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "hard_drive"
                 vertical: true
@@ -121,6 +143,7 @@ BarWidgetSwitcherArea {
                 percentage: ResourceUsage.diskUsedPercentage
             }
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "swap_horiz"
                 vertical: true
@@ -135,6 +158,7 @@ BarWidgetSwitcherArea {
         ColumnLayout {
             spacing: 7
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "memory"
                 vertical: true
@@ -143,6 +167,7 @@ BarWidgetSwitcherArea {
                 warningThreshold: Config.options.bar.resources.memoryWarningThreshold
             }
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "planner_review"
                 vertical: true
@@ -151,6 +176,7 @@ BarWidgetSwitcherArea {
                 warningThreshold: Config.options.bar.resources.cpuWarningThreshold
             }
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "thermostat"
                 vertical: true
@@ -158,6 +184,7 @@ BarWidgetSwitcherArea {
                 percentage: ResourceUsage.cpuTemp / 100
             }
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "hard_drive"
                 vertical: true
@@ -165,6 +192,7 @@ BarWidgetSwitcherArea {
                 percentage: ResourceUsage.diskUsedPercentage
             }
             Resource {
+                valueReveal: root.valueReveal
                 Layout.alignment: Qt.AlignHCenter
                 iconName: "swap_horiz"
                 vertical: true

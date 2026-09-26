@@ -68,7 +68,17 @@ Singleton {
         blockWrites: root.blockWrites
         onFileChanged: fileReloadTimer.restart()
         onAdapterUpdated: fileWriteTimer.restart()
-        onLoaded: root.ready = true
+        onLoaded: {
+            const island = root.options.bar.dynamicIsland;
+            if (!island.widgetListsMigrated) {
+                if (island.leftWidgets.length === 0 && island.leftWidget !== "none")
+                    island.leftWidgets = [island.leftWidget];
+                if (island.rightWidgets.length === 0 && island.rightWidget !== "none")
+                    island.rightWidgets = [island.rightWidget];
+                island.widgetListsMigrated = true;
+            }
+            root.ready = true;
+        }
         onLoadFailed: error => {
             if (error == FileViewError.FileNotFound) {
                 writeAdapter();
@@ -455,7 +465,7 @@ Singleton {
                     property bool vertical: false
                     property bool autoVertical: false
                     property bool enableWorkspace: true
-                    property real workspaceZoom: 1.0 // Relative to wallpaper size
+                    property real workspaceZoom: 1.07 // Relative to wallpaper size
                     property bool enableSidebar: true
                     property real widgetsFactor: 1.2
                 }
@@ -499,8 +509,17 @@ Singleton {
                 }
 
                 property JsonObject dynamicIsland: JsonObject {
+                    property bool centerWorkspaces: false
                     property string visualizerStyle: "dots" // "dots", "wave", "none"
                     property bool showMediaControls: false
+                    property JsonObject widgetModes: JsonObject {
+                        property string clockWidget: "dynamic"
+                        property string resources: "dynamic"
+                    }
+                    property list<string> leftWidgets: []
+                    property list<string> rightWidgets: []
+                    property bool widgetListsMigrated: false
+                    // Retained only to migrate settings from the single-widget layout.
                     property string leftWidget: "none"
                     property string rightWidget: "none"
                 }
