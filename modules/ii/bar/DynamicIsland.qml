@@ -20,14 +20,18 @@ Item {
         ? root.badgeProviders.length * root.badgeSize + (root.badgeProviders.length - 1) * root.badgeSpacing : 0
 
     readonly property real pillHeight: 32
-    readonly property real idleCollapsedWidth: 144
+    readonly property real emptyCollapsedWidth: 40
+    readonly property real emptyExpandedWidth: 56
     readonly property real sessionWidth: 164
-    property real idleTextContentWidth: 0
-    readonly property real idleWidth: Math.max(root.idleCollapsedWidth, root.idleTextContentWidth)
     property real mediaCollapsedWidth: 72
     readonly property real mediaExpandedWidthCap: 220
     property real mediaTextContentWidth: 0
-    property bool mediaTrackInfoVisible: root.componentInteractionReady && mediaHoverHandler.hovered
+    readonly property string mediaDisplayMode: Config.options.bar.dynamicIsland.widgetModes.media ?? "dynamic"
+    property bool mediaHovered: false
+    readonly property bool mediaTrackInfoVisible: root.hasMedia
+        && (root.mediaDisplayMode === "expanded"
+            || (root.mediaDisplayMode === "dynamic" && root.expanded)
+            || (root.mediaDisplayMode === "dynamicHover" && root.mediaHovered))
     readonly property real mediaExpandedWidth: Math.max(root.mediaCollapsedWidth, Math.min(root.mediaExpandedWidthCap, root.mediaTextContentWidth))
     readonly property real mediaWidth: root.mediaTrackInfoVisible ? root.mediaExpandedWidth : root.mediaCollapsedWidth
     readonly property real timerWidth: 130
@@ -189,7 +193,6 @@ Item {
         { id: "recording",    active: root.isRecording,                 component: recordingComponent,    width: root.recordingWidth },
         { id: "timer",        active: root.hasActiveTimer,              component: timerComponent,        width: root.timerWidth },
         { id: "osd",          active: GlobalStates.osdVolumeOpen,       component: osdComponent,          width: root.osdWidth },
-        { id: "media",        active: root.hasMedia,                    component: mediaComponent,        width: root.mediaWidth },
         { id: "session",      active: GlobalStates.diSessionOpen,       component: sessionComponent,      width: root.sessionWidth },
     ]
 
@@ -228,7 +231,7 @@ Item {
         }
     }
 
-    readonly property string activeContentId: root.displayedProvider?.id ?? "idle"
+    readonly property string activeContentId: root.displayedProvider?.id ?? "empty"
 
     // BarContent also feeds hover from the complete central bar area. The
     // local handler remains useful when this component is used elsewhere.
@@ -252,12 +255,17 @@ Item {
         onTriggered: root.componentInteractionReady = true
     }
     readonly property real contentPadding: 8
-    property real primaryWidth: root.displayedProvider?.width ?? root.idleWidth
+    readonly property bool hasPersistentContent: root.centerWorkspaces
+        || leftWidgets.implicitWidth > 0 || rightWidgets.implicitWidth > 0
+    readonly property real emptyWidth: root.hasPersistentContent ? 0
+        : (root.expanded ? root.emptyExpandedWidth : root.emptyCollapsedWidth)
+    property real primaryWidth: root.displayedProvider?.width ?? root.emptyWidth
     Behavior on primaryWidth {
         NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
     }
     readonly property real leftContentWidth: leftWidgets.implicitWidth
-        + (leftWidgets.implicitWidth > 0 ? root.workspaceSpacing : 0) + root.primaryWidth
+        + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
+        + root.primaryWidth
     readonly property real rightContentWidth: root.badgesWidth
         + (root.badgesWidth > 0 && rightWidgets.implicitWidth > 0 ? root.workspaceSpacing : 0)
         + rightWidgets.implicitWidth
@@ -268,7 +276,8 @@ Item {
     implicitHeight: root.pillHeight
     implicitWidth: 2 * root.contentPadding + (root.centerWorkspaces
         ? workspaceLoader.implicitWidth + 2 * (root.workspaceSpacing + root.wingWidth)
-        : root.leftContentWidth + root.rightContentWidth + (root.rightContentWidth > 0 ? root.workspaceSpacing : 0))
+        : root.leftContentWidth + root.rightContentWidth
+            + (root.leftContentWidth > 0 && root.rightContentWidth > 0 ? root.workspaceSpacing : 0))
 
     HoverHandler { id: islandHover }
 
@@ -279,6 +288,37 @@ Item {
             ? Appearance.getColorFromName(Config.options.bar.frameColor) : Appearance.colors.colLayer0
     }
 
+    Component {
+        id: mediaSideComponent
+        Item {
+            id: mediaSideRoot
+            readonly property bool containsMouse: mediaSideHover.hovered
+            implicitWidth: root.hasMedia ? root.mediaWidth : 0
+            implicitHeight: root.pillHeight
+            visible: root.hasMedia
+
+            Behavior on implicitWidth {
+                NumberAnimation {
+                    duration: 350
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+                }
+            }
+
+            HoverHandler {
+                id: mediaSideHover
+                enabled: root.componentInteractionReady
+                onHoveredChanged: root.mediaHovered = hovered
+            }
+
+            Component.onDestruction: root.mediaHovered = false
+
+            MediaPopup { hoverTarget: mediaSideRoot }
+
+            DiMedia { di: root }
+        }
+    }
+
     component SideWidgets: RowLayout {
         id: sideWidgetsRoot
         property var widgets: []
@@ -286,28 +326,45 @@ Item {
         Repeater {
             model: sideWidgetsRoot.widgets.filter(name => name !== "dynamicIsland"
                 && !(name === "workspaces" && root.centerWorkspaces))
-            delegate: Loader {
-                id: sideLoader
+            delegate: Item {
+                id: sideDelegate
                 required property string modelData
                 readonly property bool supportsExpansion: ["clockWidget", "resources"].includes(modelData)
                 readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
-                // Side-widget hover/click behavior starts after the island has
-                // completed its opening animation.
-                enabled: root.componentInteractionReady
+
+                visible: modelData !== "media" || root.hasMedia
+                enabled: visible && root.componentInteractionReady
+                implicitWidth: mediaLoader.active ? mediaLoader.implicitWidth : regularLoader.implicitWidth
+                implicitHeight: mediaLoader.active ? mediaLoader.implicitHeight : regularLoader.implicitHeight
                 Layout.alignment: Qt.AlignVCenter
-                source: Qt.resolvedUrl("./" + modelData.charAt(0).toUpperCase() + modelData.slice(1) + ".qml")
+
+                Loader {
+                    id: mediaLoader
+                    active: sideDelegate.modelData === "media"
+                    anchors.centerIn: parent
+                    sourceComponent: mediaSideComponent
+                }
+
+                Loader {
+                    id: regularLoader
+                    active: sideDelegate.modelData !== "media"
+                    anchors.centerIn: parent
+                    source: active ? Qt.resolvedUrl("./" + sideDelegate.modelData.charAt(0).toUpperCase()
+                        + sideDelegate.modelData.slice(1) + ".qml") : ""
+                }
+
                 Binding {
-                    target: sideLoader.supportsExpansion ? sideLoader.item : null
+                    target: sideDelegate.supportsExpansion ? regularLoader.item : null
                     property: "islandMode"
                     value: true
-                    when: sideLoader.supportsExpansion && sideLoader.status === Loader.Ready
+                    when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
                 }
                 Binding {
-                    target: sideLoader.supportsExpansion ? sideLoader.item : null
+                    target: sideDelegate.supportsExpansion ? regularLoader.item : null
                     property: "islandExpanded"
-                    value: sideLoader.displayMode === "expanded"
-                        || (sideLoader.displayMode !== "compact" && root.expanded)
-                    when: sideLoader.supportsExpansion && sideLoader.status === Loader.Ready
+                    value: sideDelegate.displayMode === "expanded"
+                        || (sideDelegate.displayMode !== "compact" && root.expanded)
+                    when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
                 }
             }
         }
@@ -343,18 +400,13 @@ Item {
     Rectangle {
         id: pill
         x: root.leftStart + leftWidgets.implicitWidth
-            + (leftWidgets.implicitWidth > 0 ? root.workspaceSpacing : 0)
+            + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
         width: root.primaryWidth
         height: root.pillHeight
         color: "transparent"
         radius: height / 2
         clip: true
         visible: !root.vertical
-
-        HoverHandler {
-            id: mediaHoverHandler
-            enabled: root.activeContentId === "media" && root.componentInteractionReady
-        }
 
         WheelHandler {
             id: idleToggleWheelHandler
@@ -378,7 +430,7 @@ Item {
         Loader {
             id: contentLoader
             anchors.fill: parent
-            sourceComponent: root.displayedProvider?.component ?? idleComponent
+            sourceComponent: root.displayedProvider?.component ?? emptyComponent
             active: !root.vertical
 
             onLoaded: {
@@ -389,13 +441,8 @@ Item {
         }
 
         Component {
-            id: idleComponent
-            DiIdle { di: root }
-        }
-
-        Component {
-            id: mediaComponent
-            DiMedia { di: root }
+            id: emptyComponent
+            Item {}
         }
 
         Component {

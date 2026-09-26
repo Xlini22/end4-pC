@@ -14,6 +14,7 @@ ContentSubsection {
     property var availableWidgets: []
     property var onUpdate: (list) => {}
     property var modeWidgets: []
+    property var dynamicHoverModeWidgets: []
     property var widgetModes: ({})
     property var onModeChanged: (widget, mode) => {}
 
@@ -44,6 +45,7 @@ ContentSubsection {
                         required property var modelData
                         required property int index
                         readonly property bool hasModes: root.modeWidgets.includes(modelData)
+                        readonly property bool hasDynamicHoverMode: root.dynamicHoverModeWidgets.includes(modelData)
                         implicitWidth: chipContent.implicitWidth + (hasModes ? 6 : 0)
                         implicitHeight: chipContent.implicitHeight
                         radius: height / 2
@@ -138,7 +140,12 @@ ContentSubsection {
                                 visible: widgetChip.hasModes
                                 spacing: 1
                                 Repeater {
-                                    model: [
+                                    model: widgetChip.hasDynamicHoverMode ? [
+                                        { label: "D", mode: "dynamic", title: Translation.tr("Dynamic: expand with Dynamic Island") },
+                                        { label: "DH", mode: "dynamicHover", title: Translation.tr("Dynamic hover: expand when hovering the component") },
+                                        { label: "C", mode: "compact", title: Translation.tr("Always compact") },
+                                        { label: "E", mode: "expanded", title: Translation.tr("Always expanded") }
+                                    ] : [
                                         { label: "D", mode: "dynamic", title: Translation.tr("Dynamic: expand on hover") },
                                         { label: "C", mode: "compact", title: Translation.tr("Always compact") },
                                         { label: "E", mode: "expanded", title: Translation.tr("Always expanded") }

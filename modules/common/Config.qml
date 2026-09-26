@@ -77,6 +77,16 @@ Singleton {
                     island.rightWidgets = [island.rightWidget];
                 island.widgetListsMigrated = true;
             }
+            if (!island.mediaWidgetMigrated) {
+                if (!island.leftWidgets.includes("media") && !island.rightWidgets.includes("media"))
+                    island.leftWidgets = island.leftWidgets.concat(["media"]);
+                island.mediaWidgetMigrated = true;
+            }
+            if (!island.mediaHoverModeMigrated) {
+                if (island.widgetModes.media === "dynamic")
+                    island.widgetModes.media = "dynamicHover";
+                island.mediaHoverModeMigrated = true;
+            }
             root.ready = true;
         }
         onLoadFailed: error => {
@@ -515,10 +525,13 @@ Singleton {
                     property JsonObject widgetModes: JsonObject {
                         property string clockWidget: "dynamic"
                         property string resources: "dynamic"
+                        property string media: "dynamicHover"
                     }
                     property list<string> leftWidgets: []
                     property list<string> rightWidgets: []
                     property bool widgetListsMigrated: false
+                    property bool mediaWidgetMigrated: false
+                    property bool mediaHoverModeMigrated: false
                     // Retained only to migrate settings from the single-widget layout.
                     property string leftWidget: "none"
                     property string rightWidget: "none"
