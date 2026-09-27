@@ -53,10 +53,10 @@ Item {
             StyledImage {
                 anchors.fill: parent
                 fillMode: Image.PreserveAspectCrop
-                source: root.activePlayer?.trackArtUrl ?? ""
+                source: MediaArtwork.source
                 sourceSize.width: artMask.width * 2
                 sourceSize.height: artMask.height * 2
-                visible: (root.activePlayer?.trackArtUrl ?? "") !== ""
+                visible: MediaArtwork.source !== ""
             }
 
             MaterialSymbol {
@@ -64,7 +64,7 @@ Item {
                 text: "music_note"
                 iconSize: 14
                 color: Appearance.colors.colOnLayer1
-                visible: (root.activePlayer?.trackArtUrl ?? "") === ""
+                visible: MediaArtwork.source === ""
             }
         }
 

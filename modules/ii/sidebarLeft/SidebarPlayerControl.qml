@@ -17,27 +17,7 @@ Item {
     id: root
     readonly property var players: MprisController.players
     property var player: MprisController.activePlayer ?? root.players[0] ?? null
-    readonly property string trackPageUrl: String(root.player?.metadata?.["xesam:url"] ?? "")
-
-    function youtubeIdFromUrl(url) {
-        const value = String(url ?? "")
-        if (!value.includes("youtube.com") && !value.includes("youtu.be")) return ""
-        const match = value.match(/(?:[?&]v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/)
-        return match?.[1] ?? ""
-    }
-
-    readonly property string youtubeVideoId: root.youtubeIdFromUrl(root.trackPageUrl)
-    readonly property string highResolutionArtUrl: root.youtubeVideoId.length > 0
-        ? `https://i.ytimg.com/vi/${root.youtubeVideoId}/maxresdefault.jpg` : ""
-    readonly property string fallbackSdArtUrl: root.youtubeVideoId.length > 0
-        ? `https://i.ytimg.com/vi/${root.youtubeVideoId}/sddefault.jpg` : ""
-    readonly property string fallbackHqArtUrl: root.youtubeVideoId.length > 0
-        ? `https://i.ytimg.com/vi/${root.youtubeVideoId}/hqdefault.jpg` : ""
-    property var artUrl: root.highResolutionArtUrl || root.player?.trackArtUrl || ""
-    property string artDownloadLocation: Directories.coverArt
     property bool showLyrics: Config.options.sidebar.media.showLyrics ?? true
-    property string artFileName: Qt.md5(artUrl)
-    property string artFilePath: `${artDownloadLocation}/${artFileName}`
     property color artDominantColor: Config.options.sidebar.media.artColors
         ? ColorUtils.mix(
             (colorQuantizer?.colors[0] ?? Appearance.colors.colPrimary),
@@ -45,7 +25,6 @@ Item {
             0.8
           )
         : Appearance.colors.colPrimaryContainer
-    property bool downloaded: false
     property list<real> visualizerPoints: []
     property real maxVisualizerValue: 1000
     property int visualizerSmoothing: 2
@@ -54,57 +33,13 @@ Item {
     property bool shapeArt: Config.options.sidebar.media.shapeArt ?? false
     readonly property var artShapeOptions: ["Circle", "Square", "Pill", "Bun", "Cookie12Sided", "Clover4Leaf", "Heart", "Slanted", "Arch", "Arrow", "SemiCircle", "Oval", "Triangle", "Diamond", "ClamShell", "Pentagon", "Gem", "Sunny", "VerySunny", "Cookie4Sided", "Cookie6Sided", "Cookie7Sided", "Cookie9Sided", "Ghostish", "Clover8Leaf", "Burst", "SoftBurst", "Boom", "SoftBoom", "Flower", "Puffy", "PuffyDiamond"]
 
-    property string displayedArtFilePath: {
-        if (!root.downloaded) return ""
-        if (root.artUrl.startsWith("file://")) return root.artUrl
-        return Qt.resolvedUrl(root.artFilePath)
-    }
+    readonly property string displayedArtFilePath: MediaArtwork.source
 
     Timer {
         running: root.player?.playbackState == MprisPlaybackState.Playing
         interval: Config.options.resources.updateInterval
         repeat: true
         onTriggered: root.player?.positionChanged()  
-    }
-
-    onArtFilePathChanged: {
-        if (!root.artUrl || root.artUrl.length === 0) {
-            root.downloaded = false
-            return
-        }
-
-        if (root.artUrl.startsWith("file://")) {
-            root.downloaded = true
-            return
-        }
-
-        coverArtDownloader.targetFile = root.artUrl
-        coverArtDownloader.artFilePath = root.artFilePath
-        root.downloaded = false
-        coverArtDownloader.running = true
-    }
-
-    Process {
-        id: coverArtDownloader
-        property string targetFile: root.artUrl
-        property string artFilePath: root.artFilePath
-        readonly property string escapedPath: StringUtils.shellSingleQuoteEscape(artFilePath)
-        readonly property string escapedTarget: StringUtils.shellSingleQuoteEscape(targetFile)
-        readonly property string escapedSdFallback: StringUtils.shellSingleQuoteEscape(root.fallbackSdArtUrl)
-        readonly property string escapedHqFallback: StringUtils.shellSingleQuoteEscape(root.fallbackHqArtUrl)
-        command: {
-            if (root.youtubeVideoId.length > 0) {
-                return ["bash", "-c",
-                    `[ -s '${escapedPath}' ] || { `
-                    + `curl -4 -fsSL '${escapedTarget}' -o '${escapedPath}' `
-                    + `|| curl -4 -fsSL '${escapedSdFallback}' -o '${escapedPath}' `
-                    + `|| curl -4 -fsSL '${escapedHqFallback}' -o '${escapedPath}' `
-                    + `|| { rm -f '${escapedPath}'; exit 1; }; }`]
-            }
-            return ["bash", "-c",
-                `[ -s '${escapedPath}' ] || curl -4 -fsSL '${escapedTarget}' -o '${escapedPath}'`]
-        }
-        onExited: (exitCode, exitStatus) => { root.downloaded = exitCode === 0 }
     }
 
     ColorQuantizer {
@@ -428,15 +363,18 @@ Item {
                                 id: sliderLoader
                                 property var player: root.player
                                 anchors.fill: parent
-                                active: sliderLoader.player?.canSeek ?? false
+                            active: (sliderLoader.player?.canSeek ?? false)
+                                && MediaArtwork.durationKnown
                                 sourceComponent: StyledSlider {
                                     configuration: StyledSlider.Configuration.Wavy
                                     highlightColor: blendedColors.colPrimary
                                     trackColor: blendedColors.colSecondaryContainer
                                     handleColor: blendedColors.colPrimary
-                                    value: (sliderLoader.player?.position ?? 0) / (sliderLoader.player?.length ?? 1)
+                                    value: MediaArtwork.durationKnown
+                                        ? MediaArtwork.playbackPosition / MediaArtwork.playbackLength : 0
                                     onMoved: {
-                                        sliderLoader.player.position = value * sliderLoader.player.length
+                                        sliderLoader.player.position = MediaArtwork.rawPositionFor(
+                                            value * MediaArtwork.playbackLength)
                                         lyricsComp.restartLyrics()
                                     }
                                 }
@@ -455,7 +393,8 @@ Item {
                                     wavy: progressBarLoader.player?.isPlaying ?? false
                                     highlightColor: blendedColors.colPrimary
                                     trackColor: blendedColors.colSecondaryContainer
-                                    value: (progressBarLoader.player?.position ?? 0) / (progressBarLoader.player?.length ?? 1)
+                                    value: MediaArtwork.durationKnown
+                                        ? MediaArtwork.playbackPosition / MediaArtwork.playbackLength : 0
                                 }
                             }
                         }
@@ -468,7 +407,7 @@ Item {
                                 color: blendedColors.colSubtext
                                 font.letterSpacing: -0.4
                                 font.features: { "tnum": 1 }
-                                text: StringUtils.friendlyTimeForSeconds(root.player?.position ?? 0)
+                                text: StringUtils.friendlyTimeForSeconds(MediaArtwork.playbackPosition)
                             }
 
                             Item { Layout.fillWidth: true }
@@ -478,7 +417,9 @@ Item {
                                 color: blendedColors.colSubtext
                                 font.letterSpacing: -0.4
                                 font.features: { "tnum": 1 }
-                                text: StringUtils.friendlyTimeForSeconds(root.player?.length ?? 0)
+                                text: MediaArtwork.durationKnown
+                                    ? StringUtils.friendlyTimeForSeconds(MediaArtwork.playbackLength)
+                                    : "--:--"
                             }
                         }
                     }

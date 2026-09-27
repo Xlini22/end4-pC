@@ -19,23 +19,50 @@ Item {
     required property QtObject blendedColors
     required property string displayedArtFilePath
     required property real radius
+    property bool useSharedTimeline: false
+    readonly property real playbackPosition: useSharedTimeline
+        ? MediaArtwork.playbackPosition : Number(player?.position ?? 0)
+    readonly property real playbackLength: useSharedTimeline
+        ? MediaArtwork.playbackLength : Number(player?.length ?? 0)
+    readonly property bool playbackLengthKnown: useSharedTimeline
+        ? MediaArtwork.durationKnown : playbackLength > 0
     signal toggleLyrics()
 
+    function seekTo(position) {
+        if (root.player)
+            root.player.position = root.useSharedTimeline
+                ? MediaArtwork.rawPositionFor(position) : position
+    }
+
     component TrackChangeButton: RippleButton {
+        id: trackChangeButton
         implicitWidth: 24
         implicitHeight: 24
         property var iconName
+        property bool crossedOut: false
         colBackground: ColorUtils.transparentize(root.blendedColors.colSecondaryContainer, 1)
         colBackgroundHover: root.blendedColors.colSecondaryContainerHover
         colRipple: root.blendedColors.colSecondaryContainerActive
-        contentItem: MaterialSymbol {
-            iconSize: Appearance.font.pixelSize.huge
-            fill: 1
-            horizontalAlignment: Text.AlignHCenter
-            color: root.blendedColors.colOnSecondaryContainer
-            text: iconName
-            Behavior on color {
-                animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+        contentItem: Item {
+            MaterialSymbol {
+                anchors.centerIn: parent
+                iconSize: Appearance.font.pixelSize.huge
+                fill: 1
+                color: root.blendedColors.colOnSecondaryContainer
+                text: trackChangeButton.iconName
+                Behavior on color {
+                    animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                }
+            }
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: 20
+                height: 2
+                radius: 1
+                rotation: -45
+                visible: trackChangeButton.crossedOut
+                color: root.blendedColors.colOnSecondaryContainer
             }
         }
     }
@@ -176,7 +203,9 @@ Item {
                     color: root.blendedColors.colSubtext
                     elide: Text.ElideRight
                     font.features: { "tnum": 1 }
-                    text: `${StringUtils.friendlyTimeForSeconds(root.player?.position)} / ${StringUtils.friendlyTimeForSeconds(root.player?.length)}`
+                    text: `${StringUtils.friendlyTimeForSeconds(root.playbackPosition)} / `
+                        + (root.playbackLengthKnown
+                            ? StringUtils.friendlyTimeForSeconds(root.playbackLength) : "--:--")
                 }
 
                 RowLayout {
@@ -200,14 +229,15 @@ Item {
                         Loader {
                             id: sliderLoader
                             anchors.fill: parent
-                            active: root.player?.canSeek ?? false
+                            active: (root.player?.canSeek ?? false) && root.playbackLengthKnown
                             sourceComponent: StyledSlider {
                                 configuration: StyledSlider.Configuration.Wavy
                                 highlightColor: root.blendedColors.colPrimary
                                 trackColor: root.blendedColors.colSecondaryContainer
                                 handleColor: root.blendedColors.colPrimary
-                                value: root.player?.position / root.player?.length
-                                onMoved: root.player.position = value * root.player.length
+                                value: root.playbackLengthKnown
+                                    ? root.playbackPosition / root.playbackLength : 0
+                                onMoved: root.seekTo(value * root.playbackLength)
                             }
                         }
 
@@ -218,12 +248,13 @@ Item {
                                 left: parent.left
                                 right: parent.right
                             }
-                            active: !(root.player?.canSeek ?? false)
+                            active: !(root.player?.canSeek ?? false) || !root.playbackLengthKnown
                             sourceComponent: StyledProgressBar {
                                 wavy: root.player?.isPlaying
                                 highlightColor: root.blendedColors.colPrimary
                                 trackColor: root.blendedColors.colSecondaryContainer
-                                value: root.player?.position / root.player?.length
+                                value: root.playbackLengthKnown
+                                    ? root.playbackPosition / root.playbackLength : 0
                             }
                         }
                     }
@@ -236,6 +267,10 @@ Item {
                     TrackChangeButton {
                         iconName: "lyrics"
                         visible: !GlobalStates.sidebarRightOpen
+                        enabled: LyricsService.status !== "not_found"
+                            && LyricsService.status !== "no_info"
+                        crossedOut: !enabled
+                        pointingHandCursor: enabled
                         downAction: () => root.toggleLyrics()
                     }
 

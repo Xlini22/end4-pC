@@ -1,6 +1,7 @@
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
+import qs.services
 import QtQuick
 import QtQuick.Effects
 import Quickshell
@@ -84,6 +85,12 @@ LazyLoader {
         }
         WlrLayershell.namespace: "quickshell:popup"
         WlrLayershell.layer: WlrLayer.Overlay
+
+        // A sidebar activates HyprlandFocusGrab. Keep this separate popup
+        // inside that grab while it exists so it continues receiving hover
+        // and pointer input independently of either sidebar's open state.
+        Component.onCompleted: GlobalFocusGrab.addPersistent(popupWindow)
+        Component.onDestruction: GlobalFocusGrab.removePersistent(popupWindow)
 
         StyledRectangularShadow {
             target: popupBackground

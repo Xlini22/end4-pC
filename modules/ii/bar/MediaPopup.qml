@@ -74,10 +74,11 @@ StyledPopup {
 
     Player {
         player: root.activePlayer
+        artSourceOverride: MediaArtwork.source
+        useSharedTimeline: true
         visualizerPoints: GlobalStates.visualizerPoints
         implicitWidth: Appearance.sizes.mediaControlsWidth
         implicitHeight: Appearance.sizes.mediaControlsHeight
         radius: Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 1
-        showLyrics: false
     }
 }

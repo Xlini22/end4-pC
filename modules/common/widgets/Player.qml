@@ -15,6 +15,8 @@ import Quickshell.Services.Mpris
 Item {
     id: root
     required property MprisPlayer player
+    property string artSourceOverride: ""
+    property bool useSharedTimeline: false
     property var artUrl: player?.trackArtUrl ?? ""
     property string artDownloadLocation: Directories.coverArt
     property string artFileName: Qt.md5(artUrl)
@@ -31,6 +33,7 @@ Item {
     property bool showLyrics: Config.options.bar.media.showLyrics
 
     property string displayedArtFilePath: {
+        if (root.artSourceOverride.length > 0) return root.artSourceOverride
         if (!root.downloaded) return ""
         if (root.artUrl.startsWith("file://")) return root.artUrl
         return Qt.resolvedUrl(artFilePath)
@@ -145,6 +148,7 @@ Item {
                 id: controlsComponent
                 PlayerControls {
                     player: root.player
+                    useSharedTimeline: root.useSharedTimeline
                     blendedColors: root.blendedColors
                     displayedArtFilePath: root.displayedArtFilePath
                     radius: root.radius
@@ -159,6 +163,7 @@ Item {
                 id: lyricsComponent
                 PlayerControlsLyrics {
                     player: root.player
+                    useSharedTimeline: root.useSharedTimeline
                     blendedColors: root.blendedColors
                     displayedArtFilePath: root.displayedArtFilePath
                     radius: root.radius
