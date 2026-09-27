@@ -40,6 +40,7 @@ ContentPage {
         { id: "workspaces",        name: Translation.tr("Workspaces"),           icon: "steppers" },
         { id: "weatherBar",        name: Translation.tr("Weather"),              icon: "flare" },
         { id: "media",             name: Translation.tr("Media"),                icon: "music_note" },
+        { id: "osd",               name: Translation.tr("Volume & Brightness"),   icon: "volume_up" },
         { id: "resources",         name: Translation.tr("Resources"),            icon: "empty_dashboard" },
         { id: "systemIcons",       name: Translation.tr("System Icons"),         icon: "info" },
         { id: "networkSpeed",      name: Translation.tr("Network Speed"),        icon: "network_check" },
@@ -360,6 +361,16 @@ ContentPage {
                     enabled: !Config.options.bar.vertical
                     checked: Config.options.bar.dynamicIsland.centerWorkspaces
                     onCheckedChanged: Config.options.bar.dynamicIsland.centerWorkspaces = checked
+                }
+                ConfigSelectionArray {
+                    text: Translation.tr("Dynamic Island animation")
+                    icon: "animation"
+                    currentValue: Config.options.bar.dynamicIsland.animationStyle
+                    onSelected: newValue => { Config.options.bar.dynamicIsland.animationStyle = newValue; }
+                    options: [
+                        { displayName: Translation.tr("Together"),   icon: "sync",      value: "simultaneous" },
+                        { displayName: Translation.tr("Two stages"), icon: "filter_2", value: "staged" }
+                    ]
                 }
                 LayoutSection {
                     sectionTitle: Translation.tr("Left")

@@ -192,11 +192,10 @@ Item {
         { id: "battery",      active: root.batteryAlertActive,          component: batteryComponent,      width: root.batteryWidth },
         { id: "recording",    active: root.isRecording,                 component: recordingComponent,    width: root.recordingWidth },
         { id: "timer",        active: root.hasActiveTimer,              component: timerComponent,        width: root.timerWidth },
-        { id: "osd",          active: GlobalStates.osdVolumeOpen,       component: osdComponent,          width: root.osdWidth },
         { id: "session",      active: GlobalStates.diSessionOpen,       component: sessionComponent,      width: root.sessionWidth },
     ]
 
-    readonly property var alwaysWinIds: ["session", "notification", "battery", "osd"]
+    readonly property var alwaysWinIds: ["session", "notification", "battery"]
 
     readonly property var activeOthers: root.contentProviders.filter(p => !root.alwaysWinIds.includes(p.id) && p.active)
 
@@ -225,7 +224,7 @@ Item {
                 switch (GlobalStates.osdIndicatorType) {
                     case "brightness": return Hyprsunset.temperatureActive ? "routine" : "light_mode"
                     case "gamma":      return "wb_twilight"
-                    default:           return "volume_up"
+                    default:           return Audio.sink?.audio?.muted ? "volume_off" : "volume_up"
                 }
             default: return "circle"
         }
@@ -319,6 +318,15 @@ Item {
         }
     }
 
+    Component {
+        id: osdSideComponent
+        Item {
+            implicitWidth: root.osdWidth
+            implicitHeight: root.pillHeight
+            DiOsd { di: root }
+        }
+    }
+
     component SideWidgets: RowLayout {
         id: sideWidgetsRoot
         property var widgets: []
@@ -331,12 +339,36 @@ Item {
                 required property string modelData
                 readonly property bool supportsExpansion: ["clockWidget", "resources"].includes(modelData)
                 readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
+                readonly property bool contentAvailable: (modelData !== "media" || root.hasMedia)
+                    && (modelData !== "osd" || GlobalStates.osdVolumeOpen)
+                readonly property real contentImplicitWidth: mediaLoader.active ? mediaLoader.implicitWidth
+                    : (osdLoader.active ? osdLoader.implicitWidth : regularLoader.implicitWidth)
+                readonly property real contentImplicitHeight: mediaLoader.active ? mediaLoader.implicitHeight
+                    : (osdLoader.active ? osdLoader.implicitHeight : regularLoader.implicitHeight)
 
-                visible: modelData !== "media" || root.hasMedia
-                enabled: visible && root.componentInteractionReady
-                implicitWidth: mediaLoader.active ? mediaLoader.implicitWidth : regularLoader.implicitWidth
-                implicitHeight: mediaLoader.active ? mediaLoader.implicitHeight : regularLoader.implicitHeight
+                visible: contentAvailable || implicitWidth > 0.5
+                enabled: contentAvailable && root.componentInteractionReady
+                opacity: contentAvailable ? 1 : 0
+                implicitWidth: contentAvailable ? contentImplicitWidth : 0
+                implicitHeight: contentAvailable ? contentImplicitHeight : root.pillHeight
                 Layout.alignment: Qt.AlignVCenter
+
+                Behavior on implicitWidth {
+                    enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
+                        || sideDelegate.modelData === "osd"
+                    NumberAnimation {
+                        readonly property bool simultaneous: Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
+                        duration: simultaneous ? 200 : 350
+                        easing.type: simultaneous ? Easing.OutCubic : Easing.BezierSpline
+                        easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+                    }
+                }
+
+                Behavior on opacity {
+                    enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
+                        || sideDelegate.modelData === "osd"
+                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                }
 
                 Loader {
                     id: mediaLoader
@@ -346,8 +378,15 @@ Item {
                 }
 
                 Loader {
+                    id: osdLoader
+                    active: sideDelegate.modelData === "osd"
+                    anchors.centerIn: parent
+                    sourceComponent: osdSideComponent
+                }
+
+                Loader {
                     id: regularLoader
-                    active: sideDelegate.modelData !== "media"
+                    active: sideDelegate.modelData !== "media" && sideDelegate.modelData !== "osd"
                     anchors.centerIn: parent
                     source: active ? Qt.resolvedUrl("./" + sideDelegate.modelData.charAt(0).toUpperCase()
                         + sideDelegate.modelData.slice(1) + ".qml") : ""
@@ -443,11 +482,6 @@ Item {
         Component {
             id: emptyComponent
             Item {}
-        }
-
-        Component {
-            id: osdComponent
-            DiOsd { di: root }
         }
 
         Component {

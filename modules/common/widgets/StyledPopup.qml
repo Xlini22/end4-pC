@@ -11,6 +11,10 @@ LazyLoader {
     property Item hoverTarget
     default property Item contentItem
     property real popupBackgroundMargin: 0
+    property real popupContentMargin: 8
+    property color popupColor: Appearance.colors.colLayer1Base
+    property real popupRadius: Appearance.rounding.normal + 4
+    property real popupBorderWidth: 1
     active: root.hoverTarget && root.hoverTarget.containsMouse && Config.options.bar.tooltips.enable
 
     readonly property bool barVertical: Config.options.bar.vertical
@@ -83,7 +87,7 @@ LazyLoader {
 
         Rectangle {
             id: popupBackground
-            readonly property real margin: 8
+            readonly property real margin: root.popupContentMargin
 
             anchors {
                 fill: parent
@@ -97,9 +101,9 @@ LazyLoader {
             implicitWidth: (popupWindow.innerContent?.implicitWidth ?? 0) + margin * 2
             implicitHeight: (popupWindow.innerContent?.implicitHeight ?? 0) + margin * 2
 
-            color: Appearance.colors.colLayer1Base
-            radius: Appearance.rounding.normal + 4
-            border.width: 1
+            color: root.popupColor
+            radius: root.popupRadius
+            border.width: root.popupBorderWidth
             border.color: Appearance.colors.colLayer0Border
 
             // Reparent content here once the window is ready

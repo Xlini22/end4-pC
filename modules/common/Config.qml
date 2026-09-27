@@ -87,6 +87,11 @@ Singleton {
                     island.widgetModes.media = "dynamicHover";
                 island.mediaHoverModeMigrated = true;
             }
+            if (!island.osdWidgetMigrated) {
+                if (!island.leftWidgets.includes("osd") && !island.rightWidgets.includes("osd"))
+                    island.leftWidgets = island.leftWidgets.concat(["osd"]);
+                island.osdWidgetMigrated = true;
+            }
             root.ready = true;
         }
         onLoadFailed: error => {
@@ -522,6 +527,7 @@ Singleton {
                     property bool centerWorkspaces: false
                     property string visualizerStyle: "dots" // "dots", "wave", "none"
                     property bool showMediaControls: false
+                    property string animationStyle: "staged" // "staged" or "simultaneous"
                     property JsonObject widgetModes: JsonObject {
                         property string clockWidget: "dynamic"
                         property string resources: "dynamic"
@@ -532,6 +538,7 @@ Singleton {
                     property bool widgetListsMigrated: false
                     property bool mediaWidgetMigrated: false
                     property bool mediaHoverModeMigrated: false
+                    property bool osdWidgetMigrated: false
                     // Retained only to migrate settings from the single-widget layout.
                     property string leftWidget: "none"
                     property string rightWidget: "none"
