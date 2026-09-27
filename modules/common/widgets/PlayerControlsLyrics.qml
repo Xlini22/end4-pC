@@ -32,33 +32,10 @@ Item {
         anchors.margins: 13
         spacing: 15
 
-        Rectangle {
-            id: artBackground
+        Item {
             Layout.fillHeight: true
             Layout.preferredWidth: height
             Layout.maximumWidth: height
-            radius: Appearance.rounding.verysmall
-            color: ColorUtils.transparentize(root.blendedColors.colLayer1, 0.5)
-            clip: true
-
-            layer.enabled: true
-            layer.effect: OpacityMask {
-                maskSource: Rectangle {
-                    width: artBackground.width
-                    height: artBackground.height
-                    radius: artBackground.radius
-                }
-            }
-
-            StyledImage {
-                anchors.fill: parent
-                source: root.displayedArtFilePath
-                fillMode: Image.PreserveAspectCrop
-                cache: false
-                antialiasing: true
-                sourceSize.width: artBackground.width * 2
-                sourceSize.height: artBackground.height * 2
-            }
         }
 
         ColumnLayout {
@@ -105,7 +82,7 @@ Item {
                     colBackground: root.blendedColors.colSecondaryContainer
                     colBackgroundHover: root.blendedColors.colSecondaryContainerHover
                     colRipple: root.blendedColors.colSecondaryContainerActive
-                    downAction: () => root.toggleLyrics()
+                    releaseAction: () => root.toggleLyrics()
 
                     contentItem: MaterialSymbol {
                         text: "arrow_back"

@@ -138,41 +138,47 @@ Item {
             color: blendedColors.colPrimary
         }
 
-        Loader {
-            id: layoutLoader
+        PlayerControls {
             anchors.fill: parent
+            player: root.player
+            useSharedTimeline: root.useSharedTimeline
+            blendedColors: root.blendedColors
+            displayedArtFilePath: root.displayedArtFilePath
+            radius: root.radius
+            contentVisible: !root.showLyrics
+            artInteractive: !root.showLyrics
+            onToggleLyrics: {
+                root.showLyrics = true
+                Config.options.bar.media.showLyrics = true
+            }
+        }
 
-            sourceComponent: root.showLyrics ? lyricsComponent : controlsComponent
+        PlayerControlsLyrics {
+            anchors.fill: parent
+            player: root.player
+            useSharedTimeline: root.useSharedTimeline
+            blendedColors: root.blendedColors
+            displayedArtFilePath: root.displayedArtFilePath
+            radius: root.radius
+            artDominantColor: root.artDominantColor
+            enabled: root.showLyrics
+            opacity: root.showLyrics ? 1 : 0
 
-            Component {
-                id: controlsComponent
-                PlayerControls {
-                    player: root.player
-                    useSharedTimeline: root.useSharedTimeline
-                    blendedColors: root.blendedColors
-                    displayedArtFilePath: root.displayedArtFilePath
-                    radius: root.radius
-                    onToggleLyrics: {
-                        root.showLyrics = !root.showLyrics
-                        Config.options.bar.media.showLyrics = root.showLyrics
-                    }
+            transform: Translate {
+                x: root.showLyrics ? 0 : 28
+
+                Behavior on x {
+                    NumberAnimation { duration: 260; easing.type: Easing.OutCubic }
                 }
             }
 
-            Component {
-                id: lyricsComponent
-                PlayerControlsLyrics {
-                    player: root.player
-                    useSharedTimeline: root.useSharedTimeline
-                    blendedColors: root.blendedColors
-                    displayedArtFilePath: root.displayedArtFilePath
-                    radius: root.radius
-                    artDominantColor: root.artDominantColor
-                    onToggleLyrics: {
-                        root.showLyrics = !root.showLyrics
-                        Config.options.bar.media.showLyrics = root.showLyrics
-                    }
-                }
+            Behavior on opacity {
+                NumberAnimation { duration: 190; easing.type: Easing.OutCubic }
+            }
+
+            onToggleLyrics: {
+                root.showLyrics = false
+                Config.options.bar.media.showLyrics = false
             }
         }
     }

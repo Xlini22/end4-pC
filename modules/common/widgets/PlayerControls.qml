@@ -20,6 +20,8 @@ Item {
     required property string displayedArtFilePath
     required property real radius
     property bool useSharedTimeline: false
+    property bool contentVisible: true
+    property bool artInteractive: true
     readonly property real playbackPosition: useSharedTimeline
         ? MediaArtwork.playbackPosition : Number(player?.position ?? 0)
     readonly property real playbackLength: useSharedTimeline
@@ -104,12 +106,13 @@ Item {
 
             HoverHandler {
                 id: artHover
+                enabled: root.artInteractive
             }
 
             Rectangle {
                 anchors.fill: parent
                 color: "black"
-                opacity: artHover.hovered ? 0.6 : 0.0
+                opacity: root.artInteractive && artHover.hovered ? 0.6 : 0.0
 
                 Behavior on opacity {
                     NumberAnimation {
@@ -125,7 +128,7 @@ Item {
                 iconSize: Appearance.font.pixelSize.normal
                 color: root.blendedColors.colOnLayer0
                 text: (root.player?.volume ?? 0) === 0 ? "volume_off" : ((root.player?.volume ?? 0) < 0.5 ? "volume_down" : "volume_up")
-                opacity: artHover.hovered ? 1.0 : 0.0
+                opacity: root.artInteractive && artHover.hovered ? 1.0 : 0.0
 
                 Behavior on opacity {
                     NumberAnimation {
@@ -139,11 +142,12 @@ Item {
             MaterialDial {
                 anchors.fill: parent
                 anchors.margins: 14
+                enabled: root.artInteractive
                 colPrimary: root.blendedColors.colPrimary
                 colSecondary: root.blendedColors.colSecondaryContainer
                 value: root.player?.volume ?? 0
                 waveAmplitude: 3.2 * (root.player?.volume ?? 0)
-                opacity: artHover.hovered ? 1.0 : 0.0
+                opacity: root.artInteractive && artHover.hovered ? 1.0 : 0.0
 
                 Behavior on opacity {
                     NumberAnimation {
@@ -163,6 +167,20 @@ Item {
         ColumnLayout {
             Layout.fillHeight: true
             spacing: 2
+            enabled: root.contentVisible
+            opacity: root.contentVisible ? 1 : 0
+
+            transform: Translate {
+                x: root.contentVisible ? 0 : -28
+
+                Behavior on x {
+                    NumberAnimation { duration: 260; easing.type: Easing.OutCubic }
+                }
+            }
+
+            Behavior on opacity {
+                NumberAnimation { duration: 190; easing.type: Easing.OutCubic }
+            }
 
             StyledText {
                 id: trackTitle
@@ -271,7 +289,7 @@ Item {
                             && LyricsService.status !== "no_info"
                         crossedOut: !enabled
                         pointingHandCursor: enabled
-                        downAction: () => root.toggleLyrics()
+                        releaseAction: () => root.toggleLyrics()
                     }
 
                     TrackChangeButton {

@@ -28,6 +28,15 @@ Singleton {
         return String(value ?? "").trim().toLowerCase()
     }
 
+    function comparableTrackTitle(value) {
+        return root.normalized(value)
+            .replace(/[\[\](){}.,:;_\-/]+/g, " ")
+            .split(/\s+/)
+            .filter(token => token.length > 0 && token !== "feat" && token !== "featuring")
+            .sort()
+            .join(" ")
+    }
+
     readonly property string youtubeVideoId: root.youtubeIdFromUrl(root.trackPageUrl)
     readonly property bool isAppleMusic: root.trackPageUrl.includes("music.apple.com/")
         && root.trackTitle.length > 0 && root.trackArtist.length > 0
@@ -71,6 +80,11 @@ Singleton {
         const title = root.normalized(root.trackTitle)
         for (let i = 0; i < root.appleTracks.length; i++) {
             if (root.normalized(root.appleTracks[i]?.trackName) === title)
+                return i
+        }
+        const comparableTitle = root.comparableTrackTitle(root.trackTitle)
+        for (let i = 0; i < root.appleTracks.length; i++) {
+            if (root.comparableTrackTitle(root.appleTracks[i]?.trackName) === comparableTitle)
                 return i
         }
         return -1
