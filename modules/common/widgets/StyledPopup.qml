@@ -10,12 +10,16 @@ LazyLoader {
     id: root
     property Item hoverTarget
     default property Item contentItem
+    property bool popupEnabled: true
+    property bool popupShadowEnabled: true
+    property bool popupHovered: false
     property real popupBackgroundMargin: 0
     property real popupContentMargin: 8
     property color popupColor: Appearance.colors.colLayer1Base
     property real popupRadius: Appearance.rounding.normal + 4
     property real popupBorderWidth: 1
-    active: root.hoverTarget && root.hoverTarget.containsMouse && Config.options.bar.tooltips.enable
+    readonly property bool targetHovered: !!(root.hoverTarget && root.hoverTarget.containsMouse)
+    active: root.popupEnabled && root.targetHovered && Config.options.bar.tooltips.enable
 
     readonly property bool barVertical: Config.options.bar.vertical
     readonly property string barEdge: {
@@ -83,6 +87,7 @@ LazyLoader {
 
         StyledRectangularShadow {
             target: popupBackground
+            visible: root.popupShadowEnabled
         }
 
         Rectangle {
@@ -105,6 +110,12 @@ LazyLoader {
             radius: root.popupRadius
             border.width: root.popupBorderWidth
             border.color: Appearance.colors.colLayer0Border
+
+            HoverHandler {
+                onHoveredChanged: root.popupHovered = hovered
+            }
+
+            Component.onDestruction: root.popupHovered = false
 
             // Reparent content here once the window is ready
             Component.onCompleted: {

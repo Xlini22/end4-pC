@@ -235,7 +235,8 @@ Item {
     // BarContent also feeds hover from the complete central bar area. The
     // local handler remains useful when this component is used elsewhere.
     property bool barHovered: false
-    readonly property bool expanded: root.barHovered || islandHover.hovered
+    property bool mediaPopupKeepsBarExpanded: false
+    readonly property bool expanded: root.barHovered || islandHover.hovered || root.mediaPopupKeepsBarExpanded
     property bool componentInteractionReady: false
 
     onExpandedChanged: {
@@ -312,7 +313,12 @@ Item {
 
             Component.onDestruction: root.mediaHovered = false
 
-            MediaPopup { hoverTarget: mediaSideRoot }
+            MediaPopup {
+                hoverTarget: mediaSideRoot
+                barHovered: root.barHovered || islandHover.hovered
+                onKeepsBarExpandedChanged: root.mediaPopupKeepsBarExpanded = keepsBarExpanded
+                Component.onDestruction: root.mediaPopupKeepsBarExpanded = false
+            }
 
             DiMedia { di: root }
         }

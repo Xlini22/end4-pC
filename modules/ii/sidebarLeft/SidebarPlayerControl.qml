@@ -15,8 +15,25 @@ import Quickshell.Services.Mpris
 
 Item {
     id: root
-    property var player: Mpris.players.values[root.currentPlayerIndex] ?? Mpris.players.values[0]
-    property var artUrl: player?.trackArtUrl ?? ""
+    readonly property var players: MprisController.players
+    property var player: MprisController.activePlayer ?? root.players[0] ?? null
+    readonly property string trackPageUrl: String(root.player?.metadata?.["xesam:url"] ?? "")
+
+    function youtubeIdFromUrl(url) {
+        const value = String(url ?? "")
+        if (!value.includes("youtube.com") && !value.includes("youtu.be")) return ""
+        const match = value.match(/(?:[?&]v=|youtu\.be\/|shorts\/|embed\/|live\/)([A-Za-z0-9_-]{11})/)
+        return match?.[1] ?? ""
+    }
+
+    readonly property string youtubeVideoId: root.youtubeIdFromUrl(root.trackPageUrl)
+    readonly property string highResolutionArtUrl: root.youtubeVideoId.length > 0
+        ? `https://i.ytimg.com/vi/${root.youtubeVideoId}/maxresdefault.jpg` : ""
+    readonly property string fallbackSdArtUrl: root.youtubeVideoId.length > 0
+        ? `https://i.ytimg.com/vi/${root.youtubeVideoId}/sddefault.jpg` : ""
+    readonly property string fallbackHqArtUrl: root.youtubeVideoId.length > 0
+        ? `https://i.ytimg.com/vi/${root.youtubeVideoId}/hqdefault.jpg` : ""
+    property var artUrl: root.highResolutionArtUrl || root.player?.trackArtUrl || ""
     property string artDownloadLocation: Directories.coverArt
     property bool showLyrics: Config.options.sidebar.media.showLyrics ?? true
     property string artFileName: Qt.md5(artUrl)
@@ -33,12 +50,15 @@ Item {
     property real maxVisualizerValue: 1000
     property int visualizerSmoothing: 2
     property real radius
-    property int currentPlayerIndex: 0
     property bool blurredBackground: Config.options.sidebar.media.blurredBackground ?? false
     property bool shapeArt: Config.options.sidebar.media.shapeArt ?? false
     readonly property var artShapeOptions: ["Circle", "Square", "Pill", "Bun", "Cookie12Sided", "Clover4Leaf", "Heart", "Slanted", "Arch", "Arrow", "SemiCircle", "Oval", "Triangle", "Diamond", "ClamShell", "Pentagon", "Gem", "Sunny", "VerySunny", "Cookie4Sided", "Cookie6Sided", "Cookie7Sided", "Cookie9Sided", "Ghostish", "Clover8Leaf", "Burst", "SoftBurst", "Boom", "SoftBoom", "Flower", "Puffy", "PuffyDiamond"]
 
-    property string displayedArtFilePath: root.downloaded ? Qt.resolvedUrl(artFilePath) : ""
+    property string displayedArtFilePath: {
+        if (!root.downloaded) return ""
+        if (root.artUrl.startsWith("file://")) return root.artUrl
+        return Qt.resolvedUrl(root.artFilePath)
+    }
 
     Timer {
         running: root.player?.playbackState == MprisPlaybackState.Playing
@@ -48,10 +68,16 @@ Item {
     }
 
     onArtFilePathChanged: {
-        if (!root.artUrl || root.artUrl.length == 0) {
-            root.artDominantColor = Appearance.m3colors.m3secondaryContainer
+        if (!root.artUrl || root.artUrl.length === 0) {
+            root.downloaded = false
             return
         }
+
+        if (root.artUrl.startsWith("file://")) {
+            root.downloaded = true
+            return
+        }
+
         coverArtDownloader.targetFile = root.artUrl
         coverArtDownloader.artFilePath = root.artFilePath
         root.downloaded = false
@@ -62,8 +88,23 @@ Item {
         id: coverArtDownloader
         property string targetFile: root.artUrl
         property string artFilePath: root.artFilePath
-        command: ["bash", "-c", `[ -f ${artFilePath} ] || curl -sSL '${targetFile}' -o '${artFilePath}'`]
-        onExited: (exitCode, exitStatus) => { root.downloaded = true }
+        readonly property string escapedPath: StringUtils.shellSingleQuoteEscape(artFilePath)
+        readonly property string escapedTarget: StringUtils.shellSingleQuoteEscape(targetFile)
+        readonly property string escapedSdFallback: StringUtils.shellSingleQuoteEscape(root.fallbackSdArtUrl)
+        readonly property string escapedHqFallback: StringUtils.shellSingleQuoteEscape(root.fallbackHqArtUrl)
+        command: {
+            if (root.youtubeVideoId.length > 0) {
+                return ["bash", "-c",
+                    `[ -s '${escapedPath}' ] || { `
+                    + `curl -4 -fsSL '${escapedTarget}' -o '${escapedPath}' `
+                    + `|| curl -4 -fsSL '${escapedSdFallback}' -o '${escapedPath}' `
+                    + `|| curl -4 -fsSL '${escapedHqFallback}' -o '${escapedPath}' `
+                    + `|| { rm -f '${escapedPath}'; exit 1; }; }`]
+            }
+            return ["bash", "-c",
+                `[ -s '${escapedPath}' ] || curl -4 -fsSL '${escapedTarget}' -o '${escapedPath}'`]
+        }
+        onExited: (exitCode, exitStatus) => { root.downloaded = exitCode === 0 }
     }
 
     ColorQuantizer {
@@ -609,11 +650,12 @@ Item {
             // ── Player selector ──
             StyledComboBox {
                 id: playerSelector
-                visible: Mpris.players.values.length > 1
+                visible: root.players.length > 1
                 Layout.fillWidth: true
                 Layout.topMargin: 12
-                model: Mpris.players.values.map(p => p.identity ?? p.desktopEntry ?? "Unknown")
-                currentIndex: 0
+                model: root.players.map(p => p.identity ?? p.desktopEntry ?? "Unknown")
+                currentIndex: Math.max(0, root.players.indexOf(root.player))
+                onActivated: index => MprisController.setActivePlayer(root.players[index])
             }
         }
     }
