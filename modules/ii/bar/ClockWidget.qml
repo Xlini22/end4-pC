@@ -1,3 +1,4 @@
+
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.services
@@ -143,7 +144,7 @@ BarWidgetSwitcher {
                 }
             }
             StyledText {
-                font.pixelSize: Appearance.font.pixelSize.large
+                font.pixelSize: Appearance.font.pixelSize.small
                 color: Appearance.colors.colOnLayer1
                 text: DateTime.time
                 font.letterSpacing: -0.4
