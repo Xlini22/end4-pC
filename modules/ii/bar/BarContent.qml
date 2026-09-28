@@ -21,6 +21,12 @@ Item {
     readonly property real centerPillX: centerPill.x
     readonly property real centerPillWidth: centerPill.width
     readonly property bool isPanel: Config.options.bar.cornerStyle === 4
+    readonly property real dynamicIslandCollisionGap: 8
+    readonly property real dynamicIslandMaxLeftExtent: Math.max(0,
+        width / 2 - (leftSection.x + leftSection.width) - dynamicIslandCollisionGap)
+    readonly property real dynamicIslandMaxRightExtent: Math.max(0,
+        rightSection.x - width / 2 - dynamicIslandCollisionGap)
+    property real dynamicIslandHorizontalOffset: 0
 
     readonly property bool trayHasItems: SystemTray.items.values.length > 0
 
@@ -191,6 +197,7 @@ Item {
 
         // Left
         Item {
+            id: leftSection
             anchors.left: parent.left
             anchors.leftMargin: root.isMaterial ? (Config.options.hyprland.general.gapsOut || 5) : Config.options.bar.cornerStyle === 1 ? 4 : Config.options.bar.cornerStyle === 4 ? 4 : 8
             anchors.top: parent.top
@@ -290,6 +297,7 @@ Item {
         Item {
             id: absoluteCenter
             anchors.centerIn: parent
+            anchors.horizontalCenterOffset: root.dynamicIslandHorizontalOffset
             width: root.isMaterial ? centerMaterialPill.implicitWidth : middleRow.implicitWidth
             height: parent.height
 
@@ -341,6 +349,24 @@ Item {
                                     value: islandCenterHover.hovered
                                     when: modelData === "dynamicIsland" && middleMaterialWidgetLoader.status === Loader.Ready
                                 }
+                                Binding {
+                                    target: modelData === "dynamicIsland" ? middleMaterialWidgetLoader.item : null
+                                    property: "maxLeftExtent"
+                                    value: root.dynamicIslandMaxLeftExtent
+                                    when: modelData === "dynamicIsland" && middleMaterialWidgetLoader.status === Loader.Ready
+                                }
+                                Binding {
+                                    target: modelData === "dynamicIsland" ? middleMaterialWidgetLoader.item : null
+                                    property: "maxRightExtent"
+                                    value: root.dynamicIslandMaxRightExtent
+                                    when: modelData === "dynamicIsland" && middleMaterialWidgetLoader.status === Loader.Ready
+                                }
+                                Binding {
+                                    target: root
+                                    property: "dynamicIslandHorizontalOffset"
+                                    value: middleMaterialWidgetLoader.item?.barCenterOffset ?? 0
+                                    when: modelData === "dynamicIsland" && middleMaterialWidgetLoader.status === Loader.Ready
+                                }
                                 onLoaded: {
                                     if (item && item.hasOwnProperty("mirrored"))
                                         item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
@@ -383,6 +409,24 @@ Item {
                                 value: islandCenterHover.hovered
                                 when: modelData === "dynamicIsland" && middleWidgetLoader.status === Loader.Ready
                             }
+                            Binding {
+                                target: modelData === "dynamicIsland" ? middleWidgetLoader.item : null
+                                property: "maxLeftExtent"
+                                value: root.dynamicIslandMaxLeftExtent
+                                when: modelData === "dynamicIsland" && middleWidgetLoader.status === Loader.Ready
+                            }
+                            Binding {
+                                target: modelData === "dynamicIsland" ? middleWidgetLoader.item : null
+                                property: "maxRightExtent"
+                                value: root.dynamicIslandMaxRightExtent
+                                when: modelData === "dynamicIsland" && middleWidgetLoader.status === Loader.Ready
+                            }
+                            Binding {
+                                target: root
+                                property: "dynamicIslandHorizontalOffset"
+                                value: middleWidgetLoader.item?.barCenterOffset ?? 0
+                                when: modelData === "dynamicIsland" && middleWidgetLoader.status === Loader.Ready
+                            }
                             onLoaded: {
                                 if (item && item.hasOwnProperty("mirrored"))
                                     item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
@@ -408,6 +452,7 @@ Item {
 
         // Right
         Item {
+            id: rightSection
             anchors.right: parent.right
             anchors.rightMargin: root.isMaterial ? (Config.options.hyprland.general.gapsOut || 5) : Config.options.bar.cornerStyle === 1 ? 4 : Config.options.bar.cornerStyle === 4 ? 4 : 8
             anchors.top: parent.top

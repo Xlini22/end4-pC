@@ -16,6 +16,11 @@ Item {
     property bool mirrored: false
     readonly property bool centerWorkspaces: Config.options.bar.dynamicIsland.centerWorkspaces && !root.vertical
     readonly property real workspaceSpacing: 8
+    // BarContent supplies the free space between the screen centre and the
+    // outer bar sections. The island stays symmetric while both limits allow
+    // it, then removes only unused wing space on the constrained side.
+    property real maxLeftExtent: Number.POSITIVE_INFINITY
+    property real maxRightExtent: Number.POSITIVE_INFINITY
     readonly property real badgesWidth: root.badgeProviders.length > 0
         ? root.badgeProviders.length * root.badgeSize + (root.badgeProviders.length - 1) * root.badgeSpacing : 0
 
@@ -270,14 +275,32 @@ Item {
         + (root.badgesWidth > 0 && rightWidgets.implicitWidth > 0 ? root.workspaceSpacing : 0)
         + rightWidgets.implicitWidth
     readonly property real wingWidth: Math.max(root.leftContentWidth, root.rightContentWidth)
+    readonly property real workspaceHalfWidth: workspaceLoader.implicitWidth / 2
+    readonly property real fixedCenterExtent: root.contentPadding + root.workspaceHalfWidth
+        + root.workspaceSpacing
+    readonly property real leftWingLimit: Math.max(0, root.maxLeftExtent - root.fixedCenterExtent)
+    readonly property real rightWingLimit: Math.max(0, root.maxRightExtent - root.fixedCenterExtent)
+    readonly property real leftWingWidth: root.centerWorkspaces
+        ? Math.max(root.leftContentWidth, Math.min(root.wingWidth, root.leftWingLimit))
+        : root.leftContentWidth
+    readonly property real rightWingWidth: root.centerWorkspaces
+        ? Math.max(root.rightContentWidth, Math.min(root.wingWidth, root.rightWingLimit))
+        : root.rightContentWidth
+    readonly property real leftExtent: root.centerWorkspaces
+        ? root.fixedCenterExtent + root.leftWingWidth : 0
+    readonly property real rightExtent: root.centerWorkspaces
+        ? root.fixedCenterExtent + root.rightWingWidth : 0
+    readonly property real workspaceCenterX: root.centerWorkspaces ? root.leftExtent : root.width / 2
+    readonly property real barCenterOffset: root.centerWorkspaces
+        ? (root.rightExtent - root.leftExtent) / 2 : 0
     readonly property real leftStart: root.contentPadding
     readonly property real rightStart: root.width - root.contentPadding - root.rightContentWidth
 
     implicitHeight: root.pillHeight
-    implicitWidth: 2 * root.contentPadding + (root.centerWorkspaces
-        ? workspaceLoader.implicitWidth + 2 * (root.workspaceSpacing + root.wingWidth)
-        : root.leftContentWidth + root.rightContentWidth
-            + (root.leftContentWidth > 0 && root.rightContentWidth > 0 ? root.workspaceSpacing : 0))
+    implicitWidth: root.centerWorkspaces
+        ? root.leftExtent + root.rightExtent
+        : 2 * root.contentPadding + root.leftContentWidth + root.rightContentWidth
+            + (root.leftContentWidth > 0 && root.rightContentWidth > 0 ? root.workspaceSpacing : 0)
 
     HoverHandler { id: islandHover }
 
@@ -479,7 +502,7 @@ Item {
         rightAnchoredWidgets: Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
         x: root.leftStart
         width: root.centerWorkspaces
-            ? Math.max(implicitWidth, root.wingWidth - root.primaryWidth
+            ? Math.max(implicitWidth, root.leftWingWidth - root.primaryWidth
                 - (implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0))
             : implicitWidth
         anchors.verticalCenter: parent.verticalCenter
@@ -489,13 +512,13 @@ Item {
         widgets: Config.options.bar.dynamicIsland.rightWidgets
         rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
         x: root.centerWorkspaces
-            ? (root.width + workspaceLoader.implicitWidth) / 2 + root.workspaceSpacing
+            ? root.workspaceCenterX + root.workspaceHalfWidth + root.workspaceSpacing
                 + root.badgesWidth
                 + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
             : root.rightStart + root.badgesWidth
                 + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
         width: root.centerWorkspaces
-            ? Math.max(implicitWidth, root.wingWidth - root.badgesWidth
+            ? Math.max(implicitWidth, root.rightWingWidth - root.badgesWidth
                 - (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0))
             : implicitWidth
         anchors.verticalCenter: parent.verticalCenter
@@ -506,7 +529,8 @@ Item {
     Loader {
         id: workspaceLoader
         active: root.centerWorkspaces
-        anchors.centerIn: parent
+        x: root.workspaceCenterX - implicitWidth / 2
+        anchors.verticalCenter: parent.verticalCenter
         // Preserve Workspaces' native bar dimensions, as in the regular bar.
         // Forcing the island's pill height offsets icons relative to indicators.
         sourceComponent: Workspaces {}
@@ -517,7 +541,7 @@ Item {
     Rectangle {
         id: pill
         x: root.centerWorkspaces
-            ? (root.width - workspaceLoader.implicitWidth) / 2
+            ? root.workspaceCenterX - root.workspaceHalfWidth
                 - root.workspaceSpacing - root.primaryWidth
             : root.leftStart + leftWidgets.implicitWidth
                 + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
@@ -666,7 +690,7 @@ Item {
         id: badgesRow
         visible: root.badgeProviders.length > 0 && !root.vertical
         x: root.centerWorkspaces
-            ? (root.width + workspaceLoader.implicitWidth) / 2 + root.workspaceSpacing
+            ? root.workspaceCenterX + root.workspaceHalfWidth + root.workspaceSpacing
             : root.rightStart
         anchors.verticalCenter: parent.verticalCenter
         spacing: root.badgeSpacing
