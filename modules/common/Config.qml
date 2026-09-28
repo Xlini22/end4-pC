@@ -68,7 +68,32 @@ Singleton {
         blockWrites: root.blockWrites
         onFileChanged: fileReloadTimer.restart()
         onAdapterUpdated: fileWriteTimer.restart()
-        onLoaded: root.ready = true
+        onLoaded: {
+            const island = root.options.bar.dynamicIsland;
+            if (!island.widgetListsMigrated) {
+                if (island.leftWidgets.length === 0 && island.leftWidget !== "none")
+                    island.leftWidgets = [island.leftWidget];
+                if (island.rightWidgets.length === 0 && island.rightWidget !== "none")
+                    island.rightWidgets = [island.rightWidget];
+                island.widgetListsMigrated = true;
+            }
+            if (!island.mediaWidgetMigrated) {
+                if (!island.leftWidgets.includes("media") && !island.rightWidgets.includes("media"))
+                    island.leftWidgets = island.leftWidgets.concat(["media"]);
+                island.mediaWidgetMigrated = true;
+            }
+            if (!island.mediaHoverModeMigrated) {
+                if (island.widgetModes.media === "dynamic")
+                    island.widgetModes.media = "dynamicHover";
+                island.mediaHoverModeMigrated = true;
+            }
+            if (!island.osdWidgetMigrated) {
+                if (!island.leftWidgets.includes("osd") && !island.rightWidgets.includes("osd"))
+                    island.leftWidgets = island.leftWidgets.concat(["osd"]);
+                island.osdWidgetMigrated = true;
+            }
+            root.ready = true;
+        }
         onLoadFailed: error => {
             if (error == FileViewError.FileNotFound) {
                 writeAdapter();
@@ -500,8 +525,27 @@ Singleton {
                 }
 
                 property JsonObject dynamicIsland: JsonObject {
+                    property bool centerWorkspaces: false
                     property string visualizerStyle: "dots" // "dots", "wave", "none"
                     property bool showMediaControls: false
+                    property string animationStyle: "staged" // "staged" or "simultaneous"
+                    property JsonObject widgetModes: JsonObject {
+                        property string clockWidget: "dynamic"
+                        property string resources: "dynamic"
+                        property string media: "dynamicHover"
+                        property string visualizer: "expanded"
+                    }
+                    // Widgets listed here keep their right edge fixed while resizing.
+                    // Every other widget keeps its left edge fixed.
+                    property list<string> leftRightAnchoredWidgets: ["media"]
+                    property list<string> rightRightAnchoredWidgets: []
+                    property list<string> leftWidgets: []
+                    property list<string> rightWidgets: []
+                    property bool widgetListsMigrated: false
+                    property bool mediaWidgetMigrated: false
+                    property bool mediaHoverModeMigrated: false
+                    property bool osdWidgetMigrated: false
+                    // Retained only to migrate settings from the single-widget layout.
                     property string leftWidget: "none"
                     property string rightWidget: "none"
                 }

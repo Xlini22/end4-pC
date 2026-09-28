@@ -14,17 +14,30 @@ import qs.modules.common.widgets
 Item {
     id: root
     property bool mirrored: false
+    readonly property bool centerWorkspaces: Config.options.bar.dynamicIsland.centerWorkspaces && !root.vertical
+    readonly property real workspaceSpacing: 8
+    // BarContent supplies the free space between the screen centre and the
+    // outer bar sections. The island stays symmetric while both limits allow
+    // it, then removes only unused wing space on the constrained side.
+    property real maxLeftExtent: Number.POSITIVE_INFINITY
+    property real maxRightExtent: Number.POSITIVE_INFINITY
+    readonly property real badgesWidth: root.badgeProviders.length > 0
+        ? root.badgeProviders.length * root.badgeSize + (root.badgeProviders.length - 1) * root.badgeSpacing : 0
 
     readonly property real pillHeight: 32
-    readonly property real idleCollapsedWidth: 144
+    readonly property real emptyCollapsedWidth: 40
+    readonly property real emptyExpandedWidth: 56
     readonly property real sessionWidth: 164
-    property real idleTextContentWidth: 0
-    readonly property real idleWidth: Math.max(root.idleCollapsedWidth, root.idleTextContentWidth)
-    readonly property real mediaCollapsedWidth: 140
+    property real mediaCollapsedWidth: 72
     readonly property real mediaExpandedWidthCap: 220
     property real mediaTextContentWidth: 0
-    property bool mediaTrackInfoVisible: mediaHoverHandler.hovered || mediaTrackChangeTimer.running
-    readonly property real mediaExpandedWidth: Math.min(root.mediaExpandedWidthCap, root.mediaTextContentWidth)
+    readonly property string mediaDisplayMode: Config.options.bar.dynamicIsland.widgetModes.media ?? "dynamic"
+    property bool mediaHovered: false
+    readonly property bool mediaTrackInfoVisible: root.hasMedia
+        && (root.mediaDisplayMode === "expanded"
+            || (root.mediaDisplayMode === "dynamic" && root.expanded)
+            || (root.mediaDisplayMode === "dynamicHover" && root.mediaHovered))
+    readonly property real mediaExpandedWidth: Math.max(root.mediaCollapsedWidth, Math.min(root.mediaExpandedWidthCap, root.mediaTextContentWidth))
     readonly property real mediaWidth: root.mediaTrackInfoVisible ? root.mediaExpandedWidth : root.mediaCollapsedWidth
     readonly property real timerWidth: 130
     readonly property real osdWidth: 132
@@ -136,18 +149,6 @@ Item {
         onTriggered: root.batteryAlertActive = false
     }
 
-    Timer {
-        id: mediaTrackChangeTimer
-        interval: 3000
-        repeat: false
-    }
-
-    Connections {
-        target: root.activePlayer
-        function onTrackTitleChanged() { mediaTrackChangeTimer.restart() }
-        function onTrackArtistChanged() { mediaTrackChangeTimer.restart() }
-    }
-
     function triggerBatteryAlert(kind) {
         root.batteryAlertKind = kind
         root.batteryAlertActive = true
@@ -196,12 +197,10 @@ Item {
         { id: "battery",      active: root.batteryAlertActive,          component: batteryComponent,      width: root.batteryWidth },
         { id: "recording",    active: root.isRecording,                 component: recordingComponent,    width: root.recordingWidth },
         { id: "timer",        active: root.hasActiveTimer,              component: timerComponent,        width: root.timerWidth },
-        { id: "osd",          active: GlobalStates.osdVolumeOpen,       component: osdComponent,          width: root.osdWidth },
-        { id: "media",        active: root.hasMedia,                    component: mediaComponent,        width: root.mediaWidth },
         { id: "session",      active: GlobalStates.diSessionOpen,       component: sessionComponent,      width: root.sessionWidth },
     ]
 
-    readonly property var alwaysWinIds: ["session", "notification", "battery", "osd"]
+    readonly property var alwaysWinIds: ["session", "notification", "battery"]
 
     readonly property var activeOthers: root.contentProviders.filter(p => !root.alwaysWinIds.includes(p.id) && p.active)
 
@@ -230,52 +229,332 @@ Item {
                 switch (GlobalStates.osdIndicatorType) {
                     case "brightness": return Hyprsunset.temperatureActive ? "routine" : "light_mode"
                     case "gamma":      return "wb_twilight"
-                    default:           return "volume_up"
+                    default:           return Audio.sink?.audio?.muted ? "volume_off" : "volume_up"
                 }
             default: return "circle"
         }
     }
 
-    readonly property string activeContentId: root.displayedProvider?.id ?? "idle"
+    readonly property string activeContentId: root.displayedProvider?.id ?? "empty"
 
-    implicitHeight: root.pillHeight
-    implicitWidth: (root.displayedProvider?.width ?? root.idleWidth)
-        + (!root.vertical && root.badgeProviders.length > 0
-            ? root.badgeProviders.length * (root.badgeSpacing + root.badgeSize)
-            : 0)
+    // BarContent also feeds hover from the complete central bar area. The
+    // local handler remains useful when this component is used elsewhere.
+    property bool barHovered: false
+    property bool mediaPopupKeepsBarExpanded: false
+    readonly property bool expanded: root.barHovered || islandHover.hovered || root.mediaPopupKeepsBarExpanded
+    property bool componentInteractionReady: false
 
-    Behavior on implicitWidth {
-        NumberAnimation {
-            duration: 350
-            easing.type: Easing.BezierSpline
-            easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+    onExpandedChanged: {
+        if (expanded) {
+            componentInteractionTimer.restart();
+        } else {
+            componentInteractionTimer.stop();
+            componentInteractionReady = false;
         }
     }
 
-    Rectangle {
-        id: pill
-        anchors.left: parent.left
-        width: root.displayedProvider?.width ?? root.idleWidth
-        height: root.pillHeight
-        color: root.isMaterial || (GlobalStates.barCenterOnly && Config.options.bar.cornerStyle === 0) ? "transparent" : Config.options.bar.followFrameColor
-            ? Appearance.getColorFromName(Config.options.bar.frameColor)
-            : Appearance.colors.colLayer0
-        radius: height / 2
-        clip: true
-        visible: !root.vertical
+    Timer {
+        id: componentInteractionTimer
+        interval: 350
+        repeat: false
+        onTriggered: root.componentInteractionReady = true
+    }
+    readonly property real contentPadding: 8
+    readonly property bool hasPersistentContent: root.centerWorkspaces
+        || leftWidgets.implicitWidth > 0 || rightWidgets.implicitWidth > 0
+    readonly property real emptyWidth: root.hasPersistentContent ? 0
+        : (root.expanded ? root.emptyExpandedWidth : root.emptyCollapsedWidth)
+    property real primaryWidth: root.displayedProvider?.width ?? root.emptyWidth
+    Behavior on primaryWidth {
+        NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+    }
+    readonly property real leftContentWidth: leftWidgets.implicitWidth
+        + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
+        + root.primaryWidth
+    readonly property real rightContentWidth: root.badgesWidth
+        + (root.badgesWidth > 0 && rightWidgets.implicitWidth > 0 ? root.workspaceSpacing : 0)
+        + rightWidgets.implicitWidth
+    readonly property real wingWidth: Math.max(root.leftContentWidth, root.rightContentWidth)
+    readonly property real workspaceHalfWidth: workspaceLoader.implicitWidth / 2
+    readonly property real fixedCenterExtent: root.contentPadding + root.workspaceHalfWidth
+        + root.workspaceSpacing
+    readonly property real leftWingLimit: Math.max(0, root.maxLeftExtent - root.fixedCenterExtent)
+    readonly property real rightWingLimit: Math.max(0, root.maxRightExtent - root.fixedCenterExtent)
+    readonly property real leftWingWidth: root.centerWorkspaces
+        ? Math.max(root.leftContentWidth, Math.min(root.wingWidth, root.leftWingLimit))
+        : root.leftContentWidth
+    readonly property real rightWingWidth: root.centerWorkspaces
+        ? Math.max(root.rightContentWidth, Math.min(root.wingWidth, root.rightWingLimit))
+        : root.rightContentWidth
+    readonly property real leftExtent: root.centerWorkspaces
+        ? root.fixedCenterExtent + root.leftWingWidth : 0
+    readonly property real rightExtent: root.centerWorkspaces
+        ? root.fixedCenterExtent + root.rightWingWidth : 0
+    readonly property real workspaceCenterX: root.centerWorkspaces ? root.leftExtent : root.width / 2
+    readonly property real barCenterOffset: root.centerWorkspaces
+        ? (root.rightExtent - root.leftExtent) / 2 : 0
+    readonly property real leftStart: root.contentPadding
+    readonly property real rightStart: root.width - root.contentPadding - root.rightContentWidth
 
-        Behavior on width {
+    implicitHeight: root.pillHeight
+    implicitWidth: root.centerWorkspaces
+        ? root.leftExtent + root.rightExtent
+        : 2 * root.contentPadding + root.leftContentWidth + root.rightContentWidth
+            + (root.leftContentWidth > 0 && root.rightContentWidth > 0 ? root.workspaceSpacing : 0)
+
+    HoverHandler { id: islandHover }
+
+    Rectangle {
+        anchors.fill: parent
+        radius: height / 2
+        color: root.isMaterial ? "transparent" : Config.options.bar.followFrameColor
+            ? Appearance.getColorFromName(Config.options.bar.frameColor) : Appearance.colors.colLayer0
+    }
+
+    Component {
+        id: mediaSideComponent
+        Item {
+            id: mediaSideRoot
+            readonly property bool containsMouse: mediaSideHover.hovered
+            implicitWidth: root.hasMedia ? root.mediaWidth : 0
+            implicitHeight: root.pillHeight
+            visible: root.hasMedia
+
+            Behavior on implicitWidth {
+                NumberAnimation {
+                    duration: 350
+                    easing.type: Easing.BezierSpline
+                    easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+                }
+            }
+
+            HoverHandler {
+                id: mediaSideHover
+                enabled: root.componentInteractionReady
+                onHoveredChanged: root.mediaHovered = hovered
+            }
+
+            Component.onDestruction: root.mediaHovered = false
+
+            MediaPopup {
+                hoverTarget: mediaSideRoot
+                barHovered: root.barHovered || islandHover.hovered
+                onKeepsBarExpandedChanged: root.mediaPopupKeepsBarExpanded = keepsBarExpanded
+                Component.onDestruction: root.mediaPopupKeepsBarExpanded = false
+            }
+
+            DiMedia { di: root }
+        }
+    }
+
+    Component {
+        id: osdSideComponent
+        Item {
+            implicitWidth: root.osdWidth
+            implicitHeight: root.pillHeight
+            DiOsd { di: root }
+        }
+    }
+
+    component SideWidgetDelegate: Item {
+        id: sideDelegate
+        required property string modelData
+        required property bool anchorRight
+        readonly property bool supportsExpansion: ["clockWidget", "resources", "visualizer"].includes(modelData)
+        readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
+        readonly property bool contentAvailable: (modelData !== "media" || root.hasMedia)
+            && (modelData !== "osd" || GlobalStates.osdVolumeOpen)
+            && (modelData !== "visualizer" || (root.activePlayer?.isPlaying ?? false))
+        readonly property real contentImplicitWidth: mediaLoader.active ? mediaLoader.implicitWidth
+            : (osdLoader.active ? osdLoader.implicitWidth : regularLoader.implicitWidth)
+        readonly property real contentImplicitHeight: mediaLoader.active ? mediaLoader.implicitHeight
+            : (osdLoader.active ? osdLoader.implicitHeight : regularLoader.implicitHeight)
+
+        visible: contentAvailable || implicitWidth > 0.5
+        enabled: contentAvailable && root.componentInteractionReady
+        opacity: contentAvailable ? 1 : 0
+        implicitWidth: contentAvailable ? contentImplicitWidth : 0
+        implicitHeight: contentAvailable ? contentImplicitHeight : root.pillHeight
+        Layout.alignment: Qt.AlignVCenter
+        clip: ["visualizer", "osd"].includes(modelData)
+
+        Behavior on implicitWidth {
+            enabled: sideDelegate.modelData !== "visualizer"
+                && (Config.options.bar.dynamicIsland.animationStyle === "staged"
+                    || sideDelegate.modelData === "osd")
             NumberAnimation {
-                duration: 350
-                easing.type: Easing.BezierSpline
+                readonly property bool isOsd: sideDelegate.modelData === "osd"
+                readonly property bool simultaneous: Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
+                duration: isOsd ? 350 : (simultaneous ? 200 : 350)
+                easing.type: isOsd || !simultaneous ? Easing.BezierSpline : Easing.OutCubic
                 easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
             }
         }
 
-        HoverHandler {
-            id: mediaHoverHandler
-            enabled: root.activeContentId === "media"
+        Behavior on opacity {
+            enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
+                || ["osd", "visualizer"].includes(sideDelegate.modelData)
+            NumberAnimation {
+                duration: sideDelegate.modelData === "osd" ? 350 : 200
+                easing.type: sideDelegate.modelData === "osd" ? Easing.InOutCubic : Easing.OutCubic
+            }
         }
+
+        HoverHandler {
+            id: sideWidgetHover
+            enabled: sideDelegate.contentAvailable
+                && sideDelegate.displayMode === "dynamicHover"
+                && root.componentInteractionReady
+        }
+
+        Loader {
+            id: mediaLoader
+            active: sideDelegate.modelData === "media"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: sideDelegate.anchorRight ? undefined : parent.left
+            anchors.right: sideDelegate.anchorRight ? parent.right : undefined
+            sourceComponent: mediaSideComponent
+        }
+
+        Loader {
+            id: osdLoader
+            active: sideDelegate.modelData === "osd"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: sideDelegate.anchorRight ? undefined : parent.left
+            anchors.right: sideDelegate.anchorRight ? parent.right : undefined
+            sourceComponent: osdSideComponent
+        }
+
+        Loader {
+            id: regularLoader
+            active: sideDelegate.modelData !== "media" && sideDelegate.modelData !== "osd"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: sideDelegate.anchorRight ? undefined : parent.left
+            anchors.right: sideDelegate.anchorRight ? parent.right : undefined
+            source: active ? Qt.resolvedUrl("./" + sideDelegate.modelData.charAt(0).toUpperCase()
+                + sideDelegate.modelData.slice(1) + ".qml") : ""
+        }
+
+        Binding {
+            target: sideDelegate.supportsExpansion ? regularLoader.item : null
+            property: "islandMode"
+            value: true
+            when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
+        }
+        Binding {
+            target: sideDelegate.supportsExpansion ? regularLoader.item : null
+            property: "islandExpanded"
+            value: sideDelegate.displayMode === "expanded"
+                || (sideDelegate.displayMode === "dynamic" && root.expanded)
+                || (sideDelegate.displayMode === "dynamicHover" && sideWidgetHover.hovered)
+            when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
+        }
+        Binding {
+            target: sideDelegate.modelData === "visualizer" ? regularLoader.item : null
+            property: "islandAnchorRight"
+            value: sideDelegate.anchorRight
+            when: sideDelegate.modelData === "visualizer"
+                && regularLoader.status === Loader.Ready
+        }
+    }
+
+    component SideWidgets: Item {
+        id: sideWidgetsRoot
+        property var widgets: []
+        property var rightAnchoredWidgets: []
+        readonly property var filteredWidgets: widgets.filter(name => name !== "dynamicIsland"
+            && !(name === "workspaces" && root.centerWorkspaces))
+        readonly property real leftGroupWidth: leftGroup.implicitWidth
+        readonly property real rightGroupWidth: rightGroup.implicitWidth
+        readonly property bool hasLeftGroup: leftGroupWidth > 0.5
+        readonly property bool hasRightGroup: rightGroupWidth > 0.5
+
+        implicitWidth: leftGroupWidth + rightGroupWidth
+            + (hasLeftGroup && hasRightGroup ? root.workspaceSpacing : 0)
+        implicitHeight: Math.max(leftGroup.implicitHeight, rightGroup.implicitHeight, root.pillHeight)
+
+        RowLayout {
+            id: leftGroup
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: root.workspaceSpacing
+
+            Repeater {
+                model: sideWidgetsRoot.filteredWidgets.filter(
+                    name => !sideWidgetsRoot.rightAnchoredWidgets.includes(name))
+                delegate: SideWidgetDelegate { anchorRight: false }
+            }
+        }
+
+        RowLayout {
+            id: rightGroup
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: root.workspaceSpacing
+
+            Repeater {
+                model: sideWidgetsRoot.filteredWidgets.filter(
+                    name => sideWidgetsRoot.rightAnchoredWidgets.includes(name))
+                delegate: SideWidgetDelegate { anchorRight: true }
+            }
+        }
+    }
+
+    SideWidgets {
+        id: leftWidgets
+        widgets: Config.options.bar.dynamicIsland.leftWidgets
+        rightAnchoredWidgets: Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
+        x: root.leftStart
+        width: root.centerWorkspaces
+            ? Math.max(implicitWidth, root.leftWingWidth - root.primaryWidth
+                - (implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0))
+            : implicitWidth
+        anchors.verticalCenter: parent.verticalCenter
+    }
+    SideWidgets {
+        id: rightWidgets
+        widgets: Config.options.bar.dynamicIsland.rightWidgets
+        rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
+        x: root.centerWorkspaces
+            ? root.workspaceCenterX + root.workspaceHalfWidth + root.workspaceSpacing
+                + root.badgesWidth
+                + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
+            : root.rightStart + root.badgesWidth
+                + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
+        width: root.centerWorkspaces
+            ? Math.max(implicitWidth, root.rightWingWidth - root.badgesWidth
+                - (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0))
+            : implicitWidth
+        anchors.verticalCenter: parent.verticalCenter
+    }
+
+    // Symmetric side reservations keep the workspace strip on the screen center
+    // even while the primary activity changes width or secondary badges appear.
+    Loader {
+        id: workspaceLoader
+        active: root.centerWorkspaces
+        x: root.workspaceCenterX - implicitWidth / 2
+        anchors.verticalCenter: parent.verticalCenter
+        // Preserve Workspaces' native bar dimensions, as in the regular bar.
+        // Forcing the island's pill height offsets icons relative to indicators.
+        sourceComponent: Workspaces {}
+    }
+
+    // Animate content widths at their source. The island and its positions follow
+    // those widths directly, keeping both outer margins equal on every frame.
+    Rectangle {
+        id: pill
+        x: root.centerWorkspaces
+            ? root.workspaceCenterX - root.workspaceHalfWidth
+                - root.workspaceSpacing - root.primaryWidth
+            : root.leftStart + leftWidgets.implicitWidth
+                + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
+        width: root.primaryWidth
+        height: root.pillHeight
+        color: "transparent"
+        radius: height / 2
+        clip: true
+        visible: !root.vertical
 
         WheelHandler {
             id: idleToggleWheelHandler
@@ -299,7 +578,7 @@ Item {
         Loader {
             id: contentLoader
             anchors.fill: parent
-            sourceComponent: root.displayedProvider?.component ?? idleComponent
+            sourceComponent: root.displayedProvider?.component ?? emptyComponent
             active: !root.vertical
 
             onLoaded: {
@@ -310,18 +589,8 @@ Item {
         }
 
         Component {
-            id: idleComponent
-            DiIdle { di: root }
-        }
-
-        Component {
-            id: mediaComponent
-            DiMedia { di: root }
-        }
-
-        Component {
-            id: osdComponent
-            DiOsd { di: root }
+            id: emptyComponent
+            Item {}
         }
 
         Component {
@@ -424,11 +693,10 @@ Item {
     Row {
         id: badgesRow
         visible: root.badgeProviders.length > 0 && !root.vertical
-        anchors {
-            left: pill.right
-            leftMargin: root.badgeSpacing
-            verticalCenter: pill.verticalCenter
-        }
+        x: root.centerWorkspaces
+            ? root.workspaceCenterX + root.workspaceHalfWidth + root.workspaceSpacing
+            : root.rightStart
+        anchors.verticalCenter: parent.verticalCenter
         spacing: root.badgeSpacing
 
         Repeater {

@@ -1,6 +1,7 @@
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
+import qs.services
 import QtQuick
 import QtQuick.Effects
 import Quickshell
@@ -10,8 +11,16 @@ LazyLoader {
     id: root
     property Item hoverTarget
     default property Item contentItem
+    property bool popupEnabled: true
+    property bool popupShadowEnabled: true
+    property bool popupHovered: false
     property real popupBackgroundMargin: 0
-    active: root.hoverTarget && root.hoverTarget.containsMouse && Config.options.bar.tooltips.enable
+    property real popupContentMargin: 8
+    property color popupColor: Appearance.colors.colLayer1Base
+    property real popupRadius: Appearance.rounding.normal + 4
+    property real popupBorderWidth: 1
+    readonly property bool targetHovered: !!(root.hoverTarget && root.hoverTarget.containsMouse)
+    active: root.popupEnabled && root.targetHovered && Config.options.bar.tooltips.enable
 
     readonly property bool barVertical: Config.options.bar.vertical
     readonly property string barEdge: {
@@ -77,13 +86,20 @@ LazyLoader {
         WlrLayershell.namespace: "quickshell:popup"
         WlrLayershell.layer: WlrLayer.Overlay
 
+        // A sidebar activates HyprlandFocusGrab. Keep this separate popup
+        // inside that grab while it exists so it continues receiving hover
+        // and pointer input independently of either sidebar's open state.
+        Component.onCompleted: GlobalFocusGrab.addPersistent(popupWindow)
+        Component.onDestruction: GlobalFocusGrab.removePersistent(popupWindow)
+
         StyledRectangularShadow {
             target: popupBackground
+            visible: root.popupShadowEnabled
         }
 
         Rectangle {
             id: popupBackground
-            readonly property real margin: 8
+            readonly property real margin: root.popupContentMargin
 
             anchors {
                 fill: parent
@@ -97,10 +113,16 @@ LazyLoader {
             implicitWidth: (popupWindow.innerContent?.implicitWidth ?? 0) + margin * 2
             implicitHeight: (popupWindow.innerContent?.implicitHeight ?? 0) + margin * 2
 
-            color: Appearance.colors.colLayer1Base
-            radius: Appearance.rounding.normal + 4
-            border.width: 1
+            color: root.popupColor
+            radius: root.popupRadius
+            border.width: root.popupBorderWidth
             border.color: Appearance.colors.colLayer0Border
+
+            HoverHandler {
+                onHoveredChanged: root.popupHovered = hovered
+            }
+
+            Component.onDestruction: root.popupHovered = false
 
             // Reparent content here once the window is ready
             Component.onCompleted: {

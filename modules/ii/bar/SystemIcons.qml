@@ -14,7 +14,8 @@ Item {
     property bool showDate: Config.options.bar.verbose
     property bool vertical: Config.options.bar.vertical
     property bool isMaterial: Config.options.bar.cornerStyle === 3
-    property bool isDi: GlobalStates.dynamicIslandEnabled && Config.options.bar.dynamicIsland.rightWidget === "systemIcons" 
+    property bool isDi: GlobalStates.dynamicIslandEnabled && (Config.options.bar.dynamicIsland.leftWidgets.includes("systemIcons")
+        || Config.options.bar.dynamicIsland.rightWidgets.includes("systemIcons"))
 
     readonly property color iconColor: root.isDi ? Appearance.colors.colOnLayer1 : (root.isMaterial ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer1)
 

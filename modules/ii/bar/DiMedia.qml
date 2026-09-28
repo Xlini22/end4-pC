@@ -88,8 +88,8 @@ Item {
                 left: artMask.right
                 leftMargin: 8
                 verticalCenter: parent.verticalCenter
-                right: mediaControlsRow.visible ? mediaControlsRow.left
-                    : (visualizerCanvas.visible ? visualizerCanvas.left
+                right: visualizerCanvas.visible ? visualizerCanvas.left
+                    : (mediaControlsRow.visible ? mediaControlsRow.left
                     : (islandVisualizer.visible ? islandVisualizer.left : parent.right))
                 rightMargin: 8
             }
@@ -123,18 +123,28 @@ Item {
 
             readonly property real widestLineWidth: Math.max(trackTitleMetrics.implicitWidth, trackArtistMetrics.implicitWidth)
 
+            readonly property real compactContentWidth: artMask.width
+                + (root.isMaterial ? 0 : 4) + 8
+                + (mediaControlsRow.visible ? mediaControlsRow.implicitWidth : 0)
+                + (visualizerCanvas.visible ? visualizerCanvas.width + (mediaControlsRow.visible ? 6 : 0)
+                    : (islandVisualizer.visible ? islandVisualizer.width : 0)) + 10
+            onCompactContentWidthChanged: root.mediaCollapsedWidth = compactContentWidth
+
             readonly property real computedContentWidth: artMask.width
                 + (root.isMaterial ? 14 : 8)
                 + trackInfoColumn.widestLineWidth
                 + 12
-                + (mediaControlsRow.visible ? mediaControlsRow.implicitWidth
-                    : (visualizerCanvas.visible ? visualizerCanvas.width
-                    : (islandVisualizer.visible ? islandVisualizer.width : 0)))
+                + (mediaControlsRow.visible ? mediaControlsRow.implicitWidth : 0)
+                + (visualizerCanvas.visible ? visualizerCanvas.width + (mediaControlsRow.visible ? 6 : 0)
+                    : (islandVisualizer.visible ? islandVisualizer.width : 0))
                 + (root.isMaterial ? 0 : 4)
                 + 10
 
             onComputedContentWidthChanged: root.mediaTextContentWidth = trackInfoColumn.computedContentWidth
-            Component.onCompleted: root.mediaTextContentWidth = trackInfoColumn.computedContentWidth
+            Component.onCompleted: {
+                root.mediaTextContentWidth = trackInfoColumn.computedContentWidth
+                root.mediaCollapsedWidth = trackInfoColumn.compactContentWidth
+            }
         }
 
         WaveVisualizer {

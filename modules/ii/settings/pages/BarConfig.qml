@@ -40,6 +40,7 @@ ContentPage {
         { id: "workspaces",        name: Translation.tr("Workspaces"),           icon: "steppers" },
         { id: "weatherBar",        name: Translation.tr("Weather"),              icon: "flare" },
         { id: "media",             name: Translation.tr("Media"),                icon: "music_note" },
+        { id: "osd",               name: Translation.tr("Volume & Brightness"),   icon: "volume_up" },
         { id: "resources",         name: Translation.tr("Resources"),            icon: "empty_dashboard" },
         { id: "systemIcons",       name: Translation.tr("System Icons"),         icon: "info" },
         { id: "networkSpeed",      name: Translation.tr("Network Speed"),        icon: "network_check" },
@@ -58,6 +59,16 @@ ContentPage {
         { id: "launcherButton",     name: Translation.tr("Launcher Button"),     icon: "search" },
         { id: "dynamicIsland",     name: Translation.tr("Dynamic Island"),     icon: "nest_wifi_pro" },
     ]
+
+    function availableForIsland() {
+        const island = Config.options.bar.dynamicIsland;
+        const used = [...island.leftWidgets, ...island.rightWidgets];
+        return allWidgets.filter(widget => {
+            if (widget.id === "dynamicIsland") return false;
+            if (widget.id === "workspaces" && island.centerWorkspaces) return false;
+            return ["visualizer", "divisor"].includes(widget.id) || !used.includes(widget.id);
+        });
+    }
 
     function availableFor(section) {
         let used = [
@@ -344,30 +355,73 @@ ContentPage {
             title: Translation.tr("Dynamic Island")
 
             GroupedList {
-                ConfigSelectionArray {
-                    text: Translation.tr("Left widget")
-                    icon: "right_panel_open"
-                    currentValue: Config.options.bar.dynamicIsland.leftWidget
-                    onSelected: newValue => { Config.options.bar.dynamicIsland.leftWidget = newValue; }
-                    options: [
-                        { displayName: Translation.tr(""),    icon: "block",        value: "none" },
-                        { displayName: Translation.tr("Clock"),   icon: "schedule",     value: "clockWidget" },
-                        { displayName: Translation.tr("Weather"), icon: "partly_cloudy_day", value: "weatherBar" },
-                        { displayName: Translation.tr("Updates"), icon: "update",       value: "updatesCount" }
-                    ]
+                ConfigSwitch {
+                    buttonIcon: "view_carousel"
+                    text: Translation.tr("Keep workspaces centered inside Dynamic Island")
+                    enabled: !Config.options.bar.vertical
+                    checked: Config.options.bar.dynamicIsland.centerWorkspaces
+                    onCheckedChanged: Config.options.bar.dynamicIsland.centerWorkspaces = checked
                 }
                 ConfigSelectionArray {
-                    text: Translation.tr("Right widget")
-                    icon: "left_panel_open"
-                    currentValue: Config.options.bar.dynamicIsland.rightWidget
-                    onSelected: newValue => { Config.options.bar.dynamicIsland.rightWidget = newValue; }
+                    text: Translation.tr("Dynamic Island animation")
+                    icon: "animation"
+                    currentValue: Config.options.bar.dynamicIsland.animationStyle
+                    onSelected: newValue => { Config.options.bar.dynamicIsland.animationStyle = newValue; }
                     options: [
-                        { displayName: Translation.tr(""),         icon: "block",        value: "none" },
-                        { displayName: Translation.tr("System icons"), icon: "settings",     value: "systemIcons" },
-                        { displayName: Translation.tr("Tray"),  icon: "apps",         value: "sysTray" },
-                        { displayName: Translation.tr("Util buttons"), icon: "widgets",   value: "utilButtons" }
+                        { displayName: Translation.tr("Together"),   icon: "sync",      value: "simultaneous" },
+                        { displayName: Translation.tr("Two stages"), icon: "filter_2", value: "staged" }
                     ]
                 }
+                LayoutSection {
+                    sectionTitle: Translation.tr("Left")
+                    layout: Config.options.bar.dynamicIsland.leftWidgets
+                    modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
+                    dynamicHoverModeWidgets: ["media", "visualizer"]
+                    widgetModes: Config.options.bar.dynamicIsland.widgetModes
+                    anchorControls: true
+                    rightAnchoredWidgets: Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
+                    onModeChanged: (widget, mode) => {
+                        Config.options.bar.dynamicIsland.widgetModes[widget] = mode;
+                    }
+                    onAnchorChanged: (widget, anchor) => {
+                        let widgets = Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
+                            .filter(name => name !== widget);
+                        if (anchor === "right") widgets.push(widget);
+                        Config.options.bar.dynamicIsland.leftRightAnchoredWidgets = widgets;
+                    }
+                    availableWidgets: page.availableForIsland()
+                    getWidgetName: page.getWidgetName
+                    onUpdate: list => Config.options.bar.dynamicIsland.leftWidgets = list
+                }
+                LayoutSection {
+                    sectionTitle: Translation.tr("Right")
+                    layout: Config.options.bar.dynamicIsland.rightWidgets
+                    modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
+                    dynamicHoverModeWidgets: ["media", "visualizer"]
+                    widgetModes: Config.options.bar.dynamicIsland.widgetModes
+                    anchorControls: true
+                    rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
+                    onModeChanged: (widget, mode) => {
+                        Config.options.bar.dynamicIsland.widgetModes[widget] = mode;
+                    }
+                    onAnchorChanged: (widget, anchor) => {
+                        let widgets = Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
+                            .filter(name => name !== widget);
+                        if (anchor === "right") widgets.push(widget);
+                        Config.options.bar.dynamicIsland.rightRightAnchoredWidgets = widgets;
+                    }
+                    availableWidgets: page.availableForIsland()
+                    getWidgetName: page.getWidgetName
+                    onUpdate: list => Config.options.bar.dynamicIsland.rightWidgets = list
+                }
+            }
+
+            StyledText {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: Translation.tr("Add Dynamic Island to the Center bar layout to use this mode. The main activity appears on the left, workspaces stay centered, and other activity badges appear on the right. Workspace widgets elsewhere are hidden while this mode is active.")
+                color: Appearance.colors.colSubtext
+                visible: Config.options.bar.dynamicIsland.centerWorkspaces
             }
 
             ContentSubsection {
