@@ -532,6 +532,7 @@ Singleton {
                         property string clockWidget: "dynamic"
                         property string resources: "dynamic"
                         property string media: "dynamicHover"
+                        property string visualizer: "expanded"
                     }
                     property list<string> leftWidgets: []
                     property list<string> rightWidgets: []

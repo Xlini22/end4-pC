@@ -12,6 +12,8 @@ Item {
     property bool vertical: Config.options.bar.vertical
     property bool isMaterial: Config.options.bar.cornerStyle === 3
     property bool mirrored: false
+    property bool islandMode: false
+    property bool islandExpanded: true
     readonly property MprisPlayer activePlayer: MprisController.activePlayer
     readonly property bool isPlaying: activePlayer?.isPlaying ?? false
     readonly property list<real> points: GlobalStates.visualizerPoints
@@ -22,17 +24,44 @@ Item {
         ? Appearance.sizes.verticalBarWidth
         : Appearance.sizes.barHeight) * 0.7
     property real maxVisualizerValue: 1000
+    readonly property int displayedBarCount: islandMode && !islandExpanded
+        ? Math.max(1, Math.round(barCount / 3))
+        : barCount
 
+    function spectrumValue(barIndex) {
+        if (root.points.length === 0) return 0
+        if (root.displayedBarCount === root.barCount) {
+            const sourceIndex = Math.floor(barIndex * root.points.length / root.barCount)
+            return root.points[sourceIndex] ?? 0
+        }
+
+        // In compact mode each bar represents a complete frequency band, so
+        // reducing the number of bars does not discard either end of the spectrum.
+        const start = Math.floor(barIndex * root.points.length / root.displayedBarCount)
+        const end = Math.max(start + 1,
+            Math.floor((barIndex + 1) * root.points.length / root.displayedBarCount))
+        let total = 0
+        for (let i = start; i < Math.min(end, root.points.length); i++)
+            total += root.points[i] ?? 0
+        return total / Math.max(1, Math.min(end, root.points.length) - start)
+    }
+
+    readonly property real fullHorizontalWidth: isMaterial
+        ? barCount * dotSize + (barCount - 1) * dotSpacing + 16
+        : barCount * (dotSize + dotSpacing)
+    readonly property real compactHorizontalWidth: displayedBarCount * dotSize
+        + (displayedBarCount - 1) * dotSpacing
     implicitWidth: vertical
         ? Appearance.sizes.verticalBarWidth
-        : (isMaterial
-            ? barsRow.implicitWidth + 16
-            : barCount * (dotSize + dotSpacing))
+        : (islandMode && !islandExpanded
+            ? compactHorizontalWidth
+            : fullHorizontalWidth)
     implicitHeight: vertical
         ? (isMaterial
             ? barsColumn.implicitHeight + 16
             : barCount * (dotSize + dotSpacing))
         : Appearance.sizes.barHeight
+    clip: islandMode
 
     transform: Scale {
         xScale: !root.vertical && root.mirrored ? -1 : 1
@@ -47,14 +76,13 @@ Item {
         spacing: root.dotSpacing
 
         Repeater {
-            model: root.barCount
+            model: root.displayedBarCount
             Rectangle {
                 required property int index
                 width: root.dotSize
                 property real pointValue: {
                     if (!root.isPlaying || root.points.length === 0) return root.dotSize
-                    const idx = Math.floor(index * root.points.length / root.barCount)
-                    const v = root.points[idx] ?? 0
+                    const v = root.spectrumValue(index)
                     return Math.max(root.dotSize, (v / root.maxVisualizerValue) * root.maxBarHeight)
                 }
                 height: pointValue
@@ -75,15 +103,14 @@ Item {
         spacing: root.dotSpacing
 
         Repeater {
-            model: root.barCount
+            model: root.displayedBarCount
             Rectangle {
                 required property int index
                 height: root.dotSize
                 property real pointValue: {
                     if (!root.isPlaying || root.points.length === 0) return root.dotSize
-                    const rawIndex = root.mirrored ? (root.barCount - 1 - index) : index
-                    const idx = Math.floor(rawIndex * root.points.length / root.barCount)
-                    const v = root.points[idx] ?? 0
+                    const rawIndex = root.mirrored ? (root.displayedBarCount - 1 - index) : index
+                    const v = root.spectrumValue(rawIndex)
                     return Math.max(root.dotSize, (v / root.maxVisualizerValue) * root.maxBarHeight)
                 }
                 width: pointValue

@@ -375,8 +375,8 @@ ContentPage {
                 LayoutSection {
                     sectionTitle: Translation.tr("Left")
                     layout: Config.options.bar.dynamicIsland.leftWidgets
-                    modeWidgets: ["clockWidget", "resources", "media"]
-                    dynamicHoverModeWidgets: ["media"]
+                    modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
+                    dynamicHoverModeWidgets: ["media", "visualizer"]
                     widgetModes: Config.options.bar.dynamicIsland.widgetModes
                     onModeChanged: (widget, mode) => {
                         Config.options.bar.dynamicIsland.widgetModes[widget] = mode;
@@ -388,8 +388,8 @@ ContentPage {
                 LayoutSection {
                     sectionTitle: Translation.tr("Right")
                     layout: Config.options.bar.dynamicIsland.rightWidgets
-                    modeWidgets: ["clockWidget", "resources", "media"]
-                    dynamicHoverModeWidgets: ["media"]
+                    modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
+                    dynamicHoverModeWidgets: ["media", "visualizer"]
                     widgetModes: Config.options.bar.dynamicIsland.widgetModes
                     onModeChanged: (widget, mode) => {
                         Config.options.bar.dynamicIsland.widgetModes[widget] = mode;

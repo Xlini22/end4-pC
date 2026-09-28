@@ -343,10 +343,11 @@ Item {
             delegate: Item {
                 id: sideDelegate
                 required property string modelData
-                readonly property bool supportsExpansion: ["clockWidget", "resources"].includes(modelData)
+                readonly property bool supportsExpansion: ["clockWidget", "resources", "visualizer"].includes(modelData)
                 readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
                 readonly property bool contentAvailable: (modelData !== "media" || root.hasMedia)
                     && (modelData !== "osd" || GlobalStates.osdVolumeOpen)
+                    && (modelData !== "visualizer" || (root.activePlayer?.isPlaying ?? false))
                 readonly property real contentImplicitWidth: mediaLoader.active ? mediaLoader.implicitWidth
                     : (osdLoader.active ? osdLoader.implicitWidth : regularLoader.implicitWidth)
                 readonly property real contentImplicitHeight: mediaLoader.active ? mediaLoader.implicitHeight
@@ -358,10 +359,11 @@ Item {
                 implicitWidth: contentAvailable ? contentImplicitWidth : 0
                 implicitHeight: contentAvailable ? contentImplicitHeight : root.pillHeight
                 Layout.alignment: Qt.AlignVCenter
+                clip: modelData === "visualizer"
 
                 Behavior on implicitWidth {
                     enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
-                        || sideDelegate.modelData === "osd"
+                        || ["osd", "visualizer"].includes(sideDelegate.modelData)
                     NumberAnimation {
                         readonly property bool simultaneous: Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
                         duration: simultaneous ? 200 : 350
@@ -372,8 +374,15 @@ Item {
 
                 Behavior on opacity {
                     enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
-                        || sideDelegate.modelData === "osd"
+                        || ["osd", "visualizer"].includes(sideDelegate.modelData)
                     NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+                }
+
+                HoverHandler {
+                    id: sideWidgetHover
+                    enabled: sideDelegate.contentAvailable
+                        && sideDelegate.displayMode === "dynamicHover"
+                        && root.componentInteractionReady
                 }
 
                 Loader {
@@ -408,7 +417,8 @@ Item {
                     target: sideDelegate.supportsExpansion ? regularLoader.item : null
                     property: "islandExpanded"
                     value: sideDelegate.displayMode === "expanded"
-                        || (sideDelegate.displayMode !== "compact" && root.expanded)
+                        || (sideDelegate.displayMode === "dynamic" && root.expanded)
+                        || (sideDelegate.displayMode === "dynamicHover" && sideWidgetHover.hovered)
                     when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
                 }
             }
