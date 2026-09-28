@@ -17,6 +17,9 @@ ContentSubsection {
     property var dynamicHoverModeWidgets: []
     property var widgetModes: ({})
     property var onModeChanged: (widget, mode) => {}
+    property bool anchorControls: false
+    property var rightAnchoredWidgets: []
+    property var onAnchorChanged: (widget, anchor) => {}
 
     title: sectionTitle
     Layout.fillWidth: true
@@ -46,20 +49,21 @@ ContentSubsection {
                         required property int index
                         readonly property bool hasModes: root.modeWidgets.includes(modelData)
                         readonly property bool hasDynamicHoverMode: root.dynamicHoverModeWidgets.includes(modelData)
-                        implicitWidth: chipContent.implicitWidth + (hasModes ? 6 : 0)
+                        readonly property bool hasControls: hasModes || root.anchorControls
+                        implicitWidth: chipContent.implicitWidth + (hasControls ? 6 : 0)
                         implicitHeight: chipContent.implicitHeight
                         radius: height / 2
-                        color: hasModes ? Appearance.colors.colPrimary : "transparent"
+                        color: hasControls ? Appearance.colors.colPrimary : "transparent"
 
                         RowLayout {
                             id: chipContent
                             anchors.fill: parent
-                            anchors.rightMargin: widgetChip.hasModes ? 6 : 0
+                            anchors.rightMargin: widgetChip.hasControls ? 6 : 0
                             spacing: 0
 
                             SelectionGroupButton {
                                 isDragging: dragHandler.active
-                                colBackgroundToggled: widgetChip.hasModes ? "transparent" : Appearance.colors.colPrimary
+                                colBackgroundToggled: widgetChip.hasControls ? "transparent" : Appearance.colors.colPrimary
                                 leftmost: true; rightmost: true
                                 buttonIcon: "close"
                                 buttonText: root.getWidgetName(modelData)
@@ -183,6 +187,67 @@ ContentSubsection {
                                         rightmost: true
                                         toggled: (root.widgetModes[widgetChip.modelData] ?? "dynamic") === modelData.mode
                                         onClicked: root.onModeChanged(widgetChip.modelData, modelData.mode)
+                                        StyledToolTip {
+                                            text: parent.modelData.title
+                                            delay: 400
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                visible: root.anchorControls
+                                Layout.leftMargin: 3
+                                Layout.rightMargin: 3
+                                Layout.alignment: Qt.AlignVCenter
+                                implicitWidth: 1
+                                implicitHeight: 16
+                                radius: 1
+                                color: Appearance.colors.colOnPrimary
+                                opacity: 0.35
+                            }
+                            RowLayout {
+                                visible: root.anchorControls
+                                spacing: 1
+                                Repeater {
+                                    model: [
+                                        { label: "L", anchor: "left", title: Translation.tr("Anchor to the left edge") },
+                                        { label: "R", anchor: "right", title: Translation.tr("Anchor to the right edge") }
+                                    ]
+                                    delegate: SelectionGroupButton {
+                                        required property var modelData
+                                        buttonText: modelData.label
+                                        contentItem: StyledText {
+                                            text: parent.buttonText
+                                            color: parent.colText
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                        horizontalPadding: 0
+                                        verticalPadding: 0
+                                        implicitWidth: 26
+                                        implicitHeight: 26
+                                        Layout.minimumWidth: 26
+                                        Layout.maximumWidth: 26
+                                        Layout.minimumHeight: 26
+                                        Layout.maximumHeight: 26
+                                        Layout.alignment: Qt.AlignVCenter
+                                        Layout.fillWidth: false
+                                        Layout.fillHeight: false
+                                        leftRadius: 13
+                                        rightRadius: 13
+                                        colBackground: "transparent"
+                                        colBackgroundHover: Appearance.colors.colPrimaryHover
+                                        colBackgroundActive: Appearance.colors.colPrimaryActive
+                                        colBackgroundToggled: Appearance.colors.colOnPrimary
+                                        colBackgroundToggledHover: Appearance.colors.colOnPrimary
+                                        colBackgroundToggledActive: Appearance.colors.colOnPrimary
+                                        colText: toggled ? Appearance.colors.colPrimary : Appearance.colors.colOnPrimary
+                                        leftmost: true
+                                        rightmost: true
+                                        toggled: modelData.anchor === "right"
+                                            ? root.rightAnchoredWidgets.includes(widgetChip.modelData)
+                                            : !root.rightAnchoredWidgets.includes(widgetChip.modelData)
+                                        onClicked: root.onAnchorChanged(widgetChip.modelData, modelData.anchor)
                                         StyledToolTip {
                                             text: parent.modelData.title
                                             delay: 400

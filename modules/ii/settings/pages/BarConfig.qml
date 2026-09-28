@@ -378,8 +378,16 @@ ContentPage {
                     modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
                     dynamicHoverModeWidgets: ["media", "visualizer"]
                     widgetModes: Config.options.bar.dynamicIsland.widgetModes
+                    anchorControls: true
+                    rightAnchoredWidgets: Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
                     onModeChanged: (widget, mode) => {
                         Config.options.bar.dynamicIsland.widgetModes[widget] = mode;
+                    }
+                    onAnchorChanged: (widget, anchor) => {
+                        let widgets = Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
+                            .filter(name => name !== widget);
+                        if (anchor === "right") widgets.push(widget);
+                        Config.options.bar.dynamicIsland.leftRightAnchoredWidgets = widgets;
                     }
                     availableWidgets: page.availableForIsland()
                     getWidgetName: page.getWidgetName
@@ -391,8 +399,16 @@ ContentPage {
                     modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
                     dynamicHoverModeWidgets: ["media", "visualizer"]
                     widgetModes: Config.options.bar.dynamicIsland.widgetModes
+                    anchorControls: true
+                    rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
                     onModeChanged: (widget, mode) => {
                         Config.options.bar.dynamicIsland.widgetModes[widget] = mode;
+                    }
+                    onAnchorChanged: (widget, anchor) => {
+                        let widgets = Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
+                            .filter(name => name !== widget);
+                        if (anchor === "right") widgets.push(widget);
+                        Config.options.bar.dynamicIsland.rightRightAnchoredWidgets = widgets;
                     }
                     availableWidgets: page.availableForIsland()
                     getWidgetName: page.getWidgetName

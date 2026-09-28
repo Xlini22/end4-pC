@@ -333,94 +333,142 @@ Item {
         }
     }
 
-    component SideWidgets: RowLayout {
+    component SideWidgetDelegate: Item {
+        id: sideDelegate
+        required property string modelData
+        required property bool anchorRight
+        readonly property bool supportsExpansion: ["clockWidget", "resources", "visualizer"].includes(modelData)
+        readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
+        readonly property bool contentAvailable: (modelData !== "media" || root.hasMedia)
+            && (modelData !== "osd" || GlobalStates.osdVolumeOpen)
+            && (modelData !== "visualizer" || (root.activePlayer?.isPlaying ?? false))
+        readonly property real contentImplicitWidth: mediaLoader.active ? mediaLoader.implicitWidth
+            : (osdLoader.active ? osdLoader.implicitWidth : regularLoader.implicitWidth)
+        readonly property real contentImplicitHeight: mediaLoader.active ? mediaLoader.implicitHeight
+            : (osdLoader.active ? osdLoader.implicitHeight : regularLoader.implicitHeight)
+
+        visible: contentAvailable || implicitWidth > 0.5
+        enabled: contentAvailable && root.componentInteractionReady
+        opacity: contentAvailable ? 1 : 0
+        implicitWidth: contentAvailable ? contentImplicitWidth : 0
+        implicitHeight: contentAvailable ? contentImplicitHeight : root.pillHeight
+        Layout.alignment: Qt.AlignVCenter
+        clip: modelData === "visualizer"
+
+        Behavior on implicitWidth {
+            enabled: sideDelegate.modelData !== "visualizer"
+                && (Config.options.bar.dynamicIsland.animationStyle === "staged"
+                    || sideDelegate.modelData === "osd")
+            NumberAnimation {
+                readonly property bool simultaneous: Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
+                duration: simultaneous ? 200 : 350
+                easing.type: simultaneous ? Easing.OutCubic : Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+            }
+        }
+
+        Behavior on opacity {
+            enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
+                || ["osd", "visualizer"].includes(sideDelegate.modelData)
+            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+        }
+
+        HoverHandler {
+            id: sideWidgetHover
+            enabled: sideDelegate.contentAvailable
+                && sideDelegate.displayMode === "dynamicHover"
+                && root.componentInteractionReady
+        }
+
+        Loader {
+            id: mediaLoader
+            active: sideDelegate.modelData === "media"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: sideDelegate.anchorRight ? undefined : parent.left
+            anchors.right: sideDelegate.anchorRight ? parent.right : undefined
+            sourceComponent: mediaSideComponent
+        }
+
+        Loader {
+            id: osdLoader
+            active: sideDelegate.modelData === "osd"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: sideDelegate.anchorRight ? undefined : parent.left
+            anchors.right: sideDelegate.anchorRight ? parent.right : undefined
+            sourceComponent: osdSideComponent
+        }
+
+        Loader {
+            id: regularLoader
+            active: sideDelegate.modelData !== "media" && sideDelegate.modelData !== "osd"
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: sideDelegate.anchorRight ? undefined : parent.left
+            anchors.right: sideDelegate.anchorRight ? parent.right : undefined
+            source: active ? Qt.resolvedUrl("./" + sideDelegate.modelData.charAt(0).toUpperCase()
+                + sideDelegate.modelData.slice(1) + ".qml") : ""
+        }
+
+        Binding {
+            target: sideDelegate.supportsExpansion ? regularLoader.item : null
+            property: "islandMode"
+            value: true
+            when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
+        }
+        Binding {
+            target: sideDelegate.supportsExpansion ? regularLoader.item : null
+            property: "islandExpanded"
+            value: sideDelegate.displayMode === "expanded"
+                || (sideDelegate.displayMode === "dynamic" && root.expanded)
+                || (sideDelegate.displayMode === "dynamicHover" && sideWidgetHover.hovered)
+            when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
+        }
+        Binding {
+            target: sideDelegate.modelData === "visualizer" ? regularLoader.item : null
+            property: "islandAnchorRight"
+            value: sideDelegate.anchorRight
+            when: sideDelegate.modelData === "visualizer"
+                && regularLoader.status === Loader.Ready
+        }
+    }
+
+    component SideWidgets: Item {
         id: sideWidgetsRoot
         property var widgets: []
-        spacing: root.workspaceSpacing
-        Repeater {
-            model: sideWidgetsRoot.widgets.filter(name => name !== "dynamicIsland"
-                && !(name === "workspaces" && root.centerWorkspaces))
-            delegate: Item {
-                id: sideDelegate
-                required property string modelData
-                readonly property bool supportsExpansion: ["clockWidget", "resources", "visualizer"].includes(modelData)
-                readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
-                readonly property bool contentAvailable: (modelData !== "media" || root.hasMedia)
-                    && (modelData !== "osd" || GlobalStates.osdVolumeOpen)
-                    && (modelData !== "visualizer" || (root.activePlayer?.isPlaying ?? false))
-                readonly property real contentImplicitWidth: mediaLoader.active ? mediaLoader.implicitWidth
-                    : (osdLoader.active ? osdLoader.implicitWidth : regularLoader.implicitWidth)
-                readonly property real contentImplicitHeight: mediaLoader.active ? mediaLoader.implicitHeight
-                    : (osdLoader.active ? osdLoader.implicitHeight : regularLoader.implicitHeight)
+        property var rightAnchoredWidgets: []
+        readonly property var filteredWidgets: widgets.filter(name => name !== "dynamicIsland"
+            && !(name === "workspaces" && root.centerWorkspaces))
+        readonly property real leftGroupWidth: leftGroup.implicitWidth
+        readonly property real rightGroupWidth: rightGroup.implicitWidth
+        readonly property bool hasLeftGroup: leftGroupWidth > 0.5
+        readonly property bool hasRightGroup: rightGroupWidth > 0.5
 
-                visible: contentAvailable || implicitWidth > 0.5
-                enabled: contentAvailable && root.componentInteractionReady
-                opacity: contentAvailable ? 1 : 0
-                implicitWidth: contentAvailable ? contentImplicitWidth : 0
-                implicitHeight: contentAvailable ? contentImplicitHeight : root.pillHeight
-                Layout.alignment: Qt.AlignVCenter
-                clip: modelData === "visualizer"
+        implicitWidth: leftGroupWidth + rightGroupWidth
+            + (hasLeftGroup && hasRightGroup ? root.workspaceSpacing : 0)
+        implicitHeight: Math.max(leftGroup.implicitHeight, rightGroup.implicitHeight, root.pillHeight)
 
-                Behavior on implicitWidth {
-                    enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
-                        || ["osd", "visualizer"].includes(sideDelegate.modelData)
-                    NumberAnimation {
-                        readonly property bool simultaneous: Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
-                        duration: simultaneous ? 200 : 350
-                        easing.type: simultaneous ? Easing.OutCubic : Easing.BezierSpline
-                        easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
-                    }
-                }
+        RowLayout {
+            id: leftGroup
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: root.workspaceSpacing
 
-                Behavior on opacity {
-                    enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
-                        || ["osd", "visualizer"].includes(sideDelegate.modelData)
-                    NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-                }
+            Repeater {
+                model: sideWidgetsRoot.filteredWidgets.filter(
+                    name => !sideWidgetsRoot.rightAnchoredWidgets.includes(name))
+                delegate: SideWidgetDelegate { anchorRight: false }
+            }
+        }
 
-                HoverHandler {
-                    id: sideWidgetHover
-                    enabled: sideDelegate.contentAvailable
-                        && sideDelegate.displayMode === "dynamicHover"
-                        && root.componentInteractionReady
-                }
+        RowLayout {
+            id: rightGroup
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: root.workspaceSpacing
 
-                Loader {
-                    id: mediaLoader
-                    active: sideDelegate.modelData === "media"
-                    anchors.centerIn: parent
-                    sourceComponent: mediaSideComponent
-                }
-
-                Loader {
-                    id: osdLoader
-                    active: sideDelegate.modelData === "osd"
-                    anchors.centerIn: parent
-                    sourceComponent: osdSideComponent
-                }
-
-                Loader {
-                    id: regularLoader
-                    active: sideDelegate.modelData !== "media" && sideDelegate.modelData !== "osd"
-                    anchors.centerIn: parent
-                    source: active ? Qt.resolvedUrl("./" + sideDelegate.modelData.charAt(0).toUpperCase()
-                        + sideDelegate.modelData.slice(1) + ".qml") : ""
-                }
-
-                Binding {
-                    target: sideDelegate.supportsExpansion ? regularLoader.item : null
-                    property: "islandMode"
-                    value: true
-                    when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
-                }
-                Binding {
-                    target: sideDelegate.supportsExpansion ? regularLoader.item : null
-                    property: "islandExpanded"
-                    value: sideDelegate.displayMode === "expanded"
-                        || (sideDelegate.displayMode === "dynamic" && root.expanded)
-                        || (sideDelegate.displayMode === "dynamicHover" && sideWidgetHover.hovered)
-                    when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
-                }
+            Repeater {
+                model: sideWidgetsRoot.filteredWidgets.filter(
+                    name => sideWidgetsRoot.rightAnchoredWidgets.includes(name))
+                delegate: SideWidgetDelegate { anchorRight: true }
             }
         }
     }
@@ -428,14 +476,28 @@ Item {
     SideWidgets {
         id: leftWidgets
         widgets: Config.options.bar.dynamicIsland.leftWidgets
+        rightAnchoredWidgets: Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
         x: root.leftStart
+        width: root.centerWorkspaces
+            ? Math.max(implicitWidth, root.wingWidth - root.primaryWidth
+                - (implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0))
+            : implicitWidth
         anchors.verticalCenter: parent.verticalCenter
     }
     SideWidgets {
         id: rightWidgets
         widgets: Config.options.bar.dynamicIsland.rightWidgets
-        x: root.rightStart + root.badgesWidth
-            + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
+        rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
+        x: root.centerWorkspaces
+            ? (root.width + workspaceLoader.implicitWidth) / 2 + root.workspaceSpacing
+                + root.badgesWidth
+                + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
+            : root.rightStart + root.badgesWidth
+                + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
+        width: root.centerWorkspaces
+            ? Math.max(implicitWidth, root.wingWidth - root.badgesWidth
+                - (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0))
+            : implicitWidth
         anchors.verticalCenter: parent.verticalCenter
     }
 
@@ -454,8 +516,11 @@ Item {
     // those widths directly, keeping both outer margins equal on every frame.
     Rectangle {
         id: pill
-        x: root.leftStart + leftWidgets.implicitWidth
-            + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
+        x: root.centerWorkspaces
+            ? (root.width - workspaceLoader.implicitWidth) / 2
+                - root.workspaceSpacing - root.primaryWidth
+            : root.leftStart + leftWidgets.implicitWidth
+                + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
         width: root.primaryWidth
         height: root.pillHeight
         color: "transparent"
@@ -600,7 +665,9 @@ Item {
     Row {
         id: badgesRow
         visible: root.badgeProviders.length > 0 && !root.vertical
-        x: root.rightStart
+        x: root.centerWorkspaces
+            ? (root.width + workspaceLoader.implicitWidth) / 2 + root.workspaceSpacing
+            : root.rightStart
         anchors.verticalCenter: parent.verticalCenter
         spacing: root.badgeSpacing
 

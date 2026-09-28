@@ -534,6 +534,10 @@ Singleton {
                         property string media: "dynamicHover"
                         property string visualizer: "expanded"
                     }
+                    // Widgets listed here keep their right edge fixed while resizing.
+                    // Every other widget keeps its left edge fixed.
+                    property list<string> leftRightAnchoredWidgets: ["media"]
+                    property list<string> rightRightAnchoredWidgets: []
                     property list<string> leftWidgets: []
                     property list<string> rightWidgets: []
                     property bool widgetListsMigrated: false
