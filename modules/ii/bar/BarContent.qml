@@ -28,6 +28,18 @@ Item {
         rightSection.x - width / 2 - dynamicIslandCollisionGap)
     property real dynamicIslandHorizontalOffset: 0
 
+    // A focus grab handles clicks in other windows while this catches clicks
+    // on the bar but outside its Dynamic Island.
+    TapHandler {
+        enabled: GlobalStates.diSessionOpen
+        acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+        onTapped: eventPoint => {
+            const point = absoluteCenter.mapFromItem(root, eventPoint.position.x, eventPoint.position.y)
+            if (!absoluteCenter.contains(point))
+                GlobalStates.diSessionOpen = false
+        }
+    }
+
     readonly property bool trayHasItems: SystemTray.items.values.length > 0
 
     function filterLayout(layout) {

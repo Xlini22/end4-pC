@@ -88,6 +88,9 @@ Scope {
                 exclusiveZone: contentExclusiveZone > 0
                     ? contentExclusiveZone + islandTopInset : contentExclusiveZone
                 WlrLayershell.namespace: "quickshell:bar"
+                WlrLayershell.keyboardFocus: GlobalStates.diSessionOpen
+                    && barRoot.screen?.name === Hyprland.focusedMonitor?.name
+                    ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
                 // Overlay layer only while special workspace sits on top of a fullscreen window on this monitor,
                 // else Top layer so fullscreen apps cover the bar as normal (Hyprland buries Top layer under fullscreen+special).
                 WlrLayershell.layer: (monitorHasFullscreen && monitorHasSpecialOpen) ? WlrLayer.Overlay : WlrLayer.Top
@@ -139,9 +142,11 @@ Scope {
                 // Include in focus grab
                 Component.onCompleted: {
                     GlobalFocusGrab.addPersistent(barRoot);
+                    GlobalFocusGrab.addBarWindow(barRoot);
                 }
                 Component.onDestruction: {
                     GlobalFocusGrab.removePersistent(barRoot);
+                    GlobalFocusGrab.removeBarWindow(barRoot);
                 }
 
                 MouseArea  {

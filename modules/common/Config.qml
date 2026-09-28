@@ -526,6 +526,7 @@ Singleton {
 
                 property JsonObject dynamicIsland: JsonObject {
                     property bool centerWorkspaces: false
+                    property string sessionMenuMode: "exclusive" // "replaceWorkspaces" or "exclusive"
                     property string visualizerStyle: "dots" // "dots", "wave", "none"
                     property bool showMediaControls: false
                     property string animationStyle: "staged" // "staged" or "simultaneous"
