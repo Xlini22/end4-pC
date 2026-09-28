@@ -376,16 +376,17 @@ Item {
         implicitWidth: contentAvailable ? contentImplicitWidth : 0
         implicitHeight: contentAvailable ? contentImplicitHeight : root.pillHeight
         Layout.alignment: Qt.AlignVCenter
-        clip: modelData === "visualizer"
+        clip: ["visualizer", "osd"].includes(modelData)
 
         Behavior on implicitWidth {
             enabled: sideDelegate.modelData !== "visualizer"
                 && (Config.options.bar.dynamicIsland.animationStyle === "staged"
                     || sideDelegate.modelData === "osd")
             NumberAnimation {
+                readonly property bool isOsd: sideDelegate.modelData === "osd"
                 readonly property bool simultaneous: Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
-                duration: simultaneous ? 200 : 350
-                easing.type: simultaneous ? Easing.OutCubic : Easing.BezierSpline
+                duration: isOsd ? 350 : (simultaneous ? 200 : 350)
+                easing.type: isOsd || !simultaneous ? Easing.BezierSpline : Easing.OutCubic
                 easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
             }
         }
@@ -393,7 +394,10 @@ Item {
         Behavior on opacity {
             enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
                 || ["osd", "visualizer"].includes(sideDelegate.modelData)
-            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+            NumberAnimation {
+                duration: sideDelegate.modelData === "osd" ? 350 : 200
+                easing.type: sideDelegate.modelData === "osd" ? Easing.InOutCubic : Easing.OutCubic
+            }
         }
 
         HoverHandler {
