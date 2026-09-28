@@ -38,6 +38,24 @@ Singleton {
 
 	property var activeTrack;
 
+	function raiseActivePlayer() {
+		const busName = root.activePlayer?.dbusName ?? "";
+		if (busName.length === 0 || raisePlayerProcess.running)
+			return;
+		raisePlayerProcess.command = [
+			"gdbus", "call", "--session",
+			"--dest", busName,
+			"--object-path", "/org/mpris/MediaPlayer2",
+			"--method", "org.mpris.MediaPlayer2.Raise"
+		];
+		raisePlayerProcess.running = true;
+	}
+
+	Process {
+		id: raisePlayerProcess
+		running: false
+	}
+
 	readonly property bool hasActivePlasmaIntegration: Mpris.players.values.some(
 		p => p.dbusName?.startsWith('org.mpris.MediaPlayer2.plasma-browser-integration')
 	)

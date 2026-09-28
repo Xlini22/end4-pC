@@ -17,7 +17,10 @@ Item {
     id: root
     readonly property var players: MprisController.players
     property var player: MprisController.activePlayer ?? root.players[0] ?? null
-    property bool showLyrics: Config.options.sidebar.media.showLyrics ?? true
+    readonly property bool lyricsUnavailable: LyricsService.status === "not_found"
+        || LyricsService.status === "no_info"
+    readonly property bool showLyrics: (Config.options.sidebar.media.showLyrics ?? true)
+        && !root.lyricsUnavailable
     property color artDominantColor: Config.options.sidebar.media.artColors
         ? ColorUtils.mix(
             (colorQuantizer?.colors[0] ?? Appearance.colors.colPrimary),
@@ -169,6 +172,13 @@ Item {
                     color: Appearance.colors.colPrimary
                     iconSize: Appearance.font.pixelSize.hugeass + 100
                 }
+
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: root.player !== null
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: MprisController.raiseActivePlayer()
+                }
             }
 
             // ── Title & Artist ──
@@ -202,6 +212,13 @@ Item {
                             }
                         }
                     }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: root.player !== null
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: MprisController.raiseActivePlayer()
+                    }
                 }
 
                 Item {
@@ -228,6 +245,13 @@ Item {
                             }
                         }
                     }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: root.player !== null
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: MprisController.raiseActivePlayer()
+                    }
                 }
             }
 
@@ -239,7 +263,7 @@ Item {
                 Lyrics {
                     id: lyricsComp
                     anchors.fill: parent
-                    opacity: (MprisController.activePlayer !== null && Config.options.sidebar.media.showLyrics) ? 1 : 0
+                    opacity: MprisController.activePlayer !== null && root.showLyrics ? 1 : 0
                     textAlignment: Text.AlignHCenter
                     textColor: blendedColors.colOnLayer0
                     activeColor: blendedColors.colPrimary
@@ -258,7 +282,7 @@ Item {
 
                 Loader {
                     anchors.fill: parent
-                    active: !Config.options.sidebar.media.showLyrics
+                    active: !root.showLyrics
                     opacity: active ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 200 } }
 
@@ -445,7 +469,7 @@ Item {
                     }
                     contentItem: MaterialSymbol {
                         iconSize: 18
-                        fill: Config.options.sidebar.media.showLyrics ? 1 : 0
+                        fill: root.showLyrics ? 1 : 0
                         horizontalAlignment: Text.AlignHCenter
                         color: blendedColors.colOnSecondaryContainer
                         text: "lyrics"

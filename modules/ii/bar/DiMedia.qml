@@ -66,6 +66,12 @@ Item {
                 color: Appearance.colors.colOnLayer1
                 visible: MediaArtwork.source === ""
             }
+
+            TapHandler {
+                acceptedButtons: Qt.LeftButton
+                cursorShape: Qt.PointingHandCursor
+                onTapped: MprisController.raiseActivePlayer()
+            }
         }
 
         StyledText {
@@ -144,6 +150,12 @@ Item {
             Component.onCompleted: {
                 root.mediaTextContentWidth = trackInfoColumn.computedContentWidth
                 root.mediaCollapsedWidth = trackInfoColumn.compactContentWidth
+            }
+
+            TapHandler {
+                acceptedButtons: Qt.LeftButton
+                cursorShape: Qt.PointingHandCursor
+                onTapped: MprisController.raiseActivePlayer()
             }
         }
 

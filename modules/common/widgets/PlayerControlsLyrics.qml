@@ -60,6 +60,12 @@ Item {
                         animateChange: true
                         animationDistanceX: 6
                         animationDistanceY: 0
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: MprisController.raiseActivePlayer()
+                        }
                     }
 
                     StyledText {
@@ -71,6 +77,12 @@ Item {
                         animateChange: true
                         animationDistanceX: 6
                         animationDistanceY: 0
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: MprisController.raiseActivePlayer()
+                        }
                     }
                 }
 
