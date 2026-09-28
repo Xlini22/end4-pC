@@ -293,6 +293,7 @@ Item {
                         dotSize: 5
                         dotSpacing: 6
                         maxBarHeight: parent.height * 0.8
+                        frameSmoothing: true
                     }
                 }
             }
