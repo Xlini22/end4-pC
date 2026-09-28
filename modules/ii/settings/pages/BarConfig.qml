@@ -363,6 +363,28 @@ ContentPage {
                     onCheckedChanged: Config.options.bar.dynamicIsland.centerWorkspaces = checked
                 }
                 ConfigSelectionArray {
+                    visible: Config.options.bar.dynamicIsland.centerWorkspaces
+                    enabled: visible
+                    text: Translation.tr("Session menu behavior")
+                    icon: "power_settings_new"
+                    currentValue: Config.options.bar.dynamicIsland.sessionMenuMode ?? "exclusive"
+                    onSelected: newValue => {
+                        Config.options.bar.dynamicIsland.sessionMenuMode = newValue;
+                    }
+                    options: [
+                        {
+                            displayName: Translation.tr("Replace workspaces"),
+                            icon: "view_carousel",
+                            value: "replaceWorkspaces"
+                        },
+                        {
+                            displayName: Translation.tr("Use whole island"),
+                            icon: "collapse_all",
+                            value: "exclusive"
+                        }
+                    ]
+                }
+                ConfigSelectionArray {
                     text: Translation.tr("Dynamic Island animation")
                     icon: "animation"
                     currentValue: Config.options.bar.dynamicIsland.animationStyle

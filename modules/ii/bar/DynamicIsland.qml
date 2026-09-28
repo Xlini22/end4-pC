@@ -14,7 +14,15 @@ import qs.modules.common.widgets
 Item {
     id: root
     property bool mirrored: false
-    readonly property bool centerWorkspaces: Config.options.bar.dynamicIsland.centerWorkspaces && !root.vertical
+    readonly property string sessionMenuMode:
+        Config.options.bar.dynamicIsland.sessionMenuMode ?? "exclusive"
+    readonly property bool sessionReplacesWorkspaces: GlobalStates.diSessionOpen
+        && Config.options.bar.dynamicIsland.centerWorkspaces
+        && !root.vertical && root.sessionMenuMode === "replaceWorkspaces"
+    readonly property bool sessionExclusive: GlobalStates.diSessionOpen
+        && !root.sessionReplacesWorkspaces
+    readonly property bool centerWorkspaces: Config.options.bar.dynamicIsland.centerWorkspaces
+        && !root.vertical && !root.sessionExclusive
     readonly property real workspaceSpacing: 8
     // BarContent supplies the free space between the screen centre and the
     // outer bar sections. The island stays symmetric while both limits allow
@@ -53,6 +61,15 @@ Item {
     property bool forceIdle: false
 
     readonly property var displayedProvider: root.forceIdle ? null : root.activeProvider
+    readonly property bool hasOsdActivitySlot:
+        Config.options.bar.dynamicIsland.leftWidgets.includes("osd")
+        || Config.options.bar.dynamicIsland.rightWidgets.includes("osd")
+    readonly property bool routeProviderToOsdSlot:
+        root.hasOsdActivitySlot && !root.sessionExclusive
+    readonly property var osdSlotProvider:
+        root.routeProviderToOsdSlot ? root.displayedProvider : null
+    readonly property var pillProvider:
+        root.routeProviderToOsdSlot ? null : root.displayedProvider
 
     onActiveProviderChanged: {
         if (root.activeProvider && root.alwaysWinIds.includes(root.activeProvider.id)) {
@@ -197,7 +214,7 @@ Item {
         { id: "battery",      active: root.batteryAlertActive,          component: batteryComponent,      width: root.batteryWidth },
         { id: "recording",    active: root.isRecording,                 component: recordingComponent,    width: root.recordingWidth },
         { id: "timer",        active: root.hasActiveTimer,              component: timerComponent,        width: root.timerWidth },
-        { id: "session",      active: GlobalStates.diSessionOpen,       component: sessionComponent,      width: root.sessionWidth },
+        { id: "session",      active: root.sessionExclusive,            component: sessionComponent,      width: root.sessionWidth },
     ]
 
     readonly property var alwaysWinIds: ["session", "notification", "battery"]
@@ -205,6 +222,8 @@ Item {
     readonly property var activeOthers: root.contentProviders.filter(p => !root.alwaysWinIds.includes(p.id) && p.active)
 
     readonly property var activeProvider: {
+        if (root.sessionExclusive)
+            return root.contentProviders.find(p => p.id === "session")
         const forcedTop = root.contentProviders.find(p => root.alwaysWinIds.includes(p.id) && p.active)
         if (forcedTop) return forcedTop
         if (root.manualFocusId !== "") {
@@ -215,6 +234,7 @@ Item {
     }
 
     readonly property var badgeProviders: {
+        if (root.sessionExclusive) return []
         if (root.alwaysWinIds.some(id => root.contentProviders.find(p => p.id === id)?.active)) return []
         return root.activeOthers.filter(p => p.id !== root.activeProvider?.id)
     }
@@ -264,7 +284,7 @@ Item {
         || leftWidgets.implicitWidth > 0 || rightWidgets.implicitWidth > 0
     readonly property real emptyWidth: root.hasPersistentContent ? 0
         : (root.expanded ? root.emptyExpandedWidth : root.emptyCollapsedWidth)
-    property real primaryWidth: root.displayedProvider?.width ?? root.emptyWidth
+    property real primaryWidth: root.pillProvider?.width ?? root.emptyWidth
     Behavior on primaryWidth {
         NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
     }
@@ -350,10 +370,19 @@ Item {
     Component {
         id: osdSideComponent
         Item {
-            implicitWidth: root.osdWidth
+            implicitWidth: root.osdSlotProvider?.width ?? root.osdWidth
             implicitHeight: root.pillHeight
-            DiOsd { di: root }
+
+            Loader {
+                anchors.fill: parent
+                sourceComponent: root.osdSlotProvider?.component ?? osdComponent
+            }
         }
+    }
+
+    Component {
+        id: osdComponent
+        DiOsd { di: root }
     }
 
     component SideWidgetDelegate: Item {
@@ -363,7 +392,8 @@ Item {
         readonly property bool supportsExpansion: ["clockWidget", "resources", "visualizer"].includes(modelData)
         readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
         readonly property bool contentAvailable: (modelData !== "media" || root.hasMedia)
-            && (modelData !== "osd" || GlobalStates.osdVolumeOpen)
+            && (modelData !== "osd"
+                || GlobalStates.osdVolumeOpen || root.osdSlotProvider !== null)
             && (modelData !== "visualizer" || (root.activePlayer?.isPlaying ?? false))
         readonly property real contentImplicitWidth: mediaLoader.active ? mediaLoader.implicitWidth
             : (osdLoader.active ? osdLoader.implicitWidth : regularLoader.implicitWidth)
@@ -502,7 +532,7 @@ Item {
 
     SideWidgets {
         id: leftWidgets
-        widgets: Config.options.bar.dynamicIsland.leftWidgets
+        widgets: root.sessionExclusive ? [] : Config.options.bar.dynamicIsland.leftWidgets
         rightAnchoredWidgets: Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
         x: root.leftStart
         width: root.centerWorkspaces
@@ -513,7 +543,7 @@ Item {
     }
     SideWidgets {
         id: rightWidgets
-        widgets: Config.options.bar.dynamicIsland.rightWidgets
+        widgets: root.sessionExclusive ? [] : Config.options.bar.dynamicIsland.rightWidgets
         rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
         x: root.centerWorkspaces
             ? root.workspaceCenterX + root.workspaceHalfWidth + root.workspaceSpacing
@@ -528,16 +558,26 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
     }
 
-    // Symmetric side reservations keep the workspace strip on the screen center
-    // even while the primary activity changes width or secondary badges appear.
+    // Keep the center slot fixed to the screen center. The session menu can
+    // replace only this slot, leaving both widget wings intact.
     Loader {
         id: workspaceLoader
         active: root.centerWorkspaces
         x: root.workspaceCenterX - implicitWidth / 2
         anchors.verticalCenter: parent.verticalCenter
+        sourceComponent: root.sessionReplacesWorkspaces
+            ? sessionComponent : workspacesComponent
+        onLoaded: {
+            if (root.sessionReplacesWorkspaces && item)
+                item.forceActiveFocus()
+        }
+    }
+
+    Component {
+        id: workspacesComponent
         // Preserve Workspaces' native bar dimensions, as in the regular bar.
         // Forcing the island's pill height offsets icons relative to indicators.
-        sourceComponent: Workspaces {}
+        Workspaces {}
     }
 
     // Animate content widths at their source. The island and its positions follow
@@ -578,11 +618,11 @@ Item {
         Loader {
             id: contentLoader
             anchors.fill: parent
-            sourceComponent: root.displayedProvider?.component ?? emptyComponent
+            sourceComponent: root.pillProvider?.component ?? emptyComponent
             active: !root.vertical
 
             onLoaded: {
-                if (root.displayedProvider?.id === "session" && item) {
+                if (root.pillProvider?.id === "session" && item) {
                     item.forceActiveFocus()
                 }
             }
@@ -605,7 +645,11 @@ Item {
 
         Component {
             id: sessionComponent
-            DiSession { di: root }
+            Item {
+                implicitWidth: root.sessionWidth
+                implicitHeight: root.pillHeight
+                DiSession { di: root }
+            }
         }
 
         Component {
