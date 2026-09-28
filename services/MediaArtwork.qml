@@ -147,11 +147,55 @@ Singleton {
             root.rememberDuration(root.rawPlaybackLength)
     }
 
+    function scheduleDurationRetry() {
+        durationRetryTimer.stop()
+        if (root.isAppleMusic && !root.durationKnown
+                && root.trackTitle.length > 0 && root.trackArtist.length > 0)
+            durationRetryTimer.start()
+    }
+
+    function durationFromAppleResults(results) {
+        const title = root.normalized(root.trackTitle)
+        const comparableTitle = root.comparableTrackTitle(root.trackTitle)
+        const artist = root.normalized(root.trackArtist)
+        const album = root.normalized(root.trackAlbum)
+        let bestDuration = 0
+        let bestScore = -1
+
+        for (const result of results ?? []) {
+            const duration = Number(result?.trackTimeMillis ?? 0) / 1000
+            if (duration <= 0) continue
+
+            const resultTitle = root.normalized(result?.trackName)
+            const exactTitle = resultTitle === title
+            const comparable = root.comparableTrackTitle(result?.trackName) === comparableTitle
+            if (!exactTitle && !comparable) continue
+
+            let score = exactTitle ? 100 : 80
+            if (root.normalized(result?.artistName) === artist) score += 30
+            if (album.length > 0 && root.normalized(result?.collectionName) === album) score += 20
+            if (score > bestScore) {
+                bestScore = score
+                bestDuration = duration
+            }
+        }
+        return bestDuration
+    }
+
     onTrackIdentityChanged: {
+        durationResolver.running = false
         root.cachedTrackLength = Number(root.durationCache[root.trackIdentity] ?? 0)
-        Qt.callLater(root.updateDuration)
+        Qt.callLater(() => {
+            root.updateDuration()
+            root.scheduleDurationRetry()
+        })
     }
     onAppleTrackLengthChanged: root.updateDuration()
+    onIsAppleMusicChanged: Qt.callLater(root.scheduleDurationRetry)
+    onDurationKnownChanged: {
+        if (root.durationKnown)
+            durationRetryTimer.stop()
+    }
 
     Connections {
         target: root.player
@@ -166,6 +210,82 @@ Singleton {
         repeat: true
         running: root.player?.isPlaying ?? false
         onTriggered: root.player?.positionChanged()
+    }
+
+    Timer {
+        id: durationRetryTimer
+        interval: 10000
+        repeat: false
+        onTriggered: {
+            if (!root.isAppleMusic || root.durationKnown || durationResolver.running)
+                return
+            durationResolver.trackIdentity = root.trackIdentity
+            durationResolver.title = root.trackTitle
+            durationResolver.artist = root.trackArtist
+            durationResolver.album = root.trackAlbum
+            durationResolver.running = true
+        }
+    }
+
+    // If the album lookup did not yield this track's duration, retry only the
+    // lightweight song lookup after ten seconds. Artwork and album cache stay untouched.
+    Process {
+        id: durationResolver
+
+        property string trackIdentity: ""
+        property string title: ""
+        property string artist: ""
+        property string album: ""
+
+        readonly property string escapedSearch: StringUtils.shellSingleQuoteEscape(
+            `${title} ${artist} ${album}`)
+        readonly property string escapedTitle: StringUtils.shellSingleQuoteEscape(title)
+        readonly property string escapedArtist: StringUtils.shellSingleQuoteEscape(artist)
+        readonly property string escapedAlbum: StringUtils.shellSingleQuoteEscape(album)
+
+        command: ["bash", "-c",
+            `search_file=$(mktemp); lookup_file=$(mktemp); `
+            + `trap 'rm -f "$search_file" "$lookup_file"' EXIT; `
+            + `curl -4 -fsSG --retry 2 --retry-delay 1 'https://itunes.apple.com/search' `
+            + `--data-urlencode 'term=${escapedSearch}' --data 'entity=song' --data 'limit=25' `
+            + `-o "$search_file"; `
+            + `collection=$(jq -r --arg title '${escapedTitle}' --arg artist '${escapedArtist}' --arg album '${escapedAlbum}' `
+            + `'def norm: ascii_downcase; `
+            + `([.results[] | select(((.trackName // "") | norm) == ($title | norm) `
+            + `and ((.artistName // "") | norm) == ($artist | norm) `
+            + `and (($album | length) == 0 or ((.collectionName // "") | norm) == ($album | norm)))][0] `
+            + `// [.results[] | select(((.artistName // "") | norm) == ($artist | norm) `
+            + `and (($album | length) == 0 or ((.collectionName // "") | norm) == ($album | norm)))][0] `
+            + `// [.results[] | select(((.trackName // "") | norm) == ($title | norm) `
+            + `and ((.artistName // "") | norm) == ($artist | norm))][0]) `
+            + `| .collectionId // empty' "$search_file"); `
+            + `[ -n "$collection" ]; `
+            + `curl -4 -fsSG --retry 2 --retry-delay 1 'https://itunes.apple.com/lookup' `
+            + `--data-urlencode "id=$collection" --data 'entity=song' -o "$lookup_file"; `
+            + `cat "$lookup_file"`]
+
+        stdout: StdioCollector {
+            onStreamFinished: {
+                if (durationResolver.trackIdentity !== root.trackIdentity
+                        || root.durationKnown || text.trim().length === 0)
+                    return
+                try {
+                    const response = JSON.parse(text)
+                    const duration = root.durationFromAppleResults(response?.results ?? [])
+                    if (duration > 0)
+                        root.rememberDuration(duration)
+                } catch (error) {
+                    console.warn("[MediaArtwork] Could not parse duration retry response:", error)
+                }
+            }
+        }
+
+        stderr: StdioCollector {
+            onStreamFinished: {
+                if (text.trim().length > 0)
+                    console.warn("[MediaArtwork] duration retry error:", text.trim())
+            }
+        }
     }
 
     readonly property string source: {
@@ -195,7 +315,10 @@ Singleton {
     }
 
     onArtworkKeyChanged: root.refresh()
-    Component.onCompleted: root.refresh()
+    Component.onCompleted: {
+        root.refresh()
+        Qt.callLater(root.scheduleDurationRetry)
+    }
 
     Timer {
         id: restartTimer
