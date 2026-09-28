@@ -62,7 +62,9 @@ Singleton {
         Quickshell.execDetached(["mkdir", "-p", `${userPresetsPath}`])
         Quickshell.execDetached(["mkdir", "-p", `${shellConfig}`])
         Quickshell.execDetached(["mkdir", "-p", `${favicons}`])
-        Quickshell.execDetached(["bash", "-c", `rm -rf '${coverArt}'; mkdir -p '${coverArt}'`])
+        // Cover art is a real cache: keep it across shell restarts so album
+        // metadata and artwork do not need to be downloaded again.
+        Quickshell.execDetached(["mkdir", "-p", `${coverArt}`])
         Quickshell.execDetached(["bash", "-c", `rm -rf '${booruPreviews}'; mkdir -p '${booruPreviews}'`])
         Quickshell.execDetached(["bash", "-c", `rm -rf '${latexOutput}'; mkdir -p '${latexOutput}'`])
         Quickshell.execDetached(["bash", "-c", `rm -rf '${cliphistDecode}'; mkdir -p '${cliphistDecode}'`])

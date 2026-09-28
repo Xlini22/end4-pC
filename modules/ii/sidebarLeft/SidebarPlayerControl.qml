@@ -15,12 +15,12 @@ import Quickshell.Services.Mpris
 
 Item {
     id: root
-    property var player: Mpris.players.values[root.currentPlayerIndex] ?? Mpris.players.values[0]
-    property var artUrl: player?.trackArtUrl ?? ""
-    property string artDownloadLocation: Directories.coverArt
-    property bool showLyrics: Config.options.sidebar.media.showLyrics ?? true
-    property string artFileName: Qt.md5(artUrl)
-    property string artFilePath: `${artDownloadLocation}/${artFileName}`
+    readonly property var players: MprisController.players
+    property var player: MprisController.activePlayer ?? root.players[0] ?? null
+    readonly property bool lyricsUnavailable: LyricsService.status === "not_found"
+        || LyricsService.status === "no_info"
+    readonly property bool showLyrics: (Config.options.sidebar.media.showLyrics ?? true)
+        && !root.lyricsUnavailable
     property color artDominantColor: Config.options.sidebar.media.artColors
         ? ColorUtils.mix(
             (colorQuantizer?.colors[0] ?? Appearance.colors.colPrimary),
@@ -28,42 +28,21 @@ Item {
             0.8
           )
         : Appearance.colors.colPrimaryContainer
-    property bool downloaded: false
     property list<real> visualizerPoints: []
     property real maxVisualizerValue: 1000
     property int visualizerSmoothing: 2
     property real radius
-    property int currentPlayerIndex: 0
     property bool blurredBackground: Config.options.sidebar.media.blurredBackground ?? false
     property bool shapeArt: Config.options.sidebar.media.shapeArt ?? false
     readonly property var artShapeOptions: ["Circle", "Square", "Pill", "Bun", "Cookie12Sided", "Clover4Leaf", "Heart", "Slanted", "Arch", "Arrow", "SemiCircle", "Oval", "Triangle", "Diamond", "ClamShell", "Pentagon", "Gem", "Sunny", "VerySunny", "Cookie4Sided", "Cookie6Sided", "Cookie7Sided", "Cookie9Sided", "Ghostish", "Clover8Leaf", "Burst", "SoftBurst", "Boom", "SoftBoom", "Flower", "Puffy", "PuffyDiamond"]
 
-    property string displayedArtFilePath: root.downloaded ? Qt.resolvedUrl(artFilePath) : ""
+    readonly property string displayedArtFilePath: MediaArtwork.source
 
     Timer {
         running: root.player?.playbackState == MprisPlaybackState.Playing
         interval: Config.options.resources.updateInterval
         repeat: true
         onTriggered: root.player?.positionChanged()  
-    }
-
-    onArtFilePathChanged: {
-        if (!root.artUrl || root.artUrl.length == 0) {
-            root.artDominantColor = Appearance.m3colors.m3secondaryContainer
-            return
-        }
-        coverArtDownloader.targetFile = root.artUrl
-        coverArtDownloader.artFilePath = root.artFilePath
-        root.downloaded = false
-        coverArtDownloader.running = true
-    }
-
-    Process {
-        id: coverArtDownloader
-        property string targetFile: root.artUrl
-        property string artFilePath: root.artFilePath
-        command: ["bash", "-c", `[ -f ${artFilePath} ] || curl -sSL '${targetFile}' -o '${artFilePath}'`]
-        onExited: (exitCode, exitStatus) => { root.downloaded = true }
     }
 
     ColorQuantizer {
@@ -193,6 +172,13 @@ Item {
                     color: Appearance.colors.colPrimary
                     iconSize: Appearance.font.pixelSize.hugeass + 100
                 }
+
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: root.player !== null
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: MprisController.raiseActivePlayer()
+                }
             }
 
             // ── Title & Artist ──
@@ -226,6 +212,13 @@ Item {
                             }
                         }
                     }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: root.player !== null
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: MprisController.raiseActivePlayer()
+                    }
                 }
 
                 Item {
@@ -252,6 +245,13 @@ Item {
                             }
                         }
                     }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        enabled: root.player !== null
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: MprisController.raiseActivePlayer()
+                    }
                 }
             }
 
@@ -263,7 +263,7 @@ Item {
                 Lyrics {
                     id: lyricsComp
                     anchors.fill: parent
-                    opacity: (MprisController.activePlayer !== null && Config.options.sidebar.media.showLyrics) ? 1 : 0
+                    opacity: MprisController.activePlayer !== null && root.showLyrics ? 1 : 0
                     textAlignment: Text.AlignHCenter
                     textColor: blendedColors.colOnLayer0
                     activeColor: blendedColors.colPrimary
@@ -282,7 +282,7 @@ Item {
 
                 Loader {
                     anchors.fill: parent
-                    active: !Config.options.sidebar.media.showLyrics
+                    active: !root.showLyrics
                     opacity: active ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: 200 } }
 
@@ -387,15 +387,18 @@ Item {
                                 id: sliderLoader
                                 property var player: root.player
                                 anchors.fill: parent
-                                active: sliderLoader.player?.canSeek ?? false
+                            active: (sliderLoader.player?.canSeek ?? false)
+                                && MediaArtwork.durationKnown
                                 sourceComponent: StyledSlider {
                                     configuration: StyledSlider.Configuration.Wavy
                                     highlightColor: blendedColors.colPrimary
                                     trackColor: blendedColors.colSecondaryContainer
                                     handleColor: blendedColors.colPrimary
-                                    value: (sliderLoader.player?.position ?? 0) / (sliderLoader.player?.length ?? 1)
+                                    value: MediaArtwork.durationKnown
+                                        ? MediaArtwork.playbackPosition / MediaArtwork.playbackLength : 0
                                     onMoved: {
-                                        sliderLoader.player.position = value * sliderLoader.player.length
+                                        sliderLoader.player.position = MediaArtwork.rawPositionFor(
+                                            value * MediaArtwork.playbackLength)
                                         lyricsComp.restartLyrics()
                                     }
                                 }
@@ -414,7 +417,8 @@ Item {
                                     wavy: progressBarLoader.player?.isPlaying ?? false
                                     highlightColor: blendedColors.colPrimary
                                     trackColor: blendedColors.colSecondaryContainer
-                                    value: (progressBarLoader.player?.position ?? 0) / (progressBarLoader.player?.length ?? 1)
+                                    value: MediaArtwork.durationKnown
+                                        ? MediaArtwork.playbackPosition / MediaArtwork.playbackLength : 0
                                 }
                             }
                         }
@@ -427,7 +431,7 @@ Item {
                                 color: blendedColors.colSubtext
                                 font.letterSpacing: -0.4
                                 font.features: { "tnum": 1 }
-                                text: StringUtils.friendlyTimeForSeconds(root.player?.position ?? 0)
+                                text: StringUtils.friendlyTimeForSeconds(MediaArtwork.playbackPosition)
                             }
 
                             Item { Layout.fillWidth: true }
@@ -437,7 +441,9 @@ Item {
                                 color: blendedColors.colSubtext
                                 font.letterSpacing: -0.4
                                 font.features: { "tnum": 1 }
-                                text: StringUtils.friendlyTimeForSeconds(root.player?.length ?? 0)
+                                text: MediaArtwork.durationKnown
+                                    ? StringUtils.friendlyTimeForSeconds(MediaArtwork.playbackLength)
+                                    : "--:--"
                             }
                         }
                     }
@@ -463,7 +469,7 @@ Item {
                     }
                     contentItem: MaterialSymbol {
                         iconSize: 18
-                        fill: Config.options.sidebar.media.showLyrics ? 1 : 0
+                        fill: root.showLyrics ? 1 : 0
                         horizontalAlignment: Text.AlignHCenter
                         color: blendedColors.colOnSecondaryContainer
                         text: "lyrics"
@@ -609,11 +615,12 @@ Item {
             // ── Player selector ──
             StyledComboBox {
                 id: playerSelector
-                visible: Mpris.players.values.length > 1
+                visible: root.players.length > 1
                 Layout.fillWidth: true
                 Layout.topMargin: 12
-                model: Mpris.players.values.map(p => p.identity ?? p.desktopEntry ?? "Unknown")
-                currentIndex: 0
+                model: root.players.map(p => p.identity ?? p.desktopEntry ?? "Unknown")
+                currentIndex: Math.max(0, root.players.indexOf(root.player))
+                onActivated: index => MprisController.setActivePlayer(root.players[index])
             }
         }
     }
