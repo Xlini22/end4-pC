@@ -393,6 +393,66 @@ ContentPage {
         }
 
         ContentSection {
+            icon: "swipe"
+            title: Translation.tr("Workspace parallax")
+            visible: WM.compositor === "hyprland"
+
+            GroupedList {
+                ConfigSwitch {
+                    buttonIcon: "swipe"
+                    text: Translation.tr("Move wallpaper when switching workspaces")
+                    checked: Config.options.background.parallax.enableWorkspace
+                    onCheckedChanged: Config.options.background.parallax.enableWorkspace = checked
+                }
+                ConfigSlider {
+                    Layout.fillWidth: true
+                    text: Translation.tr("Parallax zoom")
+                    buttonIcon: "zoom_in"
+                    from: 1
+                    to: 1.5
+                    value: Config.options.background.parallax.workspaceZoom
+                    stopIndicatorValues: [1, 1.15, 1.3, 1.5]
+                    onValueChanged: Config.options.background.parallax.workspaceZoom = value
+                }
+                ConfigSwitch {
+                    buttonIcon: "side_navigation"
+                    text: Translation.tr("Parallax when opening sidebars")
+                    checked: Config.options.background.parallax.enableSidebar
+                    onCheckedChanged: Config.options.background.parallax.enableSidebar = checked
+                }
+                ConfigSlider {
+                    Layout.fillWidth: true
+                    text: Translation.tr("Widget parallax")
+                    buttonIcon: "widgets"
+                    from: 0
+                    to: 2
+                    value: Config.options.background.parallax.widgetsFactor
+                    stopIndicatorValues: [0, 1, 1.2, 2]
+                    onValueChanged: Config.options.background.parallax.widgetsFactor = value
+                }
+                ConfigSwitch {
+                    buttonIcon: "screen_rotation"
+                    text: Translation.tr("Automatic vertical parallax for portrait images")
+                    checked: Config.options.background.parallax.autoVertical
+                    onCheckedChanged: Config.options.background.parallax.autoVertical = checked
+                }
+                ConfigSwitch {
+                    buttonIcon: "swap_vert"
+                    text: Translation.tr("Vertical parallax")
+                    enabled: Config.options.background.parallax.enableWorkspace
+                    checked: Config.options.background.parallax.vertical
+                    onCheckedChanged: Config.options.background.parallax.vertical = checked
+                }
+            }
+            StyledText {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: Translation.tr("For static wallpapers. Movement uses the image area beyond the screen edges. Increasing zoom adds more room. Disabled with centered wallpaper.")
+                color: Appearance.colors.colSubtext
+            }
+        }
+
+        ContentSection {
             id: settingsClock
             icon: "clock_loader_40"
             shape: MaterialShape.Shape.Bun

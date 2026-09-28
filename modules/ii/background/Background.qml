@@ -51,6 +51,50 @@ Variants {
 
         property HyprlandMonitor monitor: Hyprland.monitorFor(modelData)
 
+        // Workspace range and image geometry follow the original ii parallax.
+        property list<var> relevantWindows: HyprlandData.windowList.filter(win => win.monitor == monitor?.id && win.workspace.id >= 0).sort((a, b) => a.workspace.id - b.workspace.id)
+        readonly property int lastWorkspaceId: relevantWindows[relevantWindows.length - 1]?.workspace.id || 10
+        readonly property int workspaceChunkSize: Math.max(1, Config.options.bar.workspaces.shown ?? 10)
+        readonly property int totalWorkspaces: Math.ceil(lastWorkspaceId / workspaceChunkSize) * workspaceChunkSize
+        // Centered wallpaper and video rendering are specific to this fork.
+        readonly property bool parallaxAvailable: WM.compositor === "hyprland"
+            && !wallpaperIsVideo && !centeredWallpaper.centeredWallpaperEnabled
+        readonly property real parallaxRatio: parallaxAvailable
+            ? Math.max(1, Config.options.background.parallax.workspaceZoom) : 1
+        property real wallpaperWidth: modelData.width
+        property real wallpaperHeight: modelData.height
+        readonly property real minSuitableScale: Math.max(modelData.width / wallpaperWidth, modelData.height / wallpaperHeight)
+        readonly property real scaledWallpaperWidth: wallpaperWidth * minSuitableScale * parallaxRatio
+        readonly property real scaledWallpaperHeight: wallpaperHeight * minSuitableScale * parallaxRatio
+        readonly property real parallaxTotalPixelsX: Math.max(0, scaledWallpaperWidth - modelData.width)
+        readonly property real parallaxTotalPixelsY: Math.max(0, scaledWallpaperHeight - modelData.height)
+        readonly property bool verticalParallax: Config.options.background.parallax.vertical
+            || (Config.options.background.parallax.autoVertical && wallpaperHeight > wallpaperWidth)
+
+        function updateZoomScale() {
+            if (getWallpaperSizeProc.running) return;
+            getWallpaperSizeProc.path = bgRoot.wallpaperPath;
+            if (getWallpaperSizeProc.path) getWallpaperSizeProc.running = true;
+        }
+        Process {
+            id: getWallpaperSizeProc
+            property string path: ""
+            command: ["magick", "identify", "-format", "%w %h", CF.FileUtils.trimFileProtocol(path) + "[0]"]
+            stdout: StdioCollector {
+                onStreamFinished: {
+                    if (getWallpaperSizeProc.path !== bgRoot.wallpaperPath) return;
+                    const dimensions = text.trim().split(/\s+/).map(Number);
+                    if (dimensions.length !== 2 || !dimensions.every(n => Number.isFinite(n) && n > 0)) return;
+                    bgRoot.wallpaperWidth = dimensions[0];
+                    bgRoot.wallpaperHeight = dimensions[1];
+                }
+            }
+            onExited: {
+                // A preview can change while identify is still reading the previous image.
+                if (path !== bgRoot.wallpaperPath) Qt.callLater(bgRoot.updateZoomScale);
+            }
+        }
+
         property string effectiveWallpaperPath: {
             if (GlobalStates.screenLocked && Config.options.background.lockWall !== "")
                 return Config.options.background.lockWall;
@@ -109,6 +153,7 @@ Variants {
         }
 
         Component.onCompleted: {
+            bgRoot.updateZoomScale();
             previousWallpaper.source = bgRoot.wallpaperSafetyTriggered ? "" : bgRoot.wallpaperPath
             wallpaper.source = bgRoot.wallpaperSafetyTriggered ? "" : bgRoot.wallpaperPath
             bgRoot.currentWallpaperSource = bgRoot.wallpaperPath
@@ -123,6 +168,7 @@ Variants {
         }
 
         onWallpaperPathChanged: {
+            bgRoot.updateZoomScale();
             bgRoot.videoRevealed = false
             if (wallpaperSafetyTriggered) {
                 bgRoot.transitionPending = false
@@ -207,148 +253,177 @@ Variants {
             anchors.fill: parent
             opacity: (bgRoot.hiddenForFullscreen || GlobalStates.startupLockPending) ? 0 : 1
             enabled: !bgRoot.hiddenForFullscreen
-            
+
             Behavior on opacity {
                 NumberAnimation { duration: 150; easing.type: Easing.OutCubic }
             }
 
-            Image {
-                id: previousWallpaper
-                anchors.fill: parent
-                fillMode: Image.PreserveAspectCrop
-                // Same size as `wallpaper` so this synchronous Image reuses its cached pixmap
-                sourceSize: bgRoot.wallpaperSourceSize
-                cache: true
-                mipmap: true
-                smooth: true
-                layer.enabled: true
-                visible: !bgRoot.videoRevealed
-                opacity: bgRoot.videoRevealed ? 0 : 1
-            }
+            // Move the wallpaper and its transition/blur layers together. Widgets
+            // follow below with the original ii depth factor.
+            Item {
+                id: parallaxSurface
+                width: bgRoot.parallaxAvailable ? bgRoot.scaledWallpaperWidth : parent.width
+                height: bgRoot.parallaxAvailable ? bgRoot.scaledWallpaperHeight : parent.height
+                readonly property int workspaceIndex: (bgRoot.monitor?.activeWorkspace?.id ?? 1) - 1
+                readonly property real fraction: bgRoot.totalWorkspaces <= 1 ? 0.5
+                    : Math.max(0, Math.min(1, workspaceIndex / (bgRoot.totalWorkspaces - 1)))
+                readonly property real usedFractionX: {
+                    let fractionX = Config.options.background.parallax.enableWorkspace && !bgRoot.verticalParallax ? fraction : 0.5;
+                    if (Config.options.background.parallax.enableSidebar) {
+                        const sidebarFraction = bgRoot.parallaxRatio / bgRoot.workspaceChunkSize / 2;
+                        fractionX += sidebarFraction * (Number(GlobalStates.sidebarRightOpen) - Number(GlobalStates.sidebarLeftOpen));
+                    }
+                    return Math.max(0, Math.min(1, fractionX));
+                }
+                readonly property real usedFractionY: Config.options.background.parallax.enableWorkspace && bgRoot.verticalParallax ? fraction : 0.5
+                x: bgRoot.parallaxAvailable ? -bgRoot.parallaxTotalPixelsX * usedFractionX : 0
+                y: bgRoot.parallaxAvailable ? -bgRoot.parallaxTotalPixelsY * usedFractionY : 0
+                Behavior on x {
+                    NumberAnimation { duration: 600; easing.type: Easing.OutCubic }
+                }
+                Behavior on y {
+                    NumberAnimation { duration: 600; easing.type: Easing.OutCubic }
+                }
 
-            StyledImage {
-                id: wallpaper
-                anchors.fill: parent
-                fillMode: Image.PreserveAspectCrop
-                sourceSize: bgRoot.wallpaperSourceSize
-                cache: true
-                smooth: true
-                mipmap: true
-                asynchronous: true
-                layer.enabled: bgRoot.wallpaperIsVideo ? false : true
-                visible: !blurLoader.active && !bgRoot.videoRevealed
-                    && (bgRoot.wallpaperAnimation === "" || bgRoot.transitionProgress >= 1.0)
-                    && !centeredWallpaper.centeredHidesFullWallpaper
-                opacity: centeredWallpaper.centeredFullWallpaperOpacity()
-                onStatusChanged: {
-                    if (status === Image.Ready && bgRoot.transitionPending) {
-                        bgRoot.transitionPending = false
-                        bgRoot.transitionProgress = 0.0
-                        transitionAnim.restart()
+                Image {
+                    id: previousWallpaper
+                    anchors.fill: parent
+                    fillMode: Image.PreserveAspectCrop
+                    // Same size as `wallpaper` so this synchronous Image reuses its cached pixmap
+                    sourceSize: bgRoot.wallpaperSourceSize
+                    cache: true
+                    mipmap: true
+                    smooth: true
+                    layer.enabled: true
+                    visible: !bgRoot.videoRevealed
+                    opacity: bgRoot.videoRevealed ? 0 : 1
+                }
+
+                StyledImage {
+                    id: wallpaper
+                    anchors.fill: parent
+                    fillMode: Image.PreserveAspectCrop
+                    sourceSize: bgRoot.wallpaperSourceSize
+                    cache: true
+                    smooth: true
+                    mipmap: true
+                    asynchronous: true
+                    layer.enabled: bgRoot.wallpaperIsVideo ? false : true
+                    visible: !blurLoader.active && !bgRoot.videoRevealed
+                        && (bgRoot.wallpaperAnimation === "" || bgRoot.transitionProgress >= 1.0)
+                        && !centeredWallpaper.centeredHidesFullWallpaper
+                    opacity: centeredWallpaper.centeredFullWallpaperOpacity()
+                    onStatusChanged: {
+                        if (status === Image.Ready && bgRoot.transitionPending) {
+                            bgRoot.transitionPending = false
+                            bgRoot.transitionProgress = 0.0
+                            transitionAnim.restart()
+                        }
                     }
                 }
-            }
 
-            ShaderEffect {
-                id: transitionEffect
-                anchors.fill: parent
-                visible: !blurLoader.active && bgRoot.wallpaperAnimation !== "" && !centeredWallpaper.centeredShapeActive && !bgRoot.videoRevealed
-                    && bgRoot.transitionProgress < 1.0
+                ShaderEffect {
+                    id: transitionEffect
+                    anchors.fill: parent
+                    visible: !blurLoader.active && bgRoot.wallpaperAnimation !== "" && !centeredWallpaper.centeredShapeActive && !bgRoot.videoRevealed
+                        && bgRoot.transitionProgress < 1.0
 
-                property var fromImage: previousWallpaper
-                property var toImage: wallpaper
-                property var source1: previousWallpaper
-                property var source2: wallpaper
-                property real time: 0.0
-                property real progress: bgRoot.transitionProgress
-                property real aspectX: width / height
-                property real aspectY: 1.0
-                property vector2d aspectRatio: Qt.vector2d(aspectX, aspectY)
-                property vector2d origin: Qt.vector2d(0.5, 0.5)
+                    property var fromImage: previousWallpaper
+                    property var toImage: wallpaper
+                    property var source1: previousWallpaper
+                    property var source2: wallpaper
+                    property real time: 0.0
+                    property real progress: bgRoot.transitionProgress
+                    property real aspectX: width / height
+                    property real aspectY: 1.0
+                    property vector2d aspectRatio: Qt.vector2d(aspectX, aspectY)
+                    property vector2d origin: Qt.vector2d(0.5, 0.5)
 
-                fragmentShader: bgRoot.wallpaperAnimation !== ""
-                    ? Qt.resolvedUrl(`shaders/${bgRoot.currentShader}.frag.qsb`)
-                    : ""
+                    fragmentShader: bgRoot.wallpaperAnimation !== ""
+                        ? Qt.resolvedUrl(`shaders/${bgRoot.currentShader}.frag.qsb`)
+                        : ""
 
-                Timer {
-                    interval: 16
-                    repeat: true
-                    running: transitionEffect.visible
-                    onTriggered: transitionEffect.time += interval / 1000.0
+                    Timer {
+                        interval: 16
+                        repeat: true
+                        running: transitionEffect.visible
+                        onTriggered: transitionEffect.time += interval / 1000.0
+                    }
+                    onVisibleChanged: if (!visible) transitionEffect.time = 0.0
                 }
-                onVisibleChanged: if (!visible) transitionEffect.time = 0.0
-            }
 
-            Loader {
-                id: blurLoader
-                // The blur is invisible while the centered wallpaper is active
-                // (opaque shape + solid background cover it), so skip it to
-                // save the expensive multi-sample blur pass on lock/unlock.
-                active: Config.options.lock.blur.enable && !centeredWallpaper.centeredWallpaperEnabled
-                    && (GlobalStates.screenLocked || scaleAnim.running)
-                    && !(bgRoot.userBlurActive || bgRoot.overviewBlurActive)
-                anchors.fill: parent
-                scale: GlobalStates.screenLocked ? Config.options.lock.blur.extraZoom : 1
-                Behavior on scale {
-                    NumberAnimation {
-                        id: scaleAnim
-                        duration: 400
-                        easing.type: Easing.BezierSpline
-                        easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+                Loader {
+                    id: blurLoader
+                    // The blur is invisible while the centered wallpaper is active
+                    // (opaque shape + solid background cover it), so skip it to
+                    // save the expensive multi-sample blur pass on lock/unlock.
+                    active: Config.options.lock.blur.enable && !centeredWallpaper.centeredWallpaperEnabled
+                        && (GlobalStates.screenLocked || scaleAnim.running)
+                        && !(bgRoot.userBlurActive || bgRoot.overviewBlurActive)
+                    anchors.fill: parent
+                    scale: GlobalStates.screenLocked ? Config.options.lock.blur.extraZoom : 1
+                    Behavior on scale {
+                        NumberAnimation {
+                            id: scaleAnim
+                            duration: 400
+                            easing.type: Easing.BezierSpline
+                            easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+                        }
+                    }
+                    sourceComponent: GaussianBlur {
+                        source: bgRoot.wallpaperAnimation === "" || bgRoot.transitionProgress >= 1.0 ? wallpaper : transitionEffect
+                        radius: GlobalStates.screenLocked ? Config.options.lock.blur.radius : 0
+                        samples: Config.options.lock.blur.size
+                        Rectangle {
+                            opacity: GlobalStates.screenLocked ? 1 : 0
+                            anchors.fill: parent
+                            color: CF.ColorUtils.transparentize(Appearance.colors.colLayer0, 0.7)
+                        }
                     }
                 }
-                sourceComponent: GaussianBlur {
-                    source: bgRoot.wallpaperAnimation === "" || bgRoot.transitionProgress >= 1.0 ? wallpaper : transitionEffect
-                    radius: GlobalStates.screenLocked ? Config.options.lock.blur.radius : 0
-                    samples: Config.options.lock.blur.size 
-                    Rectangle {
-                        opacity: GlobalStates.screenLocked ? 1 : 0
-                        anchors.fill: parent
-                        color: CF.ColorUtils.transparentize(Appearance.colors.colLayer0, 0.7)
-                    }
-                }
-            }
 
-            Loader {
-                id: fastBlurLoader
-                active: (bgRoot.userBlurActive || bgRoot.overviewBlurActive)
-                    && (!GlobalStates.screenLocked || !centeredWallpaper.centeredWallpaperEnabled || bgRoot.blurFullScreen)
-                anchors.fill: parent
-                
-                sourceComponent: Item {
-                    id: blurRoot
+                Loader {
+                    id: fastBlurLoader
+                    active: (bgRoot.userBlurActive || bgRoot.overviewBlurActive)
+                        && (!GlobalStates.screenLocked || !centeredWallpaper.centeredWallpaperEnabled || bgRoot.blurFullScreen)
                     anchors.fill: parent
 
-                    readonly property real fadeWidth: 140
-                    readonly property real blurRadius: 48
-                    readonly property bool alignRight: Config.options.background.splitSide === "right"
-                    property real coreWidth: bgRoot.blurFullScreen ? blurRoot.width : blurRoot.width * bgRoot.splitFraction
-
-                    Behavior on coreWidth {
-                        NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
-                    }
-
-                    FastBlur {
-                        id: blurLayer
+                    sourceComponent: Item {
+                        id: blurRoot
                         anchors.fill: parent
-                        source: bgRoot.wallpaperAnimation === "" || bgRoot.transitionProgress >= 1.0 ? wallpaper : transitionEffect
-                        radius: Config.options.background.blurRadius
 
-                        layer.enabled: !bgRoot.blurFullScreen
-                        layer.effect: OpacityMask {
-                            maskSource: Rectangle {
-                                width: blurLayer.width
-                                height: blurLayer.height
-                                gradient: Gradient {
-                                    orientation: Gradient.Horizontal
-                                    GradientStop { position: blurRoot.alignRight ? 1 - (blurRoot.coreWidth / blurRoot.width) : Math.max(0, (blurRoot.coreWidth - blurRoot.fadeWidth) / blurRoot.width); color: blurRoot.alignRight ? "transparent" : "white" }
-                                    GradientStop { position: blurRoot.alignRight ? Math.min(1, 1 - (blurRoot.coreWidth - blurRoot.fadeWidth) / blurRoot.width) : Math.min(1, blurRoot.coreWidth / blurRoot.width); color: blurRoot.alignRight ? "white" : "transparent" }
+                        readonly property real fadeWidth: 140
+                        readonly property real blurRadius: 48
+                        readonly property bool alignRight: Config.options.background.splitSide === "right"
+                        property real coreWidth: bgRoot.blurFullScreen ? blurRoot.width : blurRoot.width * bgRoot.splitFraction
+
+                        Behavior on coreWidth {
+                            NumberAnimation { duration: 250; easing.type: Easing.OutCubic }
+                        }
+
+                        FastBlur {
+                            id: blurLayer
+                            anchors.fill: parent
+                            source: bgRoot.wallpaperAnimation === "" || bgRoot.transitionProgress >= 1.0 ? wallpaper : transitionEffect
+                            radius: Config.options.background.blurRadius
+
+                            layer.enabled: !bgRoot.blurFullScreen
+                            layer.effect: OpacityMask {
+                                maskSource: Rectangle {
+                                    width: blurLayer.width
+                                    height: blurLayer.height
+                                    gradient: Gradient {
+                                        orientation: Gradient.Horizontal
+                                        GradientStop { position: blurRoot.alignRight ? 1 - (blurRoot.coreWidth / blurRoot.width) : Math.max(0, (blurRoot.coreWidth - blurRoot.fadeWidth) / blurRoot.width); color: blurRoot.alignRight ? "transparent" : "white" }
+                                        GradientStop { position: blurRoot.alignRight ? Math.min(1, 1 - (blurRoot.coreWidth - blurRoot.fadeWidth) / blurRoot.width) : Math.min(1, blurRoot.coreWidth / blurRoot.width); color: blurRoot.alignRight ? "white" : "transparent" }
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
+
+            } // parallaxSurface
 
             /* Centered Wallpaper */
             CenteredWallpaper {
@@ -367,7 +442,15 @@ Variants {
             /* Widgets Loader */
             WidgetCanvas {
                 id: widgetCanvas
-                anchors.fill: parent
+                width: parent.width
+                height: parent.height
+                readonly property real parallaxFactor: Config.options.background.parallax.widgetsFactor / bgRoot.parallaxRatio
+                readonly property real baseWallpaperOffsetX: (bgRoot.modelData.width - parallaxSurface.width) / 2
+                readonly property real baseWallpaperOffsetY: (bgRoot.modelData.height - parallaxSurface.height) / 2
+                x: bgRoot.parallaxAvailable && !GlobalStates.screenLocked
+                    ? (parallaxSurface.x - baseWallpaperOffsetX) * parallaxFactor : 0
+                y: bgRoot.parallaxAvailable && !GlobalStates.screenLocked
+                    ? (parallaxSurface.y - baseWallpaperOffsetY) * parallaxFactor : 0
 
                 transitions: Transition {
                     PropertyAnimation {
