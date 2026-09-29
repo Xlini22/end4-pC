@@ -40,7 +40,7 @@ ContentPage {
         { id: "workspaces",        name: Translation.tr("Workspaces"),           icon: "steppers" },
         { id: "weatherBar",        name: Translation.tr("Weather"),              icon: "flare" },
         { id: "media",             name: Translation.tr("Media"),                icon: "music_note" },
-        { id: "osd",               name: Translation.tr("Volume & Brightness"),   icon: "volume_up" },
+        { id: "activity",          name: Translation.tr("Activity"),              icon: "notifications_active" },
         { id: "resources",         name: Translation.tr("Resources"),            icon: "empty_dashboard" },
         { id: "systemIcons",       name: Translation.tr("System Icons"),         icon: "info" },
         { id: "networkSpeed",      name: Translation.tr("Network Speed"),        icon: "network_check" },

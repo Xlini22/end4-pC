@@ -29,9 +29,6 @@ Item {
     // it, then removes only unused wing space on the constrained side.
     property real maxLeftExtent: Number.POSITIVE_INFINITY
     property real maxRightExtent: Number.POSITIVE_INFINITY
-    readonly property real badgesWidth: root.badgeProviders.length > 0
-        ? root.badgeProviders.length * root.badgeSize + (root.badgeProviders.length - 1) * root.badgeSpacing : 0
-
     readonly property real pillHeight: 32
     readonly property real emptyCollapsedWidth: 40
     readonly property real emptyExpandedWidth: 56
@@ -51,31 +48,10 @@ Item {
     readonly property real osdWidth: 132
     readonly property real notificationWidth: 220
     readonly property real batteryWidth: 170
-    readonly property real badgeSize: 32
-    readonly property real badgeSpacing: 6
     readonly property bool isMaterial: Config.options.bar.cornerStyle === 3
     property bool vertical: Config.options.bar.vertical
 
-    property string manualFocusId: ""
-
-    property bool forceIdle: false
-
-    readonly property var displayedProvider: root.forceIdle ? null : root.activeProvider
-    readonly property bool hasOsdActivitySlot:
-        Config.options.bar.dynamicIsland.leftWidgets.includes("osd")
-        || Config.options.bar.dynamicIsland.rightWidgets.includes("osd")
-    readonly property bool routeProviderToOsdSlot:
-        root.hasOsdActivitySlot && !root.sessionExclusive
-    readonly property var osdSlotProvider:
-        root.routeProviderToOsdSlot ? root.displayedProvider : null
-    readonly property var pillProvider:
-        root.routeProviderToOsdSlot ? null : root.displayedProvider
-
-    onActiveProviderChanged: {
-        if (root.activeProvider && root.alwaysWinIds.includes(root.activeProvider.id)) {
-            root.forceIdle = false
-        }
-    }
+    readonly property real activitySpacing: 6
 
     readonly property MprisPlayer activePlayer: MprisController.activePlayer
     readonly property bool hasMedia: root.activePlayer !== null
@@ -209,35 +185,34 @@ Item {
         return root.batteryAlertKind === "charging" ? Appearance.m3colors.m3success : Appearance.colors.colError
     }
 
-    readonly property var contentProviders: [
+    readonly property var sessionProvider: ({
+        id: "session",
+        active: root.sessionExclusive,
+        component: sessionComponent,
+        width: root.sessionWidth
+    })
+
+    // Stable left-to-right order for simultaneous transient activities.
+    readonly property var activityProviders: [
+        { id: "recording",    active: root.isRecording,            component: recordingComponent, width: root.recordingWidth },
+        { id: "timer",        active: root.hasActiveTimer,         component: timerComponent,     width: root.timerWidth },
         { id: "notification", active: root.latestNotification !== null, component: notificationComponent, width: root.notificationWidth },
-        { id: "battery",      active: root.batteryAlertActive,          component: batteryComponent,      width: root.batteryWidth },
-        { id: "recording",    active: root.isRecording,                 component: recordingComponent,    width: root.recordingWidth },
-        { id: "timer",        active: root.hasActiveTimer,              component: timerComponent,        width: root.timerWidth },
-        { id: "session",      active: root.sessionExclusive,            component: sessionComponent,      width: root.sessionWidth },
+        { id: "battery",      active: root.batteryAlertActive,     component: batteryComponent,   width: root.batteryWidth },
+        { id: "osd",          active: GlobalStates.osdVolumeOpen,  component: osdComponent,       width: root.osdWidth },
     ]
-
-    readonly property var alwaysWinIds: ["session", "notification", "battery"]
-
-    readonly property var activeOthers: root.contentProviders.filter(p => !root.alwaysWinIds.includes(p.id) && p.active)
-
-    readonly property var activeProvider: {
-        if (root.sessionExclusive)
-            return root.contentProviders.find(p => p.id === "session")
-        const forcedTop = root.contentProviders.find(p => root.alwaysWinIds.includes(p.id) && p.active)
-        if (forcedTop) return forcedTop
-        if (root.manualFocusId !== "") {
-            const forced = root.activeOthers.find(p => p.id === root.manualFocusId)
-            if (forced) return forced
-        }
-        return root.activeOthers[0] ?? null
+    readonly property var activeActivityProviders:
+        root.activityProviders.filter(provider => provider.active)
+    readonly property real activityContentWidth: {
+        const providers = root.activeActivityProviders
+        if (providers.length === 0) return 0
+        return providers.reduce((width, provider) => width + provider.width, 0)
+            + (providers.length - 1) * root.activitySpacing
     }
 
-    readonly property var badgeProviders: {
-        if (root.sessionExclusive) return []
-        if (root.alwaysWinIds.some(id => root.contentProviders.find(p => p.id === id)?.active)) return []
-        return root.activeOthers.filter(p => p.id !== root.activeProvider?.id)
-    }
+    readonly property var activeProvider:
+        root.sessionExclusive ? root.sessionProvider : null
+    readonly property var displayedProvider: root.activeProvider
+    readonly property var pillProvider: root.displayedProvider
 
     function iconForProviderId(id) {
         switch (id) {
@@ -291,9 +266,7 @@ Item {
     readonly property real leftContentWidth: leftWidgets.implicitWidth
         + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
         + root.primaryWidth
-    readonly property real rightContentWidth: root.badgesWidth
-        + (root.badgesWidth > 0 && rightWidgets.implicitWidth > 0 ? root.workspaceSpacing : 0)
-        + rightWidgets.implicitWidth
+    readonly property real rightContentWidth: rightWidgets.implicitWidth
     readonly property real wingWidth: Math.max(root.leftContentWidth, root.rightContentWidth)
     readonly property real workspaceHalfWidth: workspaceLoader.implicitWidth / 2
     readonly property real fixedCenterExtent: root.contentPadding + root.workspaceHalfWidth
@@ -368,14 +341,29 @@ Item {
     }
 
     Component {
-        id: osdSideComponent
+        id: activitySideComponent
         Item {
-            implicitWidth: root.osdSlotProvider?.width ?? root.osdWidth
+            implicitWidth: root.activityContentWidth
             implicitHeight: root.pillHeight
 
-            Loader {
+            Row {
                 anchors.fill: parent
-                sourceComponent: root.osdSlotProvider?.component ?? osdComponent
+                spacing: root.activitySpacing
+
+                Repeater {
+                    model: root.activeActivityProviders
+                    delegate: Item {
+                        id: activityDelegate
+                        required property var modelData
+                        width: activityDelegate.modelData.width
+                        height: root.pillHeight
+
+                        Loader {
+                            anchors.fill: parent
+                            sourceComponent: activityDelegate.modelData.component
+                        }
+                    }
+                }
             }
         }
     }
@@ -392,13 +380,12 @@ Item {
         readonly property bool supportsExpansion: ["clockWidget", "resources", "visualizer"].includes(modelData)
         readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
         readonly property bool contentAvailable: (modelData !== "media" || root.hasMedia)
-            && (modelData !== "osd"
-                || GlobalStates.osdVolumeOpen || root.osdSlotProvider !== null)
+            && (modelData !== "activity" || root.activeActivityProviders.length > 0)
             && (modelData !== "visualizer" || (root.activePlayer?.isPlaying ?? false))
         readonly property real contentImplicitWidth: mediaLoader.active ? mediaLoader.implicitWidth
-            : (osdLoader.active ? osdLoader.implicitWidth : regularLoader.implicitWidth)
+            : (activityLoader.active ? activityLoader.implicitWidth : regularLoader.implicitWidth)
         readonly property real contentImplicitHeight: mediaLoader.active ? mediaLoader.implicitHeight
-            : (osdLoader.active ? osdLoader.implicitHeight : regularLoader.implicitHeight)
+            : (activityLoader.active ? activityLoader.implicitHeight : regularLoader.implicitHeight)
 
         visible: contentAvailable || implicitWidth > 0.5
         enabled: contentAvailable && root.componentInteractionReady
@@ -406,27 +393,27 @@ Item {
         implicitWidth: contentAvailable ? contentImplicitWidth : 0
         implicitHeight: contentAvailable ? contentImplicitHeight : root.pillHeight
         Layout.alignment: Qt.AlignVCenter
-        clip: ["visualizer", "osd"].includes(modelData)
+        clip: ["visualizer", "activity"].includes(modelData)
 
         Behavior on implicitWidth {
             enabled: sideDelegate.modelData !== "visualizer"
                 && (Config.options.bar.dynamicIsland.animationStyle === "staged"
-                    || sideDelegate.modelData === "osd")
+                    || sideDelegate.modelData === "activity")
             NumberAnimation {
-                readonly property bool isOsd: sideDelegate.modelData === "osd"
+                readonly property bool isActivity: sideDelegate.modelData === "activity"
                 readonly property bool simultaneous: Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
-                duration: isOsd ? 350 : (simultaneous ? 200 : 350)
-                easing.type: isOsd || !simultaneous ? Easing.BezierSpline : Easing.OutCubic
+                duration: isActivity ? 350 : (simultaneous ? 200 : 350)
+                easing.type: isActivity || !simultaneous ? Easing.BezierSpline : Easing.OutCubic
                 easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
             }
         }
 
         Behavior on opacity {
             enabled: Config.options.bar.dynamicIsland.animationStyle === "staged"
-                || ["osd", "visualizer"].includes(sideDelegate.modelData)
+                || ["activity", "visualizer"].includes(sideDelegate.modelData)
             NumberAnimation {
-                duration: sideDelegate.modelData === "osd" ? 350 : 200
-                easing.type: sideDelegate.modelData === "osd" ? Easing.InOutCubic : Easing.OutCubic
+                duration: sideDelegate.modelData === "activity" ? 350 : 200
+                easing.type: sideDelegate.modelData === "activity" ? Easing.InOutCubic : Easing.OutCubic
             }
         }
 
@@ -447,17 +434,17 @@ Item {
         }
 
         Loader {
-            id: osdLoader
-            active: sideDelegate.modelData === "osd"
+            id: activityLoader
+            active: sideDelegate.modelData === "activity"
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: sideDelegate.anchorRight ? undefined : parent.left
             anchors.right: sideDelegate.anchorRight ? parent.right : undefined
-            sourceComponent: osdSideComponent
+            sourceComponent: activitySideComponent
         }
 
         Loader {
             id: regularLoader
-            active: sideDelegate.modelData !== "media" && sideDelegate.modelData !== "osd"
+            active: sideDelegate.modelData !== "media" && sideDelegate.modelData !== "activity"
             anchors.verticalCenter: parent.verticalCenter
             anchors.left: sideDelegate.anchorRight ? undefined : parent.left
             anchors.right: sideDelegate.anchorRight ? parent.right : undefined
@@ -547,13 +534,9 @@ Item {
         rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
         x: root.centerWorkspaces
             ? root.workspaceCenterX + root.workspaceHalfWidth + root.workspaceSpacing
-                + root.badgesWidth
-                + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
-            : root.rightStart + root.badgesWidth
-                + (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0)
+            : root.rightStart
         width: root.centerWorkspaces
-            ? Math.max(implicitWidth, root.rightWingWidth - root.badgesWidth
-                - (root.badgesWidth > 0 && implicitWidth > 0 ? root.workspaceSpacing : 0))
+            ? Math.max(implicitWidth, root.rightWingWidth)
             : implicitWidth
         anchors.verticalCenter: parent.verticalCenter
     }
@@ -734,40 +717,4 @@ Item {
         }
     }
 
-    Row {
-        id: badgesRow
-        visible: root.badgeProviders.length > 0 && !root.vertical
-        x: root.centerWorkspaces
-            ? root.workspaceCenterX + root.workspaceHalfWidth + root.workspaceSpacing
-            : root.rightStart
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: root.badgeSpacing
-
-        Repeater {
-            model: root.badgeProviders
-            delegate: Item {
-                id: badgeItem
-                required property var modelData
-                width: root.badgeSize
-                height: root.badgeSize
-
-                MaterialShapeWrappedMaterialSymbol {
-                    anchors.fill: parent
-                    wrappedShape: MaterialShape.Shape.Cookie7Sided
-                    color: root.isMaterial ? Appearance.colors.colPrimary : Appearance.colors.colLayer0
-                    colSymbol: root.isMaterial ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer0
-                    text: root.iconForProviderId(badgeItem.modelData.id)
-                    iconSize: 16
-                    fill: 1
-                    padding: 4
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.manualFocusId = badgeItem.modelData.id
-                }
-            }
-        }
-    }
 }

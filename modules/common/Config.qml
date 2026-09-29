@@ -92,6 +92,20 @@ Singleton {
                     island.leftWidgets = island.leftWidgets.concat(["osd"]);
                 island.osdWidgetMigrated = true;
             }
+            if (!island.activityWidgetMigrated) {
+                const migrateActivity = list => {
+                    const migrated = list.map(name => name === "osd" ? "activity" : name);
+                    return migrated.filter((name, index) => migrated.indexOf(name) === index);
+                }
+                island.leftWidgets = migrateActivity(island.leftWidgets);
+                island.rightWidgets = migrateActivity(island.rightWidgets);
+                island.leftRightAnchoredWidgets = migrateActivity(island.leftRightAnchoredWidgets);
+                island.rightRightAnchoredWidgets = migrateActivity(island.rightRightAnchoredWidgets);
+                if (!island.leftWidgets.includes("activity")
+                    && !island.rightWidgets.includes("activity"))
+                    island.leftWidgets = island.leftWidgets.concat(["activity"]);
+                island.activityWidgetMigrated = true;
+            }
             root.ready = true;
         }
         onLoadFailed: error => {
@@ -546,6 +560,7 @@ Singleton {
                     property bool mediaWidgetMigrated: false
                     property bool mediaHoverModeMigrated: false
                     property bool osdWidgetMigrated: false
+                    property bool activityWidgetMigrated: false
                     // Retained only to migrate settings from the single-widget layout.
                     property string leftWidget: "none"
                     property string rightWidget: "none"
