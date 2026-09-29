@@ -846,6 +846,7 @@ Singleton {
             }
 
             property JsonObject sidebar: JsonObject {
+                property string mainPage: "intelligence"
                 property bool banner: true
                 property bool bottomGroup: true
                 property bool mediaPlayer: false

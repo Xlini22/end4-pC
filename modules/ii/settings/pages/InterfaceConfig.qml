@@ -126,6 +126,25 @@ ContentPage {
             shape: MaterialShape.Shape.Clover4Leaf
             title: Translation.tr("Left Sidebar")
 
+            GroupedList {
+                ConfigSelectionArray {
+                    text: Translation.tr("Main page")
+                    icon: "home"
+                    currentValue: Config.options.sidebar.mainPage
+                    onSelected: newValue => { Config.options.sidebar.mainPage = newValue }
+                    options: [
+                        ...(Config.options.policies.ai !== 0
+                            ? [{ displayName: Translation.tr("Intelligence"), icon: "neurology", value: "intelligence" }] : []),
+                        ...(Config.options.sidebar.translator.enable
+                            ? [{ displayName: Translation.tr("Translator"), icon: "translate", value: "translator" }] : []),
+                        ...(Config.options.sidebar.media.enable
+                            ? [{ displayName: Translation.tr("Media"), icon: "music_note", value: "media" }] : []),
+                        ...(Config.options.policies.weeb === 1
+                            ? [{ displayName: Translation.tr("Anime"), icon: "bookmark_heart", value: "anime" }] : [])
+                    ]
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
