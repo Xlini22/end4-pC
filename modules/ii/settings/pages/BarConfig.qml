@@ -363,7 +363,8 @@ ContentPage {
                     onCheckedChanged: Config.options.bar.dynamicIsland.centerWorkspaces = checked
                 }
                 ConfigSelectionArray {
-                    visible: Config.options.bar.dynamicIsland.centerWorkspaces
+                    property bool groupedListCollapsed: !Config.options.bar.dynamicIsland.centerWorkspaces
+                    visible: !groupedListCollapsed
                     enabled: visible
                     text: Translation.tr("Session menu behavior")
                     icon: "power_settings_new"
@@ -394,43 +395,35 @@ ContentPage {
                         { displayName: Translation.tr("Two stages"), icon: "filter_2", value: "staged" }
                     ]
                 }
-                LayoutSection {
-                    sectionTitle: Translation.tr("Left")
+                AnchoredLayoutSection {
+                    sectionTitle: Translation.tr("Left side")
                     layout: Config.options.bar.dynamicIsland.leftWidgets
                     modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
                     dynamicHoverModeWidgets: ["media", "visualizer"]
                     widgetModes: Config.options.bar.dynamicIsland.widgetModes
-                    anchorControls: true
                     rightAnchoredWidgets: Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
                     onModeChanged: (widget, mode) => {
                         Config.options.bar.dynamicIsland.widgetModes[widget] = mode;
                     }
-                    onAnchorChanged: (widget, anchor) => {
-                        let widgets = Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
-                            .filter(name => name !== widget);
-                        if (anchor === "right") widgets.push(widget);
-                        Config.options.bar.dynamicIsland.leftRightAnchoredWidgets = widgets;
+                    onAnchorsUpdate: list => {
+                        Config.options.bar.dynamicIsland.leftRightAnchoredWidgets = list;
                     }
                     availableWidgets: page.availableForIsland()
                     getWidgetName: page.getWidgetName
                     onUpdate: list => Config.options.bar.dynamicIsland.leftWidgets = list
                 }
-                LayoutSection {
-                    sectionTitle: Translation.tr("Right")
+                AnchoredLayoutSection {
+                    sectionTitle: Translation.tr("Right side")
                     layout: Config.options.bar.dynamicIsland.rightWidgets
                     modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
                     dynamicHoverModeWidgets: ["media", "visualizer"]
                     widgetModes: Config.options.bar.dynamicIsland.widgetModes
-                    anchorControls: true
                     rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
                     onModeChanged: (widget, mode) => {
                         Config.options.bar.dynamicIsland.widgetModes[widget] = mode;
                     }
-                    onAnchorChanged: (widget, anchor) => {
-                        let widgets = Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
-                            .filter(name => name !== widget);
-                        if (anchor === "right") widgets.push(widget);
-                        Config.options.bar.dynamicIsland.rightRightAnchoredWidgets = widgets;
+                    onAnchorsUpdate: list => {
+                        Config.options.bar.dynamicIsland.rightRightAnchoredWidgets = list;
                     }
                     availableWidgets: page.availableForIsland()
                     getWidgetName: page.getWidgetName
@@ -441,7 +434,7 @@ ContentPage {
             StyledText {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: Translation.tr("Add Dynamic Island to the Center bar layout to use this mode. The main activity appears on the left, workspaces stay centered, and other activity badges appear on the right. Workspace widgets elsewhere are hidden while this mode is active.")
+                text: Translation.tr("Each side of Dynamic Island is divided into left- and right-anchored groups. Drag a component between the groups to choose which edge it follows during expansion.")
                 color: Appearance.colors.colSubtext
                 visible: Config.options.bar.dynamicIsland.centerWorkspaces
             }
