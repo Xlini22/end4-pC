@@ -18,12 +18,22 @@ Item {
     property bool animeCloset: Config.options.policies.weeb === 2
     property bool mediaEnabled: Config.options.sidebar.media.enable
     property var tabButtonList: [
-        ...(root.aiChatEnabled ? [{"icon": "neurology", "name": Translation.tr("Intelligence")}] : []),
-        ...(root.translatorEnabled ? [{"icon": "translate", "name": Translation.tr("Translator")}] : []),
-        ...(root.mediaEnabled ? [{"icon": "music_note", "name": Translation.tr("Media")}] : []),
-        ...((root.animeEnabled && !root.animeCloset) ? [{"icon": "bookmark_heart", "name": Translation.tr("Anime")}] : [])
+        ...(root.aiChatEnabled ? [{"id": "intelligence", "icon": "neurology", "name": Translation.tr("Intelligence")}] : []),
+        ...(root.translatorEnabled ? [{"id": "translator", "icon": "translate", "name": Translation.tr("Translator")}] : []),
+        ...(root.mediaEnabled ? [{"id": "media", "icon": "music_note", "name": Translation.tr("Media")}] : []),
+        ...((root.animeEnabled && !root.animeCloset) ? [{"id": "anime", "icon": "bookmark_heart", "name": Translation.tr("Anime")}] : [])
     ]
     property int tabCount: swipeView.count
+
+    function showMainPage() {
+        if (root.tabButtonList.length === 0)
+            return
+        const requestedPage = Config.options.sidebar.mainPage ?? "intelligence"
+        const requestedIndex = root.tabButtonList.findIndex(tab => tab.id === requestedPage)
+        swipeView.currentIndex = requestedIndex >= 0 ? requestedIndex : 0
+    }
+
+    Component.onCompleted: Qt.callLater(root.showMainPage)
 
     function focusActiveItem() {
         swipeView.currentItem.forceActiveFocus()
