@@ -371,7 +371,7 @@ Singleton {
         readonly property string escapedSd: StringUtils.shellSingleQuoteEscape(sdUrl)
         readonly property string escapedHq: StringUtils.shellSingleQuoteEscape(hqUrl)
         readonly property string escapedSearch: StringUtils.shellSingleQuoteEscape(
-            `${title} ${artist} ${album}`)
+            `${title} ${artist}`)
         readonly property string escapedTitle: StringUtils.shellSingleQuoteEscape(title)
         readonly property string escapedArtist: StringUtils.shellSingleQuoteEscape(artist)
         readonly property string escapedAlbum: StringUtils.shellSingleQuoteEscape(album)
@@ -391,31 +391,40 @@ Singleton {
             if (appleMusic) {
                 return ["bash", "-c",
                     `mkdir -p '${escapedCacheDir}'; `
-                    + `if [ ! -s '${escapedPath}' ] || [ ! -s '${escapedDataPath}' ]; then `
-                    + `search_file=$(mktemp); lookup_file=$(mktemp); `
-                    + `trap 'rm -f "$search_file" "$lookup_file"' EXIT; `
+                    + `if [ ! -s '${escapedPath}' ] || [ ! -s '${escapedDataPath}' ] `
+                    + `|| ! jq -e '.artwork | strings | length > 0' '${escapedDataPath}' >/dev/null 2>&1; then `
+                    + `search_file=$(mktemp); albums_file=$(mktemp); lookup_file=$(mktemp); `
+                    + `trap 'rm -f "$search_file" "$albums_file" "$lookup_file"' EXIT; `
                     + `curl -4 -fsSG --retry 2 --retry-delay 1 'https://itunes.apple.com/search' `
-                    + `--data-urlencode 'term=${escapedSearch}' --data 'entity=song' --data 'limit=10' `
+                    + `--data-urlencode 'term=${escapedSearch}' --data 'entity=song' --data 'limit=25' --data 'country=US' `
                     + `-o "$search_file"; `
-                    + `collection=$(jq -r --arg title '${escapedTitle}' --arg artist '${escapedArtist}' --arg album '${escapedAlbum}' `
+                    + `selected=$(jq -c --arg title '${escapedTitle}' --arg artist '${escapedArtist}' `
                     + `'def norm: ascii_downcase; `
                     + `([.results[] | select(((.trackName // "") | norm) == ($title | norm) `
+                    + `and ((.artistName // "") | norm) == ($artist | norm))][0] `
+                    + `// [.results[] | select(((.trackName // "") | norm) == ($title | norm))][0] `
+                    + `// .results[0] // {})' "$search_file"); `
+                    + `collection=$(printf '%s' "$selected" | jq -r '.collectionId // empty'); `
+                    + `artist_id=$(printf '%s' "$selected" | jq -r '.artistId // empty'); `
+                    + `artwork=$(printf '%s' "$selected" | jq -r '.artworkUrl100 // empty'); `
+                    + `if [ -n '${escapedAlbum}' ] && [ -n "$artist_id" ]; then `
+                    + `curl -4 -fsSG --retry 2 --retry-delay 1 'https://itunes.apple.com/lookup' `
+                    + `--data-urlencode "id=$artist_id" --data 'entity=album' --data 'limit=200' --data 'country=US' `
+                    + `-o "$albums_file"; `
+                    + `album_match=$(jq -c --arg artist '${escapedArtist}' --arg album '${escapedAlbum}' `
+                    + `'def norm: ascii_downcase; [.results[] | select(.wrapperType == "collection" `
                     + `and ((.artistName // "") | norm) == ($artist | norm) `
-                    + `and (($album | length) == 0 or ((.collectionName // "") | norm) == ($album | norm)))][0] `
-                    + `// [.results[] | select(((.artistName // "") | norm) == ($artist | norm) `
-                    + `and (($album | length) == 0 or ((.collectionName // "") | norm) == ($album | norm)))][0] `
-                    + `// .results[0]) | .collectionId // empty' "$search_file"); `
-                    + `artwork=$(jq -r --arg title '${escapedTitle}' --arg artist '${escapedArtist}' --arg album '${escapedAlbum}' `
-                    + `'def norm: ascii_downcase; `
-                    + `([.results[] | select(((.trackName // "") | norm) == ($title | norm) `
-                    + `and ((.artistName // "") | norm) == ($artist | norm) `
-                    + `and (($album | length) == 0 or ((.collectionName // "") | norm) == ($album | norm)))][0] `
-                    + `// [.results[] | select(((.artistName // "") | norm) == ($artist | norm) `
-                    + `and (($album | length) == 0 or ((.collectionName // "") | norm) == ($album | norm)))][0] `
-                    + `// .results[0]) | .artworkUrl100 // empty' "$search_file"); `
+                    + `and ((.collectionName // "") | norm) == ($album | norm))][0] // {}' "$albums_file"); `
+                    + `album_collection=$(printf '%s' "$album_match" | jq -r '.collectionId // empty'); `
+                    + `album_artwork=$(printf '%s' "$album_match" | jq -r '.artworkUrl100 // empty'); `
+                    + `[ -z "$album_collection" ] || collection="$album_collection"; `
+                    + `[ -z "$album_artwork" ] || artwork="$album_artwork"; `
+                    + `fi; `
                     + `[ -n "$collection" ]; `
                     + `curl -4 -fsSG --retry 2 --retry-delay 1 'https://itunes.apple.com/lookup' --data-urlencode "id=$collection" `
-                    + `--data 'entity=song' -o "$lookup_file"; `
+                    + `--data 'entity=song' --data 'country=US' -o "$lookup_file"; `
+                    + `lookup_artwork=$(jq -r '[.results[] | select(.wrapperType == "collection")][0].artworkUrl100 // empty' "$lookup_file"); `
+                    + `[ -z "$lookup_artwork" ] || artwork="$lookup_artwork"; `
                     + `jq --arg artwork "$artwork" `
                     + `'{artwork: $artwork, tracks: [.results[] | select(.wrapperType == "track") `
                     + `| {trackName, trackTimeMillis, trackNumber, discNumber}]}' `
