@@ -44,9 +44,11 @@ Item {
             || (root.mediaDisplayMode === "dynamicHover" && root.mediaHovered))
     readonly property real mediaExpandedWidth: Math.max(root.mediaCollapsedWidth, Math.min(root.mediaExpandedWidthCap, root.mediaTextContentWidth))
     readonly property real mediaWidth: root.mediaTrackInfoVisible ? root.mediaExpandedWidth : root.mediaCollapsedWidth
+    readonly property real recordingWidth: 96
     readonly property real timerWidth: 130
     readonly property real osdWidth: 132
-    readonly property real notificationWidth: 220
+    readonly property real notificationTextWidth: Math.min(166, Math.max(notificationSummaryMetrics.width, notificationBodyMetrics.width))
+    readonly property real notificationWidth: (root.isMaterial ? 48 : 44) + root.notificationTextWidth
     readonly property real batteryWidth: 170
     readonly property bool isMaterial: Config.options.bar.cornerStyle === 3
     property bool vertical: Config.options.bar.vertical
@@ -59,6 +61,19 @@ Item {
     readonly property var latestNotification: Notifications.popupList.length > 0
         ? Notifications.popupList[Notifications.popupList.length - 1]
         : null
+
+    TextMetrics {
+        id: notificationSummaryMetrics
+        text: (root.latestNotification?.summary ?? "").replace(/\n/g, " ")
+        font.pixelSize: Appearance.font.pixelSize.smaller
+        font.weight: Font.DemiBold
+    }
+
+    TextMetrics {
+        id: notificationBodyMetrics
+        text: (root.latestNotification?.body ?? "").replace(/\n/g, " ")
+        font.pixelSize: Appearance.font.pixelSize.smallest
+    }
     readonly property bool isRecording: Persistent.states.record.enable
     property int recordingElapsedSeconds: 0
 
@@ -192,22 +207,7 @@ Item {
         width: root.sessionWidth
     })
 
-    // Stable left-to-right order for simultaneous transient activities.
-    readonly property var activityProviders: [
-        { id: "recording",    active: root.isRecording,            component: recordingComponent, width: root.recordingWidth },
-        { id: "timer",        active: root.hasActiveTimer,         component: timerComponent,     width: root.timerWidth },
-        { id: "notification", active: root.latestNotification !== null, component: notificationComponent, width: root.notificationWidth },
-        { id: "battery",      active: root.batteryAlertActive,     component: batteryComponent,   width: root.batteryWidth },
-        { id: "osd",          active: GlobalStates.osdVolumeOpen,  component: osdComponent,       width: root.osdWidth },
-    ]
-    readonly property var activeActivityProviders:
-        root.activityProviders.filter(provider => provider.active)
-    readonly property real activityContentWidth: {
-        const providers = root.activeActivityProviders
-        if (providers.length === 0) return 0
-        return providers.reduce((width, provider) => width + provider.width, 0)
-            + (providers.length - 1) * root.activitySpacing
-    }
+    readonly property bool hasActiveActivity: root.isRecording || root.hasActiveTimer || root.latestNotification != null || root.batteryAlertActive || GlobalStates.osdVolumeOpen
 
     readonly property var activeProvider:
         root.sessionExclusive ? root.sessionProvider : null
@@ -343,26 +343,38 @@ Item {
     Component {
         id: activitySideComponent
         Item {
-            implicitWidth: root.activityContentWidth
+            implicitWidth: activityRow.implicitWidth
             implicitHeight: root.pillHeight
 
             Row {
-                anchors.fill: parent
+                id: activityRow
+                anchors.verticalCenter: parent.verticalCenter
                 spacing: root.activitySpacing
 
-                Repeater {
-                    model: root.activeActivityProviders
-                    delegate: Item {
-                        id: activityDelegate
-                        required property var modelData
-                        width: activityDelegate.modelData.width
-                        height: root.pillHeight
-
-                        Loader {
-                            anchors.fill: parent
-                            sourceComponent: activityDelegate.modelData.component
-                        }
-                    }
+                ActivitySlot {
+                    shown: root.isRecording
+                    targetWidth: root.recordingWidth
+                    contentComponent: recordingComponent
+                }
+                ActivitySlot {
+                    shown: root.hasActiveTimer
+                    targetWidth: root.timerWidth
+                    contentComponent: timerComponent
+                }
+                ActivitySlot {
+                    shown: root.latestNotification !== null
+                    targetWidth: root.notificationWidth
+                    contentComponent: notificationComponent
+                }
+                ActivitySlot {
+                    shown: root.batteryAlertActive
+                    targetWidth: root.batteryWidth
+                    contentComponent: batteryComponent
+                }
+                ActivitySlot {
+                    shown: GlobalStates.osdVolumeOpen
+                    targetWidth: root.osdWidth
+                    contentComponent: osdComponent
                 }
             }
         }
@@ -373,6 +385,40 @@ Item {
         DiOsd { di: root }
     }
 
+    component ActivitySlot: Item {
+        id: activitySlot
+        required property bool shown
+        required property real targetWidth
+        required property Component contentComponent
+
+        width: shown ? targetWidth : 0
+        height: root.pillHeight
+        visible: shown || width > 0.5
+        opacity: shown ? 1 : 0
+        clip: true
+
+        Loader {
+            anchors.fill: parent
+            active: activitySlot.visible
+            sourceComponent: activitySlot.contentComponent
+        }
+
+        Behavior on width {
+            NumberAnimation {
+                duration: 350
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+            }
+        }
+
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 200
+                easing.type: Easing.OutCubic
+            }
+        }
+    }
+
     component SideWidgetDelegate: Item {
         id: sideDelegate
         required property string modelData
@@ -380,7 +426,7 @@ Item {
         readonly property bool supportsExpansion: ["clockWidget", "resources", "visualizer"].includes(modelData)
         readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
         readonly property bool contentAvailable: (modelData !== "media" || root.hasMedia)
-            && (modelData !== "activity" || root.activeActivityProviders.length > 0)
+            && (modelData !== "activity" || root.hasActiveActivity)
             && (modelData !== "visualizer" || (root.activePlayer?.isPlaying ?? false))
         readonly property real contentImplicitWidth: mediaLoader.active ? mediaLoader.implicitWidth
             : (activityLoader.active ? activityLoader.implicitWidth : regularLoader.implicitWidth)
@@ -396,9 +442,8 @@ Item {
         clip: ["visualizer", "activity"].includes(modelData)
 
         Behavior on implicitWidth {
-            enabled: sideDelegate.modelData !== "visualizer"
-                && (Config.options.bar.dynamicIsland.animationStyle === "staged"
-                    || sideDelegate.modelData === "activity")
+            enabled: !["visualizer", "activity"].includes(sideDelegate.modelData)
+                && Config.options.bar.dynamicIsland.animationStyle === "staged"
             NumberAnimation {
                 readonly property bool isActivity: sideDelegate.modelData === "activity"
                 readonly property bool simultaneous: Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
