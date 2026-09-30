@@ -56,6 +56,10 @@ Singleton {
     function togglePower() {
         const adapter = Bluetooth.defaultAdapter;
         if (!adapter) return;
-        adapter.enabled = !adapter.enabled;
+        // ponytail: toggle all Bluetooth radios like the original fix; use per-adapter control if mixed radio states matter.
+        Quickshell.execDetached([
+            "bash", "-lc",
+            "rfkill list bluetooth | grep -q 'Soft blocked: yes' && rfkill unblock bluetooth || rfkill block bluetooth"
+        ]);
     }
 }
