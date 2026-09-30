@@ -442,8 +442,9 @@ Item {
         clip: ["visualizer", "activity"].includes(modelData)
 
         Behavior on implicitWidth {
-            enabled: !["visualizer", "activity"].includes(sideDelegate.modelData)
-                && Config.options.bar.dynamicIsland.animationStyle === "staged"
+            enabled: sideDelegate.modelData !== "activity"
+                && (sideDelegate.modelData === "visualizer"
+                    || Config.options.bar.dynamicIsland.animationStyle === "staged")
             NumberAnimation {
                 readonly property bool isActivity: sideDelegate.modelData === "activity"
                 readonly property bool simultaneous: Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
