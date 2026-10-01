@@ -24,16 +24,11 @@ Item {
         ...((root.animeEnabled && !root.animeCloset) ? [{"id": "anime", "icon": "bookmark_heart", "name": Translation.tr("Anime")}] : [])
     ]
     property int tabCount: swipeView.count
-
-    function showMainPage() {
-        if (root.tabButtonList.length === 0)
-            return
+    readonly property int mainPageIndex: {
         const requestedPage = Config.options.sidebar.mainPage ?? "intelligence"
         const requestedIndex = root.tabButtonList.findIndex(tab => tab.id === requestedPage)
-        swipeView.currentIndex = requestedIndex >= 0 ? requestedIndex : 0
+        return requestedIndex >= 0 ? requestedIndex : 0
     }
-
-    Component.onCompleted: Qt.callLater(root.showMainPage)
 
     function focusActiveItem() {
         swipeView.currentItem.forceActiveFocus()
@@ -83,7 +78,7 @@ Item {
                 id: swipeView
                 anchors.fill: parent
                 spacing: 10
-                currentIndex: tabBar.currentIndex
+                currentIndex: root.mainPageIndex
 
                 clip: true
                 layer.enabled: true
