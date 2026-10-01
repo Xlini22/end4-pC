@@ -136,6 +136,12 @@ Item {
             iconSize: Appearance.font.pixelSize.larger
             color: root.iconColor
         }
+        MaterialSymbol {
+            visible: Vpn.active
+            text: "enhanced_encryption"
+            iconSize: Appearance.font.pixelSize.larger
+            color: root.iconColor
+        }
         Loader {
             id: notifLoader
             active: Notifications.silent || Notifications.unread > 0
