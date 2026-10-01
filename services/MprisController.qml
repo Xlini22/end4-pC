@@ -10,29 +10,65 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Mpris
 import qs.modules.common
+import "MprisFilter.js" as MprisFilter
 
 /**
  * A service that provides easy access to the active Mpris player.
  */
 Singleton {
 	id: root;
-	property list<MprisPlayer> players: Mpris.players.values.filter(player => isRealPlayer(player));
+	property list<MprisPlayer> players: Mpris.players.values.filter(player => isRealPlayer(player) && isAllowedPlayer(player));
 	property MprisPlayer trackedPlayer: null;
 
 	readonly property string preferredPlayerName: Config.options.bar.media.preferredPlayer.trim().toLowerCase();
+	readonly property bool preferredPlayerExclusive: Config.options.bar.media.preferredPlayerExclusive;
+	readonly property string playerBlacklist: Config.options.bar.media.playerBlacklist;
+	readonly property var rememberedTrack: Persistent.states.media.lastPreferredTrack;
+	readonly property var rememberedTrackSource: ({
+		identity: root.rememberedTrack.identity,
+		desktopEntry: root.rememberedTrack.desktopEntry,
+		dbusName: "",
+		metadata: { "xesam:url": root.rememberedTrack.sourceUrl }
+	});
+	readonly property bool hasRememberedTrack: root.preferredPlayerExclusive
+		&& root.rememberedTrack.title.trim().length > 0
+		&& MprisFilter.isAllowed(root.rememberedTrackSource, root.preferredPlayerName, true, root.playerBlacklist);
+	readonly property string displayTrackTitle: root.activePlayer?.trackTitle || (root.hasRememberedTrack ? root.rememberedTrack.title : "");
+	readonly property string displayTrackArtist: root.activePlayer?.trackArtist || (root.hasRememberedTrack ? root.rememberedTrack.artist : "");
+	readonly property string displayTrackAlbum: root.activePlayer?.trackAlbum || (root.hasRememberedTrack ? root.rememberedTrack.album : "");
+	property bool resumeWhenAvailable: false;
+
+	function matchesSource(player, query) {
+		return MprisFilter.matches(player, query);
+	}
+
+	function isAllowedPlayer(player) {
+		return MprisFilter.isAllowed(player, root.preferredPlayerName, root.preferredPlayerExclusive, root.playerBlacklist);
+	}
+
 	readonly property MprisPlayer preferredPlayer: {
 		if (preferredPlayerName.length === 0) return null;
 		const _ = root.players.length;
 		for (const p of root.players) {
-			if ((p.identity ?? "").toLowerCase().includes(preferredPlayerName) ||
-				(p.desktopEntry ?? "").toLowerCase().includes(preferredPlayerName))
+			if (root.matchesSource(p, preferredPlayerName))
 				return p;
 		}
 		return null;
 	}
 
-	property MprisPlayer activePlayer: preferredPlayer ?? trackedPlayer ?? Mpris.players.values[0] ?? null;
+	property MprisPlayer activePlayer: preferredPlayer
+		?? (root.players.includes(trackedPlayer) ? trackedPlayer : null)
+		?? root.players[0] ?? null;
 	signal trackChanged(reverse: bool);
+
+	onPreferredPlayerExclusiveChanged: {
+		if (root.preferredPlayerExclusive) root.rememberActiveTrack();
+	}
+
+	onActivePlayerChanged: {
+		root.updateTrack();
+		if (root.activePlayer && root.resumeWhenAvailable) resumePlaybackTimer.restart();
+	}
 
 	property bool __reverse: false;
 
@@ -54,6 +90,25 @@ Singleton {
 	Process {
 		id: raisePlayerProcess
 		running: false
+	}
+
+	Timer {
+		id: resumeTimeoutTimer
+		interval: 30000
+		repeat: false
+		onTriggered: root.resumeWhenAvailable = false
+	}
+
+	Timer {
+		id: resumePlaybackTimer
+		interval: 750
+		repeat: false
+		onTriggered: {
+			if (root.activePlayer && !root.activePlayer.isPlaying && root.activePlayer.canTogglePlaying)
+				root.activePlayer.togglePlaying();
+			root.resumeWhenAvailable = false;
+			resumeTimeoutTimer.stop();
+		}
 	}
 
 	readonly property bool hasActivePlasmaIntegration: Mpris.players.values.some(
@@ -81,28 +136,28 @@ Singleton {
 			target: modelData;
 
 			Component.onCompleted: {
-				if (root.trackedPlayer == null || modelData.isPlaying) {
+				if (root.isAllowedPlayer(modelData) && (root.trackedPlayer == null || modelData.isPlaying)) {
 					root.trackedPlayer = modelData;
 				}
 			}
 
 			Component.onDestruction: {
 				if (root.trackedPlayer == null || !root.trackedPlayer.isPlaying) {
-					for (const player of Mpris.players.values) {
+					for (const player of root.players) {
 						if (player.playbackState.isPlaying) {
 							root.trackedPlayer = player;
 							break;
 						}
 					}
 
-					if (trackedPlayer == null && Mpris.players.values.length != 0) {
-						trackedPlayer = Mpris.players.values[0];
+					if (trackedPlayer == null && root.players.length != 0) {
+						trackedPlayer = root.players[0];
 					}
 				}
 			}
 
 			function onPlaybackStateChanged() {
-				if (root.trackedPlayer !== modelData) root.trackedPlayer = modelData;
+				if (root.isAllowedPlayer(modelData) && root.trackedPlayer !== modelData) root.trackedPlayer = modelData;
 			}
 		}
 	}
@@ -128,8 +183,6 @@ Singleton {
 		}
 	}
 
-	onActivePlayerChanged: this.updateTrack();
-
 	function updateTrack() {
 		//console.log(`update: ${this.activePlayer?.trackTitle ?? ""} : ${this.activePlayer?.trackArtists}`)
 		this.activeTrack = {
@@ -139,6 +192,7 @@ Singleton {
 			artist: this.activePlayer?.trackArtist || Translation.tr("Unknown Artist"),
 			album: this.activePlayer?.trackAlbum || Translation.tr("Unknown Album"),
 		};
+		root.rememberActiveTrack();
 
 		this.trackChanged(__reverse);
 		this.__reverse = false;
@@ -148,6 +202,32 @@ Singleton {
 	property bool canTogglePlaying: this.activePlayer?.canTogglePlaying ?? false;
 	function togglePlaying() {
 		if (this.canTogglePlaying) this.activePlayer.togglePlaying();
+		else if (!this.activePlayer) root.resumeLastPreferred();
+	}
+
+	function rememberActiveTrack() {
+		const player = root.activePlayer;
+		if (!root.preferredPlayerExclusive || !player || !root.isAllowedPlayer(player)) return;
+		const title = String(player.trackTitle ?? "").trim();
+		if (title.length === 0) return;
+		const remembered = root.rememberedTrack;
+		remembered.title = title;
+		remembered.artist = String(player.trackArtist ?? "");
+		remembered.album = String(player.trackAlbum ?? "");
+		remembered.artUrl = String(player.trackArtUrl ?? "");
+		remembered.sourceUrl = String(player.metadata?.["xesam:url"] ?? "");
+		remembered.identity = String(player.identity ?? "");
+		remembered.desktopEntry = String(player.desktopEntry ?? "");
+	}
+
+	function resumeLastPreferred() {
+		if (!root.hasRememberedTrack) return;
+		const command = MprisFilter.launchCommand(root.preferredPlayerName,
+			root.rememberedTrack.sourceUrl, root.rememberedTrack.desktopEntry);
+		if (command.length === 0) return;
+		root.resumeWhenAvailable = true;
+		resumeTimeoutTimer.restart();
+		Quickshell.execDetached(command);
 	}
 
 	property bool canGoPrevious: this.activePlayer?.canGoPrevious ?? false;
@@ -185,11 +265,11 @@ Singleton {
 	}
 
 	function setActivePlayer(player: MprisPlayer) {
-		const targetPlayer = player ?? Mpris.players[0];
+		const targetPlayer = player ?? root.players[0];
 		console.log(`[Mpris] Active player ${targetPlayer} << ${activePlayer}`)
 
 		if (targetPlayer && this.activePlayer) {
-			this.__reverse = Mpris.players.indexOf(targetPlayer) < Mpris.players.indexOf(this.activePlayer);
+			this.__reverse = root.players.indexOf(targetPlayer) < root.players.indexOf(this.activePlayer);
 		} else {
 			// always animate forward if going to null
 			this.__reverse = false;

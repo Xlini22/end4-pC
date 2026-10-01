@@ -165,7 +165,7 @@ Item {
                 }
 
                 MaterialSymbol {
-                    visible: MprisController.activePlayer === null
+                    visible: root.displayedArtFilePath === ""
                     anchors.centerIn: parent 
                     fill: 1
                     text: "music_note"
@@ -202,7 +202,7 @@ Item {
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideRight
-                        text: StringUtils.cleanMusicTitle(root.player?.trackTitle) || "Play"
+                        text: StringUtils.cleanMusicTitle(MprisController.displayTrackTitle) || "Play"
 
                         Behavior on text {
                             SequentialAnimation {
@@ -235,7 +235,7 @@ Item {
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         elide: Text.ElideRight
-                        text: root.player?.trackArtist || "Something"
+                        text: MprisController.displayTrackArtist || "Something"
 
                         Behavior on text {
                             SequentialAnimation {
@@ -315,7 +315,7 @@ Item {
                         colBackground: (root.player?.isPlaying ?? false) ? blendedColors.colPrimary : blendedColors.colSecondaryContainer
                         colBackgroundHover: (root.player?.isPlaying ?? false) ? blendedColors.colPrimaryHover : blendedColors.colSecondaryContainerHover
                         colRipple: (root.player?.isPlaying ?? false) ? blendedColors.colPrimaryActive : blendedColors.colSecondaryContainerActive
-                        downAction: () => root.player?.togglePlaying()
+                        downAction: () => MprisController.togglePlaying()
                         contentItem: MaterialSymbol {
                             iconSize: 50
                             fill: 1

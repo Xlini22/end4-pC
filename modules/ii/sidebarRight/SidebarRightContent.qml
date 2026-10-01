@@ -41,10 +41,7 @@ Item {
     readonly property var meaningfulPlayers: {
         const preferred = Config.options.bar.media.preferredPlayer.trim().toLowerCase()
         if (preferred.length === 0) return filterDuplicatePlayers(realPlayers)
-        const filtered = realPlayers.filter(p =>
-            (p.identity ?? "").toLowerCase().includes(preferred) ||
-            (p.desktopEntry ?? "").toLowerCase().includes(preferred)
-        )
+        const filtered = realPlayers.filter(p => MprisController.matchesSource(p, preferred))
         if (filtered.length === 0) return filterDuplicatePlayers(realPlayers)
         return filterDuplicatePlayers(filtered)
     }

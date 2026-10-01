@@ -71,14 +71,14 @@ Item {
         StyledText {
             id: trackTitleMetrics
             visible: false
-            text: root.activePlayer?.trackTitle ?? ""
+            text: MprisController.displayTrackTitle
             font.pixelSize: Appearance.font.pixelSize.smaller
             font.weight: Font.DemiBold
         }
         StyledText {
             id: trackArtistMetrics
             visible: false
-            text: root.activePlayer?.trackArtist ?? ""
+            text: MprisController.displayTrackArtist
             font.pixelSize: Appearance.font.pixelSize.smallest
         }
 
@@ -102,7 +102,7 @@ Item {
 
             StyledText {
                 Layout.fillWidth: true
-                text: root.activePlayer?.trackTitle ?? ""
+                text: MprisController.displayTrackTitle
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 font.weight: Font.DemiBold
                 color: Appearance.colors.colOnLayer0
@@ -112,7 +112,7 @@ Item {
             }
             StyledText {
                 Layout.fillWidth: true
-                text: root.activePlayer?.trackArtist ?? ""
+                text: MprisController.displayTrackArtist
                 font.pixelSize: Appearance.font.pixelSize.smallest
                 color: Appearance.colors.colOnLayer0
                 opacity: 0.7
@@ -220,7 +220,7 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.activePlayer?.togglePlaying()
+                    onClicked: MprisController.togglePlaying()
                 }
             }
 
