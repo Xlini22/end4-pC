@@ -56,8 +56,9 @@ Item {
     readonly property real activitySpacing: 6
 
     readonly property MprisPlayer activePlayer: MprisController.activePlayer
-    readonly property bool hasMedia: root.activePlayer !== null
-        && ((root.activePlayer.trackTitle ?? "") !== "" || root.activePlayer.isPlaying)
+    readonly property bool hasMedia: (root.activePlayer !== null
+        && ((root.activePlayer.trackTitle ?? "") !== "" || root.activePlayer.isPlaying))
+        || MprisController.hasRememberedTrack
     readonly property var latestNotification: Notifications.popupList.length > 0
         ? Notifications.popupList[Notifications.popupList.length - 1]
         : null

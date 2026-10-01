@@ -83,6 +83,18 @@ Singleton {
                 property bool inhibit: false
             }
 
+            property JsonObject media: JsonObject {
+                property JsonObject lastPreferredTrack: JsonObject {
+                    property string title: ""
+                    property string artist: ""
+                    property string album: ""
+                    property string artUrl: ""
+                    property string sourceUrl: ""
+                    property string identity: ""
+                    property string desktopEntry: ""
+                }
+            }
+
             property JsonObject record: JsonObject {
                 property bool enable: false
             }

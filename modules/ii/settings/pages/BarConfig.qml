@@ -776,8 +776,9 @@ ContentPage {
                     id: preferredPlayerField
                     Layout.fillWidth: true
                     buttonIcon: "play_circle"
-                    text: Translation.tr("Preferred Player")
-                    placeholderText: Translation.tr("e.g. spotify, firefox")
+                    text: Translation.tr("Preferred media source")
+                    description: Translation.tr("Matches an app name or website address")
+                    placeholderText: Translation.tr("e.g. spotify, music.apple.com")
                     value: Config.options.bar.media.preferredPlayer
                     onValueChanged: {
                         mediaDebounceTimer.restart();
@@ -790,6 +791,29 @@ ContentPage {
                         onTriggered: {
                             Config.options.bar.media.preferredPlayer = preferredPlayerField.value;
                         }
+                    }
+                }
+                ConfigSwitch {
+                    buttonIcon: "filter_center_focus"
+                    text: Translation.tr("Only use preferred source")
+                    checked: Config.options.bar.media.preferredPlayerExclusive
+                    onCheckedChanged: Config.options.bar.media.preferredPlayerExclusive = checked
+                }
+                ConfigTextArea {
+                    id: playerBlacklistField
+                    Layout.fillWidth: true
+                    buttonIcon: "block"
+                    text: Translation.tr("Ignored media sources")
+                    description: Translation.tr("Comma-separated app names or website addresses")
+                    placeholderText: Translation.tr("e.g. twitch.tv, vlc")
+                    value: Config.options.bar.media.playerBlacklist
+                    onValueChanged: playerBlacklistDebounceTimer.restart()
+
+                    Timer {
+                        id: playerBlacklistDebounceTimer
+                        interval: 600
+                        repeat: false
+                        onTriggered: Config.options.bar.media.playerBlacklist = playerBlacklistField.value
                     }
                 }
                 ConfigSwitch {

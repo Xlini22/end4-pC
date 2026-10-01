@@ -11,11 +11,13 @@ Singleton {
     id: root
 
     readonly property var player: MprisController.activePlayer
-    readonly property string trackPageUrl: String(root.player?.metadata?.["xesam:url"] ?? "")
-    readonly property string trackTitle: String(root.player?.trackTitle ?? "")
-    readonly property string trackArtist: String(root.player?.trackArtist ?? "")
-    readonly property string trackAlbum: String(root.player?.trackAlbum ?? "")
-    readonly property string mprisArtUrl: String(root.player?.trackArtUrl ?? "")
+    readonly property var rememberedTrack: MprisController.hasRememberedTrack
+        ? MprisController.rememberedTrack : null
+    readonly property string trackPageUrl: String(root.player?.metadata?.["xesam:url"] || root.rememberedTrack?.sourceUrl || "")
+    readonly property string trackTitle: String(root.player?.trackTitle || root.rememberedTrack?.title || "")
+    readonly property string trackArtist: String(root.player?.trackArtist || root.rememberedTrack?.artist || "")
+    readonly property string trackAlbum: String(root.player?.trackAlbum || root.rememberedTrack?.album || "")
+    readonly property string mprisArtUrl: String(root.player?.trackArtUrl || root.rememberedTrack?.artUrl || "")
 
     function youtubeIdFromUrl(url) {
         const value = String(url ?? "")

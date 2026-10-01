@@ -1,5 +1,4 @@
 import Quickshell
-import Quickshell.Io
 import Quickshell.Services.Mpris
 import QtQuick
 import QtQuick.Effects
@@ -24,17 +23,14 @@ AbstractBackgroundWidget {
 
     readonly property var playerList: MprisController.players
     property MprisPlayer currentPlayer: MprisController.activePlayer
-    property var artUrl: currentPlayer?.trackArtUrl
-    property string artDownloadLocation: Directories.coverArt
-    property string artFileName: Qt.md5(artUrl)
-    property string artFilePath: `${artDownloadLocation}/${artFileName}`
+    readonly property string displayedArtFilePath: MediaArtwork.source
 
     property real buttonSize: 34
     property real buttonIconSize: 18
 
     readonly property real mediaProgress: {
-        const pos = root.currentPlayer?.position ?? 0
-        const len = root.currentPlayer?.length ?? 0
+        const pos = MediaArtwork.playbackPosition
+        const len = MediaArtwork.playbackLength
         return len > 0 ? Math.max(0, Math.min(1, pos / len)) : 0
     }
 
@@ -82,42 +78,10 @@ AbstractBackgroundWidget {
         animation: Appearance.animation.elementResize.numberAnimation.createObject(this)
     }
 
-    property bool downloaded: false
     property bool showLyrics: false
-
-    property string displayedArtFilePath: {
-        if (!root.downloaded) return ""
-        if (root.artUrl && root.artUrl.startsWith("file://")) return root.artUrl
-        return root.downloaded ? Qt.resolvedUrl(artFilePath) : ""
-    }
 
     implicitHeight: card.implicitHeight
     implicitWidth: card.implicitWidth
-
-    onArtFilePathChanged: updateArt()
-
-    function updateArt() {
-        if (!root.artUrl || root.artUrl.length === 0) {
-            root.downloaded = false
-            return
-        }
-        if (root.artUrl.startsWith("file://")) {
-            root.downloaded = true
-            return
-        }
-        coverArtDownloader.targetFile = root.artUrl
-        coverArtDownloader.artFilePath = root.artFilePath
-        root.downloaded = false
-        coverArtDownloader.running = true
-    }
-
-    Process {
-        id: coverArtDownloader
-        property string targetFile: root.artUrl
-        property string artFilePath: root.artFilePath
-        command: ["bash", "-c", `[ -f ${artFilePath} ] || curl -sSL '${targetFile}' -o '${artFilePath}'`]
-        onExited: { root.downloaded = true }
-    }
 
     StyledRectangularShadow {
         target: card
