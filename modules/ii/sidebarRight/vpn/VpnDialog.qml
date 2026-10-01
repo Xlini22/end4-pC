@@ -8,7 +8,7 @@ import qs.modules.common.widgets
 
 WindowDialog {
     id: root
-    backgroundHeight: 520
+    backgroundHeight: 600
 
     component VpnItem: DialogListItem {
         id: itemRoot
@@ -16,7 +16,8 @@ WindowDialog {
         readonly property bool connected: Vpn.isActive(connection)
         width: ListView.view?.width ?? 0
         active: connected
-        pointingHandCursor: false
+        enabled: !Vpn.busy
+        onClicked: connected ? Vpn.disconnect(connection) : Vpn.connect(connection)
 
         contentItem: RowLayout {
             anchors {
@@ -34,30 +35,19 @@ WindowDialog {
                 color: Appearance.colors.colOnSurfaceVariant
             }
 
-            ColumnLayout {
+            StyledText {
                 Layout.fillWidth: true
-                spacing: 0
-
-                StyledText {
-                    Layout.fillWidth: true
-                    text: itemRoot.connection.name
-                    color: Appearance.colors.colOnSurfaceVariant
-                    elide: Text.ElideRight
-                    textFormat: Text.PlainText
-                }
-
-                StyledText {
-                    Layout.fillWidth: true
-                    text: itemRoot.connected ? Translation.tr("Connected") : Translation.tr("Not connected")
-                    color: Appearance.colors.colSubtext
-                    font.pixelSize: Appearance.font.pixelSize.smallie
-                }
+                text: itemRoot.connection.name
+                color: Appearance.colors.colOnSurfaceVariant
+                elide: Text.ElideRight
+                textFormat: Text.PlainText
             }
 
-            DialogButton {
-                buttonText: itemRoot.connected ? Translation.tr("Disconnect") : Translation.tr("Connect")
-                enabled: !Vpn.busy
-                onClicked: itemRoot.connected ? Vpn.disconnect(itemRoot.connection) : Vpn.connect(itemRoot.connection)
+            MaterialSymbol {
+                visible: itemRoot.connected
+                text: "check"
+                iconSize: Appearance.font.pixelSize.larger
+                color: Appearance.colors.colOnSurfaceVariant
             }
         }
     }
@@ -78,12 +68,16 @@ WindowDialog {
         wrapMode: Text.Wrap
     }
 
-    StyledListView {
+    ListView {
         Layout.fillWidth: true
         Layout.fillHeight: true
+        Layout.topMargin: -15
+        Layout.bottomMargin: -16
+        Layout.leftMargin: -Appearance.rounding.large
+        Layout.rightMargin: -Appearance.rounding.large
         visible: Vpn.connections.length > 0
         clip: true
-        spacing: 4
+        spacing: 0
         model: ScriptModel { values: Vpn.connections }
         delegate: VpnItem {
             required property var modelData
