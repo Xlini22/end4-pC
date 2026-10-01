@@ -244,7 +244,7 @@ ColumnLayout {
                         type: fields[2] ?? "",
                         autoconnect: fields[3] ?? ""
                     };
-                }).filter(vpn => vpn.type === "wireguard").sort((a, b) => a.name.localeCompare(b.name));
+                }).filter(vpn => vpn.type === "vpn" || vpn.type === "wireguard").sort((a, b) => a.name.localeCompare(b.name));
                 root.autoconnectOverrides = ({});
                 root.normalizeAutoconnect();
             }
@@ -268,7 +268,7 @@ ColumnLayout {
                         type: fields[2] ?? "",
                         device: fields[3] ?? ""
                     };
-                }).filter(vpn => vpn.type === "wireguard").sort((a, b) => a.name.localeCompare(b.name));
+                }).filter(vpn => vpn.type === "vpn" || vpn.type === "wireguard").sort((a, b) => a.name.localeCompare(b.name));
                 root.syncLastVpnFromState();
             }
         }
@@ -623,7 +623,7 @@ ColumnLayout {
         StyledText {
             Layout.fillWidth: true
             visible: root.vpnConnections.length === 0
-            text: Translation.tr("No WireGuard VPN profiles found.")
+            text: Translation.tr("No VPN profiles found.")
             color: Appearance.colors.colSubtext
             wrapMode: Text.Wrap
         }

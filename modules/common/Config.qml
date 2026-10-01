@@ -106,6 +106,16 @@ Singleton {
                     island.leftWidgets = island.leftWidgets.concat(["activity"]);
                 island.activityWidgetMigrated = true;
             }
+            const quickToggles = root.options.sidebar.quickToggles;
+            if (!quickToggles.vpnToggleMigrated) {
+                const toggles = [...quickToggles.android.toggles];
+                if (!toggles.some(toggle => toggle?.type === "vpn")) {
+                    const bluetoothIndex = toggles.findIndex(toggle => toggle?.type === "bluetooth");
+                    toggles.splice(bluetoothIndex >= 0 ? bluetoothIndex + 1 : toggles.length, 0, { "size": 2, "type": "vpn" });
+                    quickToggles.android.toggles = toggles;
+                }
+                quickToggles.vpnToggleMigrated = true;
+            }
             root.ready = true;
         }
         onLoadFailed: error => {
@@ -892,11 +902,14 @@ Singleton {
 
                 property JsonObject quickToggles: JsonObject {
                     property string style: "android" // Options: classic, android
+                    property string lastVpnUuid: ""
+                    property bool vpnToggleMigrated: false
                     property JsonObject android: JsonObject {
                         property int columns: 5
                         property list<var> toggles: [
                             { "size": 2, "type": "network" },
                             { "size": 2, "type": "bluetooth"  },
+                            { "size": 2, "type": "vpn" },
                             { "size": 1, "type": "idleInhibitor" },
                             { "size": 1, "type": "mic" },
                             { "size": 2, "type": "audio" },
