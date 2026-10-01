@@ -10,7 +10,16 @@ Singleton {
     id: root
 
     readonly property bool available: Bluetooth.adapters.values.length > 0
-    readonly property bool enabled: Bluetooth.defaultAdapter?.enabled ?? false
+    property bool enabled: false
+
+    function poweredFromBluetoothctl(output): bool {
+        return /^\s*Powered:\s*yes\s*$/mi.test(String(output ?? ""));
+    }
+
+    function refreshPowerState() {
+        if (!powerStateProcess.running)
+            powerStateProcess.running = true;
+    }
 
     // BlueZ can leave Device1.Connected false when a device reconnects on its
     // own, while audio, AVRCP and battery reporting are all live
@@ -54,12 +63,49 @@ Singleton {
     }
 
     function togglePower() {
-        const adapter = Bluetooth.defaultAdapter;
-        if (!adapter) return;
-        // ponytail: toggle all Bluetooth radios like the original fix; use per-adapter control if mixed radio states matter.
-        Quickshell.execDetached([
-            "bash", "-lc",
-            "rfkill list bluetooth | grep -q 'Soft blocked: yes' && rfkill unblock bluetooth || rfkill block bluetooth"
-        ]);
+        if (!root.available || togglePowerProcess.running) return;
+        togglePowerProcess.command = root.enabled
+            ? ["bluetoothctl", "power", "off"]
+            : ["bash", "-lc", "rfkill unblock bluetooth && bluetoothctl power on"];
+        togglePowerProcess.running = true;
+    }
+
+    // ponytail: poll BlueZ because Quickshell's adapter.enabled is stale on this hardware;
+    // replace with an Adapter1 PropertiesChanged subscription if sub-second updates become necessary.
+    Timer {
+        interval: 2000
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: root.refreshPowerState()
+    }
+
+    Process {
+        id: powerStateProcess
+        command: ["bluetoothctl", "show"]
+
+        stdout: StdioCollector {
+            onStreamFinished: root.enabled = root.poweredFromBluetoothctl(text)
+        }
+    }
+
+    Process {
+        id: togglePowerProcess
+
+        onExited: {
+            powerRefreshDelay.restart();
+        }
+    }
+
+    Timer {
+        id: powerRefreshDelay
+        interval: 250
+        repeat: false
+        onTriggered: root.refreshPowerState()
+    }
+
+    Component.onCompleted: {
+        console.assert(root.poweredFromBluetoothctl("Powered: yes"));
+        console.assert(!root.poweredFromBluetoothctl("Powered: no"));
     }
 }
