@@ -1,0 +1,6 @@
+import QtQuick
+import qs.modules.common.models.quickToggles
+
+AndroidQuickToggleButton {
+    toggleModel: VpnToggle {}
+}

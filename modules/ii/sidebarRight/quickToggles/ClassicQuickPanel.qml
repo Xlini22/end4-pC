@@ -30,6 +30,9 @@ AbstractQuickPanel {
                 root.openBluetoothDialog();
             }
         }
+        VpnToggle {
+            altAction: () => root.openVpnDialog()
+        }
         NightLight {}
         GameMode {}
         IdleInhibitor {}
