@@ -21,6 +21,7 @@ MouseArea {
     property string selectedColorGroup: ""
     property bool toolbarVisible: showControls || Config.options.wallpaperSelector.showSearchbar
     property bool filterFieldFocused: false
+    property Item activeFilterField: null
 
     property var quickDirs: [
         { icon: "home",       name: "Home   ",       path: `${Directories.home}`,                alwaysVisible: Config.options.wallpaperSelector.showHomePath },
@@ -140,20 +141,21 @@ MouseArea {
             event.accepted = true;
         } else if (event.key === Qt.Key_Backspace) {
             if (!root.filterFieldFocused) {
-                filterField.forceActiveFocus();
+                root.activeFilterField?.forceActiveFocus();
             }
             event.accepted = true;
         } else if (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_L) {
             addressBar.focusBreadcrumb();
             event.accepted = true;
         } else if (event.key === Qt.Key_Slash) {
-            filterField.forceActiveFocus();
+            root.activeFilterField?.forceActiveFocus();
             event.accepted = true;
         } else {
-            if (event.text.length > 0 && !root.filterFieldFocused) {
-                filterField.text += event.text;
-                filterField.cursorPosition = filterField.text.length;
-                filterField.forceActiveFocus();
+            const field = root.activeFilterField;
+            if (field && event.text.length > 0 && !root.filterFieldFocused) {
+                field.text += event.text;
+                field.cursorPosition = field.text.length;
+                field.forceActiveFocus();
             }
             event.accepted = true;
         }
@@ -476,15 +478,16 @@ MouseArea {
                     MouseArea {
                         id: sortMenuDismissArea
                         anchors.fill: parent
-                        visible: sortMenuPopup.visible
+                        visible: sortMenuPopup.open
                         z: 9
+                        hoverEnabled: true
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        onClicked: sortMenuPopup.visible = false
+                        onClicked: sortMenuPopup.open = false
                     }
 
-                    Item {
+                    BouncyPopup {
                         id: sortMenuPopup
-                        visible: false
+                        transformOrigin: Item.Bottom
                         z: 10
                         anchors.bottom: extraOptions.top
                         anchors.horizontalCenter: extraOptions.horizontalCenter
@@ -543,7 +546,7 @@ MouseArea {
                                         colRippleToggled: Appearance.colors.colSecondaryContainerActive
                                         onClicked: {
                                             Wallpapers.setSortMode(modelData.id);
-                                            sortMenuPopup.visible = false;
+                                            sortMenuPopup.open = false;
                                         }
 
                                         contentItem: RowLayout {
@@ -646,8 +649,8 @@ MouseArea {
                                 }
                                 IconToolbarButton {
                                     implicitWidth: height
-                                    toggled: sortMenuPopup.visible
-                                    onClicked: sortMenuPopup.visible = !sortMenuPopup.visible
+                                    toggled: sortMenuPopup.open
+                                    onClicked: sortMenuPopup.open = !sortMenuPopup.open
                                     text: "sort"
                                     StyledToolTip {
                                         text: Translation.tr("Sort wallpapers")
@@ -655,6 +658,11 @@ MouseArea {
                                 }
                                 ToolbarTextField {
                                     id: filterField
+                                    Component.onCompleted: {
+                                        root.activeFilterField = filterField
+                                        Wallpapers.searchQuery = text
+                                    }
+                                    Component.onDestruction: if (root.activeFilterField === filterField) root.activeFilterField = null
                                     placeholderText: focus
                                         ? Translation.tr("Search wallpapers")
                                         : Translation.tr("Search wallpapers")
@@ -688,6 +696,11 @@ MouseArea {
                             sourceComponent: Toolbar {
                                 ToolbarTextField {
                                     id: onlineSearchField
+                                    Component.onCompleted: {
+                                        root.activeFilterField = onlineSearchField
+                                        OnlineWallpapers.query = text
+                                    }
+                                    Component.onDestruction: if (root.activeFilterField === onlineSearchField) root.activeFilterField = null
                                     placeholderText: Translation.tr("Search online wallpapers")
                                     clip: true
                                     font.pixelSize: Appearance.font.pixelSize.small
@@ -732,6 +745,7 @@ MouseArea {
 
                                 ToolbarTextField {
                                     id: wallhavenSearchField
+                                    Component.onDestruction: if (root.activeFilterField === wallhavenSearchField) root.activeFilterField = null
                                     text: WallhavenSearch.currentQuery
                                     placeholderText: Translation.tr("Search Wallhaven...")
                                     Layout.preferredWidth: 220
@@ -751,7 +765,10 @@ MouseArea {
                                         }
                                         event.accepted = false
                                     }
-                                    Component.onCompleted: Qt.callLater(() => wallhavenToolbar._searchFieldReady = true)
+                                    Component.onCompleted: {
+                                        root.activeFilterField = wallhavenSearchField
+                                        Qt.callLater(() => wallhavenToolbar._searchFieldReady = true)
+                                    }
                                 }
 
                                 RowLayout {
@@ -851,12 +868,13 @@ MouseArea {
         function onWallpaperSelectorOpenChanged() {
             if (GlobalStates.wallpaperSelectorOpen && monitorIsFocused) {
                 if (root.source === "local")
-                    filterField.forceActiveFocus()
+                    root.activeFilterField?.forceActiveFocus()
                 else
                     root.forceActiveFocus()
             } else if (!GlobalStates.wallpaperSelectorOpen) {
-                sortMenuPopup.visible = false;
+                sortMenuPopup.open = false;
                 Wallpapers.stopPreview();
+                WallhavenSearch.clearQuery();
             }
         }
     }

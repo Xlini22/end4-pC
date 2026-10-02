@@ -20,7 +20,7 @@ StyledPopup {
     property bool hoverBridgeActive: false
     readonly property bool keepsBarExpanded: root.popupHovered || root.hoverBridgeActive
 
-    active: root.popupEnabled && Config.options.bar.tooltips.enable
+    shouldShow: !GlobalStates.barStyleEditorOpen && root.popupEnabled && Config.options.bar.tooltips.enable
         && (root.targetHovered || root.popupHovered || root.hoverBridgeActive)
 
     onTargetHoveredChanged: {
@@ -74,8 +74,6 @@ StyledPopup {
 
     Player {
         player: root.activePlayer
-        artSourceOverride: MediaArtwork.source
-        useSharedTimeline: true
         visualizerPoints: GlobalStates.visualizerPoints
         implicitWidth: Appearance.sizes.mediaControlsWidth
         implicitHeight: Appearance.sizes.mediaControlsHeight

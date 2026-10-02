@@ -59,7 +59,10 @@ Singleton {
         "America/Winnipeg", "America/Toronto", "America/Halifax", "America/St_Johns"
     ]
 
+    property var systemTimezones: []
+
     readonly property var timezoneList: {
+        if (root.systemTimezones.length > 0) return root.systemTimezones
         if (typeof Intl !== "undefined" && typeof Intl.supportedValuesOf === "function") {
             try {
                 return Intl.supportedValuesOf("timeZone")
@@ -68,6 +71,18 @@ Singleton {
             }
         }
         return root.fallbackTimezones
+    }
+
+    Process {
+        id: timezoneListProc
+        running: true
+        command: ["bash", "-c", "timedatectl list-timezones 2>/dev/null || (cd /usr/share/zoneinfo && find Africa America Antarctica Arctic Asia Atlantic Australia Europe Indian Pacific -type f | sort)"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const zones = text.trim().split("\n").map(line => line.trim()).filter(line => line.includes("/"))
+                if (zones.length > 0) root.systemTimezones = zones
+            }
+        }
     }
 
     function labelFor(tz) {
@@ -90,7 +105,10 @@ Singleton {
         Config.options.background.widgets.worldClock.timezones = updated
     }
 
+    readonly property bool active: Config.options?.background?.widgets?.worldClock?.enable ?? false
+
     onTimezonesChanged: root.refreshOffsets()
+    onActiveChanged: root.refreshOffsets()
     Component.onCompleted: root.refreshOffsets()
 
     readonly property string ampmToken: {
@@ -104,38 +122,65 @@ Singleton {
     property var now: new Date()
     Timer {
         interval: 1000
-        running: true
+        running: root.active
         repeat: true
+        triggeredOnStart: true
         onTriggered: root.now = new Date()
     }
 
-    property var offsetsMinutes: [0, 0, 0, 0]
+    property var offsetCache: ({})
+
+    property bool refreshQueued: false
 
     function refreshOffsets() {
-        offsetProc.running = false
-        offsetProc.running = true
+        if (!root.active) return
+        refreshDebounce.restart()
     }
 
     Timer {
-        interval: 5 * 60 * 1000
-        running: true
+        id: refreshDebounce
+        interval: 150
+        onTriggered: {
+            if (offsetProc.running) {
+                root.refreshQueued = true
+                return
+            }
+            offsetProc.command = root.offsetCommand()
+            offsetProc.running = true
+        }
+    }
+
+    function offsetCommand() {
+        const zones = root.timezones.map(tz => "'" + tz.replace(/'/g, "") + "'").join(" ")
+        return ["bash", "-c", `for tz in ${zones}; do if [ -f "/usr/share/zoneinfo/$tz" ]; then printf '%s %s\\n' "$tz" "$(TZ="$tz" date +%z)"; else printf '%s invalid\\n' "$tz"; fi; done`]
+    }
+
+    Timer {
+        interval: 10 * 60 * 1000
+        running: root.active
         repeat: true
         onTriggered: root.refreshOffsets()
     }
 
     Process {
         id: offsetProc
-        command: ["bash", "-c", root.timezones.map(tz => `TZ='${tz}' date +%z`).join("; ")]
+        onExited: {
+            if (root.refreshQueued) {
+                root.refreshQueued = false
+                refreshDebounce.restart()
+            }
+        }
         stdout: StdioCollector {
             id: offsetCollector
             onStreamFinished: {
-                const lines = offsetCollector.text.trim().split("\n")
-                root.offsetsMinutes = lines.map(line => {
-                    const m = line.trim().match(/^([+-])(\d{2})(\d{2})$/)
-                    if (!m) return 0
-                    const sign = m[1] === "-" ? -1 : 1
-                    return sign * (parseInt(m[2]) * 60 + parseInt(m[3]))
-                })
+                const cache = Object.assign({}, root.offsetCache)
+                for (const line of offsetCollector.text.trim().split("\n")) {
+                    const [tz, value] = line.trim().split(" ")
+                    const m = (value ?? "").match(/^([+-])(\d{2})(\d{2})$/)
+                    if (!tz) continue
+                    cache[tz] = m ? (m[1] === "-" ? -1 : 1) * (parseInt(m[2]) * 60 + parseInt(m[3])) : null
+                }
+                root.offsetCache = cache
             }
         }
     }
@@ -145,12 +190,14 @@ Singleton {
     }
 
     function cityDate(index) {
-        const offsetMin = root.offsetsMinutes[index] ?? 0
+        const offsetMin = root.offsetCache[root.timezones[index]]
+        if (offsetMin === undefined || offsetMin === null) return null
         return new Date(root.now.getTime() + offsetMin * 60000)
     }
 
     function timeStringFor(index) {
         const cd = root.cityDate(index)
+        if (!cd) return "--:--"
         let h = cd.getUTCHours()
         let m = cd.getUTCMinutes()
         if (root.use24h) {
@@ -164,7 +211,8 @@ Singleton {
     }
 
     function offsetLabelFor(index) {
-        const offsetMin = root.offsetsMinutes[index] ?? 0
+        const offsetMin = root.offsetCache[root.timezones[index]]
+        if (offsetMin === undefined || offsetMin === null) return "UTC?"
         const sign = offsetMin >= 0 ? "+" : "-"
         const abs = Math.abs(offsetMin)
         const h = Math.floor(abs / 60)
@@ -174,6 +222,7 @@ Singleton {
 
     function isDaytimeFor(index) {
         const cd = root.cityDate(index)
+        if (!cd) return true
         const h = cd.getUTCHours()
         return h >= 6 && h < 18
     }

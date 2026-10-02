@@ -269,6 +269,9 @@ Singleton {
                         property real scrollFactor: 0.7
                     }
                 }
+                property JsonObject misc: JsonObject {
+                    property bool focusOnActivate: false
+                }
             }
 
             property JsonObject apps: JsonObject {
@@ -293,6 +296,15 @@ Singleton {
             property JsonObject background: JsonObject {
                 property string lockWall: ""
                 property bool widgetsLocked: false
+                property JsonObject collage: JsonObject {
+                    property bool enable: false
+                    property int gap: 30
+                    property int margin: 30
+                    property int radius: 30
+                    property int primaryId: 1
+                    property int nextId: 2
+                    property string tree: "{\"t\":\"leaf\",\"id\":1,\"img\":\"\"}"
+                }
                 property bool showGrid: true
                 property bool showBlur: false
                 property real blurRadius: 32
@@ -531,10 +543,11 @@ Singleton {
                 property bool followFrameColor: false
                 property bool centerOnlyReserveFrame: false
                 property bool bottom: false // Instead of top
-                property int cornerStyle: 0 // 0: Hug | 1: Float | 2: Plain rectangle
+                property int cornerStyle: 0 // 0: Hug | 1: Float | 2: Plain rectangle | 3: M3 | 4: M3 Hug | 5: Panel
                 property string groupColor: "layer1"
                 property bool floatStyleShadow: true // Show shadow behind bar when cornerStyle == 1 (Float)
                 property string borderless: "pills"
+                property list<var> widgetStyles: []
                 property string topLeftIcon: "spark" // Options: "distro" or any icon name in ~/.config/quickshell/ii/assets/icons
                 property bool showBackground: true
                 property bool verbose: true
@@ -550,6 +563,11 @@ Singleton {
                     property int memoryWarningThreshold: 95
                     property int swapWarningThreshold: 85
                     property int cpuWarningThreshold: 90
+                }
+
+                property JsonObject aiUsage: JsonObject {
+                    property int tokenLimit: 1000000
+                    property int updateInterval: 60
                 }
 
                 property JsonObject dynamicIsland: JsonObject {
@@ -612,6 +630,7 @@ Singleton {
                     property int shown: 10
                     property bool showAppIcons: false
                     property string indicatorStyle: "dot" // "dot" or "icon"
+                    property string style: "default" // "default", "gnome", "dots", "ticks"
                     property bool alwaysShowNumbers: true
                     property int showNumberDelay: 300 // milliseconds
                     property list<string> numberMap: ["1", "2"] // Characters to show instead of numbers on workspace indicator
@@ -846,6 +865,8 @@ Singleton {
                 property int nonAppResultDelay: 30 // This prevents lagging when typing
                 property string engineBaseUrl: "https://www.google.com/search?q="
                 property list<string> excludedSites: ["quora.com", "facebook.com"]
+                property list<var> clipboardPins: []
+                property bool clipboardPreviewPopup: false
                 property bool sloppy: false // Uses levenshtein distance based scoring instead of fuzzy sort. Very weird.
                 property JsonObject prefix: JsonObject {
                     property bool showDefaultActionsWithoutPrefix: true
@@ -939,10 +960,14 @@ Singleton {
             property JsonObject custom: JsonObject {
                 property string distroIcon: "google-gemini-symbolic"
                 property bool colorizeIcon: true
+                property string iconColor: "onLayer0"
+                property string iconsPath: ""
             }
 
             property JsonObject screenRecord: JsonObject {
                 property string savePath: Directories.videos.replace("file://","") // strip "file://"
+                property bool systemAudio: false
+                property bool microphone: false
             }
 
             property JsonObject screenSnip: JsonObject {
