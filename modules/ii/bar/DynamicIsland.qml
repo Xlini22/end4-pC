@@ -614,7 +614,8 @@ Item {
     Loader {
         id: centerLoader
         active: root.centerEnabled
-        x: root.centerX - implicitWidth / 2
+        x: (root.sessionExclusive ? root.width / 2 - root.barCenterOffset : root.centerX)
+            - implicitWidth / 2
         anchors.verticalCenter: parent.verticalCenter
         sourceComponent: centeredWidgetComponent
         opacity: root.sessionVisible ? 1 - root.sessionOpacity : 1
