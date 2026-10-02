@@ -14,14 +14,21 @@ import qs.modules.common.widgets
 Item {
     id: root
     property bool mirrored: false
+    property real sessionOpacity: GlobalStates.diSessionOpen ? 1 : 0
+    readonly property bool sessionVisible: GlobalStates.diSessionOpen || sessionOpacity > 0
+
+    Behavior on sessionOpacity {
+        NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+    }
+
     readonly property string sessionMenuMode:
         Config.options.bar.dynamicIsland.sessionMenuMode ?? "exclusive"
-    readonly property bool sessionReplacesCenter: GlobalStates.diSessionOpen
+    readonly property bool sessionReplacesCenter: root.sessionVisible
         && Config.options.bar.dynamicIsland.centerEnabled
         && Config.options.bar.dynamicIsland.centerWidget.length > 0
         && Config.options.bar.dynamicIsland.centerWidget !== "dynamicIsland"
         && !root.vertical && root.sessionMenuMode === "replaceWorkspaces"
-    readonly property bool sessionExclusive: GlobalStates.diSessionOpen
+    readonly property bool sessionExclusive: root.sessionVisible
         && !root.sessionReplacesCenter
     readonly property string centerWidget: Config.options.bar.dynamicIsland.centerWidget
     readonly property bool centerEnabled: Config.options.bar.dynamicIsland.centerEnabled
@@ -684,6 +691,9 @@ Item {
             Item {
                 implicitWidth: root.sessionWidth
                 implicitHeight: root.pillHeight
+                opacity: root.sessionOpacity
+                scale: 0.94 + 0.06 * root.sessionOpacity
+                enabled: GlobalStates.diSessionOpen
                 DiSession { di: root }
             }
         }
