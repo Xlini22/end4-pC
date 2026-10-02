@@ -1,7 +1,7 @@
+import qs
 import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
-import qs.services
 import QtQuick
 import QtQuick.Effects
 import Quickshell
@@ -20,7 +20,11 @@ LazyLoader {
     property real popupRadius: Appearance.rounding.normal + 4
     property real popupBorderWidth: 1
     readonly property bool targetHovered: !!(root.hoverTarget && root.hoverTarget.containsMouse)
-    active: root.popupEnabled && root.targetHovered && Config.options.bar.tooltips.enable
+    property bool shouldShow: root.popupEnabled && root.targetHovered && Config.options.bar.tooltips.enable && !GlobalStates.barStyleEditorOpen
+        && (!Config.options.bar.tooltips.clickToShow || ((root.hoverTarget.pressedButtons ?? Qt.LeftButton) & Qt.LeftButton))
+    property bool closing: false
+    active: root.shouldShow || root.closing
+    onShouldShowChanged: if (!root.shouldShow && root.item) root.closing = true
 
     readonly property bool barVertical: Config.options.bar.vertical
     readonly property string barEdge: {
@@ -28,6 +32,7 @@ LazyLoader {
         return Config.options.bar.bottom ? "right" : "left"
     }
     readonly property real barThickness: barVertical ? Appearance.sizes.verticalBarWidth : Appearance.sizes.barHeight
+    readonly property real bounceRoom: 24
 
     component: PanelWindow {
         id: popupWindow
@@ -41,8 +46,8 @@ LazyLoader {
         anchors.top: root.barEdge !== "bottom"
         anchors.bottom: root.barEdge === "bottom"
 
-        implicitWidth: popupBackground.implicitWidth + Appearance.sizes.elevationMargin * 2 + root.popupBackgroundMargin
-        implicitHeight: popupBackground.implicitHeight + Appearance.sizes.elevationMargin * 2 + root.popupBackgroundMargin
+        implicitWidth: popupBackground.implicitWidth + Appearance.sizes.elevationMargin * 2 + root.popupBackgroundMargin + (root.barVertical ? root.bounceRoom : 0)
+        implicitHeight: popupBackground.implicitHeight + Appearance.sizes.elevationMargin * 2 + root.popupBackgroundMargin + (root.barVertical ? 0 : root.bounceRoom)
 
         readonly property real centerOffsetX: {
             const base = root.QsWindow?.mapFromItem(
@@ -64,7 +69,7 @@ LazyLoader {
         }
 
         mask: Region {
-            item: popupBackground
+            item: inputArea
         }
         exclusionMode: ExclusionMode.Ignore
         exclusiveZone: 0
@@ -86,50 +91,174 @@ LazyLoader {
         WlrLayershell.namespace: "quickshell:popup"
         WlrLayershell.layer: WlrLayer.Overlay
 
-        // A sidebar activates HyprlandFocusGrab. Keep this separate popup
-        // inside that grab while it exists so it continues receiving hover
-        // and pointer input independently of either sidebar's open state.
         Component.onCompleted: GlobalFocusGrab.addPersistent(popupWindow)
-        Component.onDestruction: GlobalFocusGrab.removePersistent(popupWindow)
-
-        StyledRectangularShadow {
-            target: popupBackground
-            visible: root.popupShadowEnabled
+        Component.onDestruction: {
+            GlobalFocusGrab.removePersistent(popupWindow)
+            root.popupHovered = false
         }
 
-        Rectangle {
-            id: popupBackground
-            readonly property real margin: root.popupContentMargin
+        Connections {
+            target: root
+            function onShouldShowChanged() {
+                if (root.shouldShow) {
+                    closeAnim.stop();
+                    openAnim.restart();
+                } else {
+                    openAnim.stop();
+                    closeAnim.restart();
+                }
+            }
+        }
 
+        Item {
+            id: inputArea
+            anchors.fill: body
+            HoverHandler { onHoveredChanged: root.popupHovered = hovered }
+        }
+
+        Item {
+            id: body
             anchors {
                 fill: parent
-                leftMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.left)
-                rightMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.right)
-                topMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.top)
-                bottomMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.bottom)
+                leftMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.left) + (root.barEdge === "right" ? root.bounceRoom : 0)
+                rightMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.right) + (root.barEdge === "left" ? root.bounceRoom : 0)
+                topMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.top) + (root.barEdge === "bottom" ? root.bounceRoom : 0)
+                bottomMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.bottom) + (root.barEdge === "top" ? root.bounceRoom : 0)
+            }
+            opacity: 0
+            transform: Scale {
+                id: bodyScale
+                origin.x: root.barEdge === "left" ? 0 : root.barEdge === "right" ? body.width : body.width / 2
+                origin.y: root.barEdge === "top" ? 0 : root.barEdge === "bottom" ? body.height : body.height / 2
+                xScale: root.barVertical ? 0.4 : 0.8
+                yScale: root.barVertical ? 0.8 : 0.4
             }
 
-            // Use local reference instead of crossing LazyLoader scope boundary
-            implicitWidth: (popupWindow.innerContent?.implicitWidth ?? 0) + margin * 2
-            implicitHeight: (popupWindow.innerContent?.implicitHeight ?? 0) + margin * 2
-
-            color: root.popupColor
-            radius: root.popupRadius
-            border.width: root.popupBorderWidth
-            border.color: Appearance.colors.colLayer0Border
-
-            HoverHandler {
-                onHoveredChanged: root.popupHovered = hovered
+            StyledRectangularShadow {
+                target: popupBackground
+                visible: root.popupShadowEnabled
             }
 
-            Component.onDestruction: root.popupHovered = false
+            Rectangle {
+                id: popupBackground
+                readonly property real margin: root.popupContentMargin
 
-            // Reparent content here once the window is ready
-            Component.onCompleted: {
-                if (popupWindow.innerContent) {
-                    popupWindow.innerContent.parent = popupBackground
-                    popupWindow.innerContent.anchors.centerIn = popupBackground
+                anchors.fill: parent
+
+                // Use local reference instead of crossing LazyLoader scope boundary
+                implicitWidth: (popupWindow.innerContent?.implicitWidth ?? 0) + margin * 2
+                implicitHeight: (popupWindow.innerContent?.implicitHeight ?? 0) + margin * 2
+
+                color: root.popupColor
+                radius: root.popupRadius
+                border.width: root.popupBorderWidth
+                border.color: Appearance.colors.colLayer0Border
+
+                Item {
+                    id: contentHolder
+                    anchors.fill: parent
+                    opacity: 0
+                    transform: Translate {
+                        id: contentShift
+                        x: root.barEdge === "left" ? -16 : root.barEdge === "right" ? 16 : 0
+                        y: root.barEdge === "top" ? -16 : root.barEdge === "bottom" ? 16 : 0
+                    }
                 }
+
+                // Reparent content here once the window is ready
+                Component.onCompleted: {
+                    if (popupWindow.innerContent) {
+                        popupWindow.innerContent.parent = contentHolder
+                        popupWindow.innerContent.anchors.centerIn = contentHolder
+                    }
+                }
+            }
+        }
+
+        ParallelAnimation {
+            id: openAnim
+            running: true
+            NumberAnimation {
+                target: bodyScale
+                property: root.barVertical ? "xScale" : "yScale"
+                to: 1
+                duration: 500
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+            }
+            NumberAnimation {
+                target: bodyScale
+                property: root.barVertical ? "yScale" : "xScale"
+                to: 1
+                duration: Appearance.animationCurves.expressiveDefaultSpatialDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial
+            }
+            NumberAnimation {
+                target: body
+                property: "opacity"
+                to: 1
+                duration: Appearance.animationCurves.expressiveEffectsDuration
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.expressiveEffects
+            }
+            SequentialAnimation {
+                PauseAnimation {
+                    duration: 90
+                }
+                ParallelAnimation {
+                    NumberAnimation {
+                        target: contentHolder
+                        property: "opacity"
+                        to: 1
+                        duration: Appearance.animationCurves.expressiveEffectsDuration
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Appearance.animationCurves.expressiveEffects
+                    }
+                    NumberAnimation {
+                        target: contentShift
+                        properties: "x,y"
+                        to: 0
+                        duration: Appearance.animationCurves.expressiveDefaultSpatialDuration
+                        easing.type: Easing.BezierSpline
+                        easing.bezierCurve: Appearance.animationCurves.expressiveFastSpatial
+                    }
+                }
+            }
+        }
+
+        ParallelAnimation {
+            id: closeAnim
+            onFinished: root.closing = false
+            NumberAnimation {
+                target: bodyScale
+                property: root.barVertical ? "xScale" : "yScale"
+                to: 0.4
+                duration: 220
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.emphasizedAccel
+            }
+            NumberAnimation {
+                target: bodyScale
+                property: root.barVertical ? "yScale" : "xScale"
+                to: 0.85
+                duration: 220
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.emphasizedAccel
+            }
+            NumberAnimation {
+                target: body
+                property: "opacity"
+                to: 0
+                duration: 200
+                easing.type: Easing.BezierSpline
+                easing.bezierCurve: Appearance.animationCurves.emphasizedAccel
+            }
+            NumberAnimation {
+                target: contentHolder
+                property: "opacity"
+                to: 0
+                duration: 120
             }
         }
     }

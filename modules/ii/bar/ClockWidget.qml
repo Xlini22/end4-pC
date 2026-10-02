@@ -7,6 +7,8 @@ import QtQuick.Layouts
 
 BarWidgetSwitcher {
     id: root
+    property color contentColor: Appearance.colors.colOnLayer1
+    property bool contentColorOverridden: false
     property bool borderless: Config.options.bar.borderless
     property bool islandMode: false
     property bool islandExpanded: false
@@ -44,7 +46,7 @@ BarWidgetSwitcher {
                         required property string modelData
                         width: implicitWidth
                         horizontalAlignment: Text.AlignHCenter
-                        font.letterSpacing: -0.2
+                        font.letterSpacing: -0.9
                         font.features: { "tnum": 1 }
                         font.pixelSize: {
                             if (modelData.match(/am|pm/i))
@@ -52,7 +54,7 @@ BarWidgetSwitcher {
                             else
                                 return Appearance.font.pixelSize.large;
                         }
-                        color: Appearance.colors.colOnLayer1
+                        color: root.contentColor
                         text: modelData.padStart(2, "0")
                     }
                 }
@@ -62,7 +64,7 @@ BarWidgetSwitcher {
                 Layout.alignment: Qt.AlignHCenter
                 Layout.bottomMargin: 5
                 font.pixelSize: Appearance.font.pixelSize.smallest
-                color: Appearance.colors.colOnLayer1
+                color: root.contentColor
                 text: DateTime.shortDate
             }
         }
@@ -126,7 +128,7 @@ BarWidgetSwitcher {
                 StyledText {
                     id: dateLabel
                     font.pixelSize: Appearance.font.pixelSize.small
-                    color: Appearance.colors.colOnLayer1
+                    color: root.contentColor
                     text: DateTime.longDate
                 }
             }
@@ -139,13 +141,13 @@ BarWidgetSwitcher {
                 StyledText {
                     id: dateSeparator
                     font.pixelSize: Appearance.font.pixelSize.small
-                    color: Appearance.colors.colOnLayer1
+                    color: root.contentColor
                     text: "•"
                 }
             }
             StyledText {
                 font.pixelSize: Appearance.font.pixelSize.small
-                color: Appearance.colors.colOnLayer1
+                color: root.contentColor
                 text: DateTime.time
                 font.letterSpacing: -0.4
                 font.features: { "tnum": 1 }
