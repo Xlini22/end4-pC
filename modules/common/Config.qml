@@ -106,6 +106,10 @@ Singleton {
                     island.leftWidgets = island.leftWidgets.concat(["activity"]);
                 island.activityWidgetMigrated = true;
             }
+            if (!island.centerWidgetMigrated) {
+                island.centerEnabled = island.centerWorkspaces;
+                island.centerWidgetMigrated = true;
+            }
             const quickToggles = root.options.sidebar.quickToggles;
             if (!quickToggles.vpnToggleMigrated) {
                 const toggles = [...quickToggles.android.toggles];
@@ -549,8 +553,12 @@ Singleton {
                 }
 
                 property JsonObject dynamicIsland: JsonObject {
+                    property bool centerEnabled: false
+                    property string centerWidget: "workspaces"
+                    property bool centerWidgetMigrated: false
+                    // Retained only to migrate the workspace-specific center setting.
                     property bool centerWorkspaces: false
-                    property string sessionMenuMode: "exclusive" // "replaceWorkspaces" or "exclusive"
+                    property string sessionMenuMode: "exclusive" // "replaceWorkspaces" (replaces the selected center) or "exclusive"
                     property string visualizerStyle: "dots" // "dots", "wave", "none"
                     property bool showMediaControls: false
                     property string animationStyle: "staged" // "staged" or "simultaneous"
