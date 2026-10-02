@@ -16,14 +16,18 @@ Item {
     property bool mirrored: false
     readonly property string sessionMenuMode:
         Config.options.bar.dynamicIsland.sessionMenuMode ?? "exclusive"
-    readonly property bool sessionReplacesWorkspaces: GlobalStates.diSessionOpen
-        && Config.options.bar.dynamicIsland.centerWorkspaces
+    readonly property bool sessionReplacesCenter: GlobalStates.diSessionOpen
+        && Config.options.bar.dynamicIsland.centerEnabled
+        && Config.options.bar.dynamicIsland.centerWidget.length > 0
+        && Config.options.bar.dynamicIsland.centerWidget !== "dynamicIsland"
         && !root.vertical && root.sessionMenuMode === "replaceWorkspaces"
     readonly property bool sessionExclusive: GlobalStates.diSessionOpen
-        && !root.sessionReplacesWorkspaces
-    readonly property bool centerWorkspaces: Config.options.bar.dynamicIsland.centerWorkspaces
+        && !root.sessionReplacesCenter
+    readonly property string centerWidget: Config.options.bar.dynamicIsland.centerWidget
+    readonly property bool centerEnabled: Config.options.bar.dynamicIsland.centerEnabled
+        && root.centerWidget.length > 0 && root.centerWidget !== "dynamicIsland"
         && !root.vertical && !root.sessionExclusive
-    readonly property real workspaceSpacing: 8
+    readonly property real widgetSpacing: 8
     // BarContent supplies the free space between the screen centre and the
     // outer bar sections. The island stays symmetric while both limits allow
     // it, then removes only unused wing space on the constrained side.
@@ -255,7 +259,7 @@ Item {
         onTriggered: root.componentInteractionReady = true
     }
     readonly property real contentPadding: 8
-    readonly property bool hasPersistentContent: root.centerWorkspaces
+    readonly property bool hasPersistentContent: root.centerEnabled
         || leftWidgets.implicitWidth > 0 || rightWidgets.implicitWidth > 0
     readonly property real emptyWidth: root.hasPersistentContent ? 0
         : (root.expanded ? root.emptyExpandedWidth : root.emptyCollapsedWidth)
@@ -264,36 +268,36 @@ Item {
         NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
     }
     readonly property real leftContentWidth: leftWidgets.implicitWidth
-        + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
+        + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.widgetSpacing : 0)
         + root.primaryWidth
     readonly property real rightContentWidth: rightWidgets.implicitWidth
     readonly property real wingWidth: Math.max(root.leftContentWidth, root.rightContentWidth)
-    readonly property real workspaceHalfWidth: workspaceLoader.implicitWidth / 2
-    readonly property real fixedCenterExtent: root.contentPadding + root.workspaceHalfWidth
-        + root.workspaceSpacing
+    readonly property real centerHalfWidth: centerLoader.implicitWidth / 2
+    readonly property real fixedCenterExtent: root.contentPadding + root.centerHalfWidth
+        + root.widgetSpacing
     readonly property real leftWingLimit: Math.max(0, root.maxLeftExtent - root.fixedCenterExtent)
     readonly property real rightWingLimit: Math.max(0, root.maxRightExtent - root.fixedCenterExtent)
-    readonly property real leftWingWidth: root.centerWorkspaces
+    readonly property real leftWingWidth: root.centerEnabled
         ? Math.max(root.leftContentWidth, Math.min(root.wingWidth, root.leftWingLimit))
         : root.leftContentWidth
-    readonly property real rightWingWidth: root.centerWorkspaces
+    readonly property real rightWingWidth: root.centerEnabled
         ? Math.max(root.rightContentWidth, Math.min(root.wingWidth, root.rightWingLimit))
         : root.rightContentWidth
-    readonly property real leftExtent: root.centerWorkspaces
+    readonly property real leftExtent: root.centerEnabled
         ? root.fixedCenterExtent + root.leftWingWidth : 0
-    readonly property real rightExtent: root.centerWorkspaces
+    readonly property real rightExtent: root.centerEnabled
         ? root.fixedCenterExtent + root.rightWingWidth : 0
-    readonly property real workspaceCenterX: root.centerWorkspaces ? root.leftExtent : root.width / 2
-    readonly property real barCenterOffset: root.centerWorkspaces
+    readonly property real centerX: root.centerEnabled ? root.leftExtent : root.width / 2
+    readonly property real barCenterOffset: root.centerEnabled
         ? (root.rightExtent - root.leftExtent) / 2 : 0
     readonly property real leftStart: root.contentPadding
     readonly property real rightStart: root.width - root.contentPadding - root.rightContentWidth
 
     implicitHeight: root.pillHeight
-    implicitWidth: root.centerWorkspaces
+    implicitWidth: root.centerEnabled
         ? root.leftExtent + root.rightExtent
         : 2 * root.contentPadding + root.leftContentWidth + root.rightContentWidth
-            + (root.leftContentWidth > 0 && root.rightContentWidth > 0 ? root.workspaceSpacing : 0)
+            + (root.leftContentWidth > 0 && root.rightContentWidth > 0 ? root.widgetSpacing : 0)
 
     HoverHandler { id: islandHover }
 
@@ -526,21 +530,21 @@ Item {
         property var widgets: []
         property var rightAnchoredWidgets: []
         readonly property var filteredWidgets: widgets.filter(name => name !== "dynamicIsland"
-            && !(name === "workspaces" && root.centerWorkspaces))
+            && !(name === root.centerWidget && root.centerEnabled))
         readonly property real leftGroupWidth: leftGroup.implicitWidth
         readonly property real rightGroupWidth: rightGroup.implicitWidth
         readonly property bool hasLeftGroup: leftGroupWidth > 0.5
         readonly property bool hasRightGroup: rightGroupWidth > 0.5
 
         implicitWidth: leftGroupWidth + rightGroupWidth
-            + (hasLeftGroup && hasRightGroup ? root.workspaceSpacing : 0)
+            + (hasLeftGroup && hasRightGroup ? root.widgetSpacing : 0)
         implicitHeight: Math.max(leftGroup.implicitHeight, rightGroup.implicitHeight, root.pillHeight)
 
         RowLayout {
             id: leftGroup
             anchors.left: parent.left
             anchors.verticalCenter: parent.verticalCenter
-            spacing: root.workspaceSpacing
+            spacing: root.widgetSpacing
 
             Repeater {
                 model: sideWidgetsRoot.filteredWidgets.filter(
@@ -553,7 +557,7 @@ Item {
             id: rightGroup
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            spacing: root.workspaceSpacing
+            spacing: root.widgetSpacing
 
             Repeater {
                 model: sideWidgetsRoot.filteredWidgets.filter(
@@ -568,9 +572,9 @@ Item {
         widgets: root.sessionExclusive ? [] : Config.options.bar.dynamicIsland.leftWidgets
         rightAnchoredWidgets: Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
         x: root.leftStart
-        width: root.centerWorkspaces
+        width: root.centerEnabled
             ? Math.max(implicitWidth, root.leftWingWidth - root.primaryWidth
-                - (implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0))
+                - (implicitWidth > 0 && root.primaryWidth > 0 ? root.widgetSpacing : 0))
             : implicitWidth
         anchors.verticalCenter: parent.verticalCenter
     }
@@ -578,10 +582,10 @@ Item {
         id: rightWidgets
         widgets: root.sessionExclusive ? [] : Config.options.bar.dynamicIsland.rightWidgets
         rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
-        x: root.centerWorkspaces
-            ? root.workspaceCenterX + root.workspaceHalfWidth + root.workspaceSpacing
+        x: root.centerEnabled
+            ? root.centerX + root.centerHalfWidth + root.widgetSpacing
             : root.rightStart
-        width: root.centerWorkspaces
+        width: root.centerEnabled
             ? Math.max(implicitWidth, root.rightWingWidth)
             : implicitWidth
         anchors.verticalCenter: parent.verticalCenter
@@ -590,34 +594,35 @@ Item {
     // Keep the center slot fixed to the screen center. The session menu can
     // replace only this slot, leaving both widget wings intact.
     Loader {
-        id: workspaceLoader
-        active: root.centerWorkspaces
-        x: root.workspaceCenterX - implicitWidth / 2
+        id: centerLoader
+        active: root.centerEnabled
+        x: root.centerX - implicitWidth / 2
         anchors.verticalCenter: parent.verticalCenter
-        sourceComponent: root.sessionReplacesWorkspaces
-            ? sessionComponent : workspacesComponent
+        sourceComponent: root.sessionReplacesCenter
+            ? sessionComponent : centeredWidgetComponent
         onLoaded: {
-            if (root.sessionReplacesWorkspaces && item)
+            if (root.sessionReplacesCenter && item)
                 item.forceActiveFocus()
         }
     }
 
     Component {
-        id: workspacesComponent
-        // Preserve Workspaces' native bar dimensions, as in the regular bar.
-        // Forcing the island's pill height offsets icons relative to indicators.
-        Workspaces {}
+        id: centeredWidgetComponent
+        SideWidgetDelegate {
+            modelData: root.centerWidget
+            anchorRight: false
+        }
     }
 
     // Animate content widths at their source. The island and its positions follow
     // those widths directly, keeping both outer margins equal on every frame.
     Rectangle {
         id: pill
-        x: root.centerWorkspaces
-            ? root.workspaceCenterX - root.workspaceHalfWidth
-                - root.workspaceSpacing - root.primaryWidth
+        x: root.centerEnabled
+            ? root.centerX - root.centerHalfWidth
+                - root.widgetSpacing - root.primaryWidth
             : root.leftStart + leftWidgets.implicitWidth
-                + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.workspaceSpacing : 0)
+                + (leftWidgets.implicitWidth > 0 && root.primaryWidth > 0 ? root.widgetSpacing : 0)
         width: root.primaryWidth
         height: root.pillHeight
         color: "transparent"

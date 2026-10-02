@@ -65,7 +65,7 @@ ContentPage {
         const used = [...island.leftWidgets, ...island.rightWidgets];
         return allWidgets.filter(widget => {
             if (widget.id === "dynamicIsland") return false;
-            if (widget.id === "workspaces" && island.centerWorkspaces) return false;
+            if (widget.id === island.centerWidget && island.centerEnabled) return false;
             return ["visualizer", "divisor"].includes(widget.id) || !used.includes(widget.id);
         });
     }
@@ -357,13 +357,20 @@ ContentPage {
             GroupedList {
                 ConfigSwitch {
                     buttonIcon: "view_carousel"
-                    text: Translation.tr("Keep workspaces centered inside Dynamic Island")
+                    text: Translation.tr("Use a centered element")
                     enabled: !Config.options.bar.vertical
-                    checked: Config.options.bar.dynamicIsland.centerWorkspaces
-                    onCheckedChanged: Config.options.bar.dynamicIsland.centerWorkspaces = checked
+                    checked: Config.options.bar.dynamicIsland.centerEnabled
+                    onCheckedChanged: {
+                        const island = Config.options.bar.dynamicIsland;
+                        island.centerEnabled = checked;
+                        if (checked) {
+                            island.leftWidgets = island.leftWidgets.filter(name => name !== island.centerWidget);
+                            island.rightWidgets = island.rightWidgets.filter(name => name !== island.centerWidget);
+                        }
+                    }
                 }
                 ConfigSelectionArray {
-                    property bool groupedListCollapsed: !Config.options.bar.dynamicIsland.centerWorkspaces
+                    property bool groupedListCollapsed: !Config.options.bar.dynamicIsland.centerEnabled
                     visible: !groupedListCollapsed
                     enabled: visible
                     text: Translation.tr("Session menu behavior")
@@ -374,7 +381,7 @@ ContentPage {
                     }
                     options: [
                         {
-                            displayName: Translation.tr("Replace workspaces"),
+                            displayName: Translation.tr("Replace centered element"),
                             icon: "view_carousel",
                             value: "replaceWorkspaces"
                         },
@@ -412,6 +419,30 @@ ContentPage {
                     getWidgetName: page.getWidgetName
                     onUpdate: list => Config.options.bar.dynamicIsland.leftWidgets = list
                 }
+                LayoutSection {
+                    sectionTitle: Translation.tr("Centered")
+                    visible: Config.options.bar.dynamicIsland.centerEnabled
+                    layout: Config.options.bar.dynamicIsland.centerWidget
+                        ? [Config.options.bar.dynamicIsland.centerWidget] : []
+                    availableWidgets: layout.length === 0
+                        ? page.allWidgets.filter(widget => widget.id !== "dynamicIsland") : []
+                    getWidgetName: page.getWidgetName
+                    modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
+                    dynamicHoverModeWidgets: ["media", "visualizer"]
+                    widgetModes: Config.options.bar.dynamicIsland.widgetModes
+                    onModeChanged: (widget, mode) => {
+                        Config.options.bar.dynamicIsland.widgetModes[widget] = mode;
+                    }
+                    onUpdate: list => {
+                        const island = Config.options.bar.dynamicIsland;
+                        const widget = list[0] ?? "";
+                        island.centerWidget = widget;
+                        if (widget) {
+                            island.leftWidgets = island.leftWidgets.filter(name => name !== widget);
+                            island.rightWidgets = island.rightWidgets.filter(name => name !== widget);
+                        }
+                    }
+                }
                 AnchoredLayoutSection {
                     sectionTitle: Translation.tr("Right side")
                     layout: Config.options.bar.dynamicIsland.rightWidgets
@@ -436,7 +467,7 @@ ContentPage {
                 wrapMode: Text.WordWrap
                 text: Translation.tr("Each side of Dynamic Island is divided into left- and right-anchored groups. Drag a component between the groups to choose which edge it follows during expansion.")
                 color: Appearance.colors.colSubtext
-                visible: Config.options.bar.dynamicIsland.centerWorkspaces
+                visible: Config.options.bar.dynamicIsland.centerEnabled
             }
 
             ContentSubsection {

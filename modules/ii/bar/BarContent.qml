@@ -45,9 +45,9 @@ Item {
     function filterLayout(layout) {
         return layout.filter(name => {
             if (name === "sysTray" && !root.trayHasItems) return false;
-            // The island supplies the single centered workspace strip in this mode.
-            if (name === "workspaces" && GlobalStates.dynamicIslandEnabled
-                && Config.options.bar.dynamicIsland.centerWorkspaces && !Config.options.bar.vertical) return false;
+            // The island supplies the selected centered widget in this mode.
+            if (name === Config.options.bar.dynamicIsland.centerWidget && GlobalStates.dynamicIslandEnabled
+                && Config.options.bar.dynamicIsland.centerEnabled && !Config.options.bar.vertical) return false;
             return true;
         });
     }
