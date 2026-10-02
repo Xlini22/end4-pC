@@ -611,6 +611,8 @@ Item {
         SideWidgetDelegate {
             modelData: root.centerWidget
             anchorRight: false
+            // The fixed center stays interactive even while the island is collapsed.
+            enabled: contentAvailable
         }
     }
 
