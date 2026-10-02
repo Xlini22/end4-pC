@@ -784,6 +784,19 @@ ContentPage {
                     onCheckedChanged: { Config.options.bar.workspaces.showAppIcons = checked; }
                 }
                 ConfigSelectionArray {
+                    enabled: page.defaultWorkspacesDesign && Config.options.bar.workspaces.showAppIcons
+                    text: Translation.tr("Icons color")
+                    icon: "palette"
+                    currentValue: Config.options.bar.workspaces.monochromeIcons ? "tinted" : "original"
+                    onSelected: newValue => {
+                        Config.options.bar.workspaces.monochromeIcons = newValue === "tinted"
+                    }
+                    options: [
+                        { displayName: Translation.tr("Tinted"), icon: "palette", value: "tinted" },
+                        { displayName: Translation.tr("Original"), icon: "image", value: "original" }
+                    ]
+                }
+                ConfigSelectionArray {
                     enabled: page.defaultWorkspacesDesign
                     opacity: page.defaultWorkspacesDesign ? 1 : 0.5
                     text: Translation.tr("Indicator style")
