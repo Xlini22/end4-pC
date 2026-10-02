@@ -10,13 +10,26 @@ state = source[start:source.index('    readonly property string centerWidget:', 
 state = state.replace('GlobalStates.diSessionOpen', 'root.opened').replace('Config.options', 'root.config')
 start = source.index('                opacity: root.sessionOpacity', source.index('id: sessionComponent'))
 visual = source[start:source.index('                DiSession', start)].replace('GlobalStates.diSessionOpen', 'root.opened')
+geometry = source[source.index('    readonly property real leftContentWidth:'):source.index('    HoverHandler { id: islandHover }')]
 qml = '''import QtQuick
 import QtQuick.Window
 Window {
     width: 240; height: 80; visible: true
     Item {
         id: root
-        anchors.fill: parent
+        width: implicitWidth; height: 40
+        property bool centerEnabled: true
+        property real primaryWidth: 0
+        property real sessionWidth: 164
+        property real pillHeight: 40
+        property real contentPadding: 8
+        property real widgetSpacing: 8
+        property real maxLeftExtent: 300
+        property real maxRightExtent: 600
+        QtObject { id: leftWidgets; property real implicitWidth: 90 }
+        QtObject { id: rightWidgets; property real implicitWidth: 260 }
+        QtObject { id: centerLoader; property real implicitWidth: 100 }
+        GEOMETRY
         property bool opened: false
         property bool vertical: false
         property var config: ({bar: {dynamicIsland: {centerEnabled: true,
@@ -31,20 +44,24 @@ Window {
             if (!condition) { console.error(message); Qt.exit(1) }
         }
         Timer {
-            interval: 60; repeat: true; running: true
+            interval: 100; repeat: true; running: true
             property int tick: 0
+            property real initialWidth: 0
             onTriggered: {
                 switch (tick++) {
                 case 0:
                     root.check(!menu.active, "Menu must start unloaded")
+                    initialWidth = root.width
                     root.opened = true
                     break
                 case 1:
                     root.check(menu.item && menu.item.opacity > 0 && menu.item.opacity < 1, "Entry must animate")
+                    root.check(root.width !== initialWidth, "Island geometry must animate with entry")
                     root.check(root.sessionReplacesCenter === ("MODE" === "replaceWorkspaces"), "Correct replacement mode")
                     break
                 case 4:
                     root.check(menu.item.opacity === 1 && menu.item.scale === 1, "Entry must finish")
+                    root.check("MODE" === "exclusive" ? root.width === 180 : root.centerHalfWidth === 82, "Island must reach menu geometry")
                     root.opened = false
                     break
                 case 5:
@@ -58,6 +75,7 @@ Window {
                     break
                 case 13:
                     root.check(!menu.active && !menu.item, "Menu must unload after exit")
+                    root.check(root.width === initialWidth, "Exit must restore island geometry")
                     console.log("Session animation checks passed: MODE")
                     Qt.quit()
                 }
@@ -65,7 +83,7 @@ Window {
         }
     }
 }
-'''.replace('STATE', state).replace('VISUAL', visual)
+'''.replace('GEOMETRY', geometry).replace('STATE', state).replace('VISUAL', visual)
 with tempfile.TemporaryDirectory(prefix='session-animation-check-') as directory:
     for mode in ['replaceWorkspaces', 'exclusive']:
         path = Path(directory, 'check.qml')

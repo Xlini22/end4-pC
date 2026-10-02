@@ -18,7 +18,7 @@ Item {
     readonly property bool sessionVisible: GlobalStates.diSessionOpen || sessionOpacity > 0
 
     Behavior on sessionOpacity {
-        NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: 350; easing.type: Easing.InOutCubic }
     }
 
     readonly property string sessionMenuMode:
@@ -33,7 +33,7 @@ Item {
     readonly property string centerWidget: Config.options.bar.dynamicIsland.centerWidget
     readonly property bool centerEnabled: Config.options.bar.dynamicIsland.centerEnabled
         && root.centerWidget.length > 0 && root.centerWidget !== "dynamicIsland"
-        && !root.vertical && !root.sessionExclusive
+        && !root.vertical
     readonly property real widgetSpacing: 8
     // BarContent supplies the free space between the screen centre and the
     // outer bar sections. The island stays symmetric while both limits allow
@@ -270,7 +270,8 @@ Item {
         || leftWidgets.implicitWidth > 0 || rightWidgets.implicitWidth > 0
     readonly property real emptyWidth: root.hasPersistentContent ? 0
         : (root.expanded ? root.emptyExpandedWidth : root.emptyCollapsedWidth)
-    property real primaryWidth: root.pillProvider?.width ?? root.emptyWidth
+    property real primaryWidth: root.sessionExclusive ? root.emptyWidth
+        : (root.pillProvider?.width ?? root.emptyWidth)
     Behavior on primaryWidth {
         NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
     }
@@ -279,7 +280,9 @@ Item {
         + root.primaryWidth
     readonly property real rightContentWidth: rightWidgets.implicitWidth
     readonly property real wingWidth: Math.max(root.leftContentWidth, root.rightContentWidth)
-    readonly property real centerHalfWidth: centerLoader.implicitWidth / 2
+    readonly property real centerHalfWidth: (root.sessionReplacesCenter
+        ? centerLoader.implicitWidth + (root.sessionWidth - centerLoader.implicitWidth) * root.sessionOpacity
+        : centerLoader.implicitWidth) / 2
     readonly property real fixedCenterExtent: root.contentPadding + root.centerHalfWidth
         + root.widgetSpacing
     readonly property real leftWingLimit: Math.max(0, root.maxLeftExtent - root.fixedCenterExtent)
@@ -295,16 +298,22 @@ Item {
     readonly property real rightExtent: root.centerEnabled
         ? root.fixedCenterExtent + root.rightWingWidth : 0
     readonly property real centerX: root.centerEnabled ? root.leftExtent : root.width / 2
-    readonly property real barCenterOffset: root.centerEnabled
-        ? (root.rightExtent - root.leftExtent) / 2 : 0
+    readonly property real barCenterOffset: (root.centerEnabled
+        ? (root.rightExtent - root.leftExtent) / 2 : 0)
+        * (root.sessionExclusive ? 1 - root.sessionOpacity : 1)
     readonly property real leftStart: root.contentPadding
     readonly property real rightStart: root.width - root.contentPadding - root.rightContentWidth
 
     implicitHeight: root.pillHeight
-    implicitWidth: root.centerEnabled
+    readonly property real normalWidth: root.centerEnabled
         ? root.leftExtent + root.rightExtent
         : 2 * root.contentPadding + root.leftContentWidth + root.rightContentWidth
             + (root.leftContentWidth > 0 && root.rightContentWidth > 0 ? root.widgetSpacing : 0)
+
+    implicitWidth: root.sessionExclusive
+        ? root.normalWidth + (root.sessionWidth + 2 * root.contentPadding - root.normalWidth) * root.sessionOpacity
+        : root.normalWidth
+    clip: root.sessionVisible
 
     HoverHandler { id: islandHover }
 
@@ -576,7 +585,8 @@ Item {
 
     SideWidgets {
         id: leftWidgets
-        widgets: root.sessionExclusive ? [] : Config.options.bar.dynamicIsland.leftWidgets
+        widgets: Config.options.bar.dynamicIsland.leftWidgets
+        opacity: root.sessionExclusive ? 1 - root.sessionOpacity : 1
         rightAnchoredWidgets: Config.options.bar.dynamicIsland.leftRightAnchoredWidgets
         x: root.leftStart
         width: root.centerEnabled
@@ -587,7 +597,8 @@ Item {
     }
     SideWidgets {
         id: rightWidgets
-        widgets: root.sessionExclusive ? [] : Config.options.bar.dynamicIsland.rightWidgets
+        widgets: Config.options.bar.dynamicIsland.rightWidgets
+        opacity: root.sessionExclusive ? 1 - root.sessionOpacity : 1
         rightAnchoredWidgets: Config.options.bar.dynamicIsland.rightRightAnchoredWidgets
         x: root.centerEnabled
             ? root.centerX + root.centerHalfWidth + root.widgetSpacing
@@ -605,12 +616,26 @@ Item {
         active: root.centerEnabled
         x: root.centerX - implicitWidth / 2
         anchors.verticalCenter: parent.verticalCenter
-        sourceComponent: root.sessionReplacesCenter
-            ? sessionComponent : centeredWidgetComponent
-        onLoaded: {
-            if (root.sessionReplacesCenter && item)
-                item.forceActiveFocus()
-        }
+        sourceComponent: centeredWidgetComponent
+        opacity: root.sessionVisible ? 1 - root.sessionOpacity : 1
+    }
+
+    // Keep the original widgets loaded so size, position and fades share one timeline.
+    MouseArea {
+        anchors.fill: parent
+        z: 10
+        enabled: root.sessionVisible
+        acceptedButtons: Qt.AllButtons
+    }
+
+    Loader {
+        id: sessionLoader
+        active: root.sessionVisible && !root.vertical
+        x: root.width / 2 - root.barCenterOffset - root.sessionWidth / 2
+        anchors.verticalCenter: parent.verticalCenter
+        z: 11
+        sourceComponent: sessionComponent
+        onLoaded: item?.forceActiveFocus()
     }
 
     Component {
@@ -642,6 +667,7 @@ Item {
         WheelHandler {
             id: idleToggleWheelHandler
             target: pill
+            enabled: !root.sessionVisible
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             property bool coolingDown: false
             onWheel: (event) => {
@@ -661,7 +687,8 @@ Item {
         Loader {
             id: contentLoader
             anchors.fill: parent
-            sourceComponent: root.pillProvider?.component ?? emptyComponent
+            sourceComponent: root.sessionExclusive ? emptyComponent
+                : (root.pillProvider?.component ?? emptyComponent)
             active: !root.vertical
 
             onLoaded: {
