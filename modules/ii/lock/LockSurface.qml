@@ -298,6 +298,11 @@ MouseArea {
         scale: root.toolbarScale
         opacity: root.toolbarOpacity
 
+        HoverHandler {
+            id: mediaHover
+            parent: leftIsland
+        }
+
         // Username
         IconAndTextPair {
             Layout.leftMargin: 8
@@ -315,10 +320,16 @@ MouseArea {
             visible: active && Config.options.lock.showMedia
             
             sourceComponent: Item {
+                id: lockMedia
                 implicitWidth: mediaRow.implicitWidth
                 implicitHeight: mediaRow.implicitHeight
                 
                 readonly property MprisPlayer activePlayer: MprisController.activePlayer
+                property real controlsReveal: mediaHover.hovered ? 1 : 0
+
+                Behavior on controlsReveal {
+                    animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+                }
                 readonly property string cleanedTitle: StringUtils.cleanMusicTitle(activePlayer?.trackTitle) || ""
                 
                 Timer {
@@ -406,6 +417,71 @@ MouseArea {
                         }
                     }
                     
+                    Item {
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.leftMargin: -mediaRow.spacing
+                        implicitWidth: (lockControls.implicitWidth + mediaRow.spacing) * lockMedia.controlsReveal
+                        implicitHeight: lockControls.implicitHeight
+                        clip: true
+                        opacity: lockMedia.controlsReveal
+                        enabled: mediaHover.hovered
+
+                        RowLayout {
+                            id: lockControls
+                            x: mediaRow.spacing
+                            spacing: -2
+
+                            RippleButton {
+                                implicitWidth: 28
+                                implicitHeight: 28
+                                buttonRadius: height / 2
+                                enabled: lockMedia.activePlayer?.canGoPrevious ?? false
+                                Accessible.name: Translation.tr("Previous track")
+                                onClicked: lockMedia.activePlayer?.previous()
+
+                                contentItem: MaterialSymbol {
+                                    text: "skip_previous"
+                                    fill: 1
+                                    iconSize: 20
+                                    color: Appearance.colors.colOnSurfaceVariant
+                                }
+                            }
+
+                            RippleButton {
+                                implicitWidth: 28
+                                implicitHeight: 28
+                                buttonRadius: height / 2
+                                enabled: lockMedia.activePlayer?.canTogglePlaying ?? false
+                                Accessible.name: lockMedia.activePlayer?.isPlaying
+                                    ? Translation.tr("Pause") : Translation.tr("Play")
+                                onClicked: MprisController.togglePlaying()
+
+                                contentItem: MaterialSymbol {
+                                    text: lockMedia.activePlayer?.isPlaying ? "pause" : "play_arrow"
+                                    fill: 1
+                                    iconSize: 20
+                                    color: Appearance.colors.colOnSurfaceVariant
+                                }
+                            }
+
+                            RippleButton {
+                                implicitWidth: 28
+                                implicitHeight: 28
+                                buttonRadius: height / 2
+                                enabled: lockMedia.activePlayer?.canGoNext ?? false
+                                Accessible.name: Translation.tr("Next track")
+                                onClicked: lockMedia.activePlayer?.next()
+
+                                contentItem: MaterialSymbol {
+                                    text: "skip_next"
+                                    fill: 1
+                                    iconSize: 20
+                                    color: Appearance.colors.colOnSurfaceVariant
+                                }
+                            }
+                        }
+                    }
+
                     ClippedFilledCircularProgress {
                         id: mediaCircProg
                         Layout.alignment: Qt.AlignVCenter
