@@ -1,5 +1,6 @@
 """Run with python3 tests/session-animation-check.py (Qt 6 QML runtime required)."""
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -11,6 +12,7 @@ state = state.replace('GlobalStates.diSessionOpen', 'root.opened').replace('Conf
 start = source.index('                opacity: root.sessionOpacity', source.index('id: sessionComponent'))
 visual = source[start:source.index('                DiSession', start)].replace('GlobalStates.diSessionOpen', 'root.opened')
 geometry = source[source.index('    readonly property real leftContentWidth:'):source.index('    HoverHandler { id: islandHover }')]
+center_x = re.search(r'id: centerLoader\s+active: [^\n]+\s+x: ([\s\S]*?)\n        anchors', source)[1]
 qml = '''import QtQuick
 import QtQuick.Window
 Window {
@@ -24,11 +26,11 @@ Window {
         property real pillHeight: 40
         property real contentPadding: 8
         property real widgetSpacing: 8
-        property real maxLeftExtent: 300
+        property real maxLeftExtent: 120
         property real maxRightExtent: 600
         QtObject { id: leftWidgets; property real implicitWidth: 90 }
         QtObject { id: rightWidgets; property real implicitWidth: 260 }
-        QtObject { id: centerLoader; property real implicitWidth: 100 }
+        QtObject { id: centerLoader; property real implicitWidth: 100; property real x: CENTER_X }
         GEOMETRY
         property bool opened: false
         property bool vertical: false
@@ -57,6 +59,8 @@ Window {
                 case 1:
                     root.check(menu.item && menu.item.opacity > 0 && menu.item.opacity < 1, "Entry must animate")
                     root.check(root.width !== initialWidth, "Island geometry must animate with entry")
+                    root.check(Math.abs(root.barCenterOffset - root.width / 2 + centerLoader.x + 50) < 0.001,
+                        "Centered widget must stay fixed while fading")
                     root.check(root.sessionReplacesCenter === ("MODE" === "replaceWorkspaces"), "Correct replacement mode")
                     break
                 case 4:
@@ -83,7 +87,7 @@ Window {
         }
     }
 }
-'''.replace('GEOMETRY', geometry).replace('STATE', state).replace('VISUAL', visual)
+'''.replace('CENTER_X', center_x.replace('implicitWidth', 'centerLoader.implicitWidth')).replace('GEOMETRY', geometry).replace('STATE', state).replace('VISUAL', visual)
 with tempfile.TemporaryDirectory(prefix='session-animation-check-') as directory:
     for mode in ['replaceWorkspaces', 'exclusive']:
         path = Path(directory, 'check.qml')
