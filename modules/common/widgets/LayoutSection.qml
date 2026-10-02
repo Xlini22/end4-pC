@@ -17,6 +17,7 @@ ContentSubsection {
     property var dynamicHoverModeWidgets: []
     property var widgetModes: ({})
     property var onModeChanged: (widget, mode) => {}
+    property bool centerItems: false
     property bool anchorControls: false
     property var rightAnchoredWidgets: []
     property var onAnchorChanged: (widget, anchor) => {}
@@ -36,7 +37,9 @@ ContentSubsection {
 
             Flow {
                 id: itemFlow
-                anchors.fill: parent
+                anchors.fill: root.centerItems ? undefined : parent
+                anchors.horizontalCenter: root.centerItems ? parent.horizontalCenter : undefined
+                width: root.centerItems ? implicitWidth : parent.width
                 spacing: 2
 
                 Repeater {
@@ -292,6 +295,7 @@ ContentSubsection {
         }
 
         ToolbarPairedFab {
+            visible: !root.centerItems || root.layout.length === 0
             Layout.rightMargin: 8
             Layout.topMargin: -20
             Layout.alignment: Qt.AlignVCenter
