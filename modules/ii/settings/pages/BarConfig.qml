@@ -421,6 +421,7 @@ ContentPage {
                 }
                 LayoutSection {
                     sectionTitle: Translation.tr("Centered")
+                    centerItems: true
                     property bool groupedListCollapsed: !Config.options.bar.dynamicIsland.centerEnabled
                     visible: !groupedListCollapsed
                     layout: Config.options.bar.dynamicIsland.centerWidget
