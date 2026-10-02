@@ -609,6 +609,19 @@ ContentPage {
                     onValueChanged: { Config.options.bar.workspaces.shown = value; }
                 }
                 ConfigSelectionArray {
+                    enabled: Config.options.bar.workspaces.showAppIcons
+                    text: Translation.tr("Icons color")
+                    icon: "palette"
+                    currentValue: Config.options.bar.workspaces.monochromeIcons ? "tinted" : "original"
+                    onSelected: newValue => {
+                        Config.options.bar.workspaces.monochromeIcons = newValue === "tinted"
+                    }
+                    options: [
+                        { displayName: Translation.tr("Tinted"), icon: "palette", value: "tinted" },
+                        { displayName: Translation.tr("Original"), icon: "image", value: "original" }
+                    ]
+                }
+                ConfigSelectionArray {
                     text: Translation.tr("Indicator style")
                     icon: "page_control"
                     currentValue: Config.options.bar.workspaces.indicatorStyle ?? "icon"
