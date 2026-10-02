@@ -43,11 +43,11 @@ Singleton {
         ? "lan"
         : (root.wifiEnabled && root.wifiStatus === "connected")
             ? (
-                (root.active?.strength ?? 0) > 83 ? "signal_wifi_4_bar" :
-                (root.active?.strength ?? 0) > 67 ? "network_wifi" :
-                (root.active?.strength ?? 0) > 50 ? "network_wifi_3_bar" :
-                (root.active?.strength ?? 0) > 33 ? "network_wifi_2_bar" :
-                (root.active?.strength ?? 0) > 17 ? "network_wifi_1_bar" :
+                root.networkStrength > 83 ? "signal_wifi_4_bar" :
+                root.networkStrength > 67 ? "network_wifi" :
+                root.networkStrength > 50 ? "network_wifi_3_bar" :
+                root.networkStrength > 33 ? "network_wifi_2_bar" :
+                root.networkStrength > 17 ? "network_wifi_1_bar" :
                 "signal_wifi_0_bar"
             )
             : (root.wifiStatus === "connecting")
@@ -160,6 +160,7 @@ Singleton {
     // Status update
     function update() {
         updateConnectionType.startCheck();
+        getNetworks.running = true;
         wifiStatusProcess.running = true
         updateNetworkName.running = true;
         updateNetworkStrength.running = true;
@@ -178,51 +179,43 @@ Singleton {
 
     Process {
         id: updateConnectionType
-        property string buffer
-        command: ["sh", "-c", "nmcli -t -f TYPE,STATE d status && nmcli -t -f CONNECTIVITY g"]
+        property bool refreshPending: false
+        command: ["nmcli", "-t", "-f", "TYPE,STATE", "device", "status"]
+        environment: ({ LANG: "C", LC_ALL: "C" })
         running: true
-        function startCheck() {
-            buffer = "";
-            updateConnectionType.running = true;
-        }
-        stdout: SplitParser {
-            onRead: data => {
-                updateConnectionType.buffer += data + "\n";
-            }
-        }
-        onExited: (exitCode, exitStatus) => {
-            const lines = updateConnectionType.buffer.trim().split('\n');
-            const connectivity = lines.pop() // none, limited, full
-            let hasEthernet = false;
-            let hasWifi = false;
-            let wifiStatus = "disconnected";
-            lines.forEach(line => {
-                if (line.includes("ethernet") && line.includes("connected"))
-                    hasEthernet = true;
-                else if (line.includes("wifi:")) {
-                    if (line.includes("disconnected")) {
-                        wifiStatus = "disconnected"
-                    }
-                    else if (line.includes("connected")) {
-                        hasWifi = true;
-                        wifiStatus = "connected"
 
-                        if (connectivity === "limited") {
-                            hasWifi = false;
-                            wifiStatus = "limited"
-                        }
-                    }
-                    else if (line.includes("connecting")) {
-                        wifiStatus = "connecting"
-                    }
-                    else if (line.includes("unavailable")) {
-                        wifiStatus = "disabled"
+        function startCheck() {
+            // ponytail: coalesce monitor bursts into one follow-up read.
+            if (running) refreshPending = true;
+            else running = true;
+        }
+
+        stdout: StdioCollector { id: connectionStateOutput }
+        onExited: (exitCode, exitStatus) => {
+            if (exitCode === 0) {
+                let hasEthernet = false;
+                let wifiStatus = "disconnected";
+                for (const line of connectionStateOutput.text.trim().split("\n")) {
+                    const [type, state] = line.split(":");
+                    const connected = state === "connected" || state?.startsWith("connected (");
+                    if (type === "ethernet" && connected) hasEthernet = true;
+                    if (type !== "wifi") continue;
+                    // A connected adapter wins over other disconnected Wi-Fi adapters.
+                    if (connected) wifiStatus = "connected";
+                    else if (wifiStatus !== "connected") {
+                        if (state?.startsWith("connecting")) wifiStatus = "connecting";
+                        else if (state === "unavailable" && wifiStatus !== "connecting") wifiStatus = "disabled";
                     }
                 }
-            });
-            root.wifiStatus = wifiStatus;
-            root.ethernet = hasEthernet;
-            root.wifi = hasWifi;
+                // Device association is independent of NetworkManager's Internet probe.
+                root.wifiStatus = wifiStatus;
+                root.ethernet = hasEthernet;
+                root.wifi = wifiStatus === "connected";
+            }
+            if (refreshPending) {
+                refreshPending = false;
+                Qt.callLater(startCheck);
+            }
         }
     }
 
@@ -239,6 +232,7 @@ Singleton {
 
     Process {
         id: updateNetworkStrength
+        environment: ({ LANG: "C", LC_ALL: "C" })
         running: true
         command: ["sh", "-c", "nmcli -f IN-USE,SIGNAL,SSID device wifi | awk '/^\\*/{if (NR!=1) {print $2}}'"]
         stdout: SplitParser {
