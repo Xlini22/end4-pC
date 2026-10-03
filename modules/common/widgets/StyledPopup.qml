@@ -114,11 +114,11 @@ LazyLoader {
         Item {
             id: inputArea
             anchors.fill: body
-            HoverHandler { onHoveredChanged: root.popupHovered = hovered }
         }
 
         Item {
             id: body
+            HoverHandler { onHoveredChanged: root.popupHovered = hovered }
             anchors {
                 fill: parent
                 leftMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.left) + (root.barEdge === "right" ? root.bounceRoom : 0)

@@ -346,7 +346,7 @@ Item {
 
             HoverHandler {
                 id: mediaSideHover
-                enabled: root.componentInteractionReady
+                enabled: root.hasMedia
                 onHoveredChanged: root.mediaHovered = hovered
             }
 
@@ -457,9 +457,9 @@ Item {
             : (activityLoader.active ? activityLoader.implicitHeight : regularLoader.implicitHeight)
 
         visible: contentAvailable || implicitWidth > 0.5
-        enabled: contentAvailable && root.componentInteractionReady
+        enabled: contentAvailable && (modelData === "media" || root.componentInteractionReady)
         opacity: contentAvailable ? 1 : 0
-        implicitWidth: contentAvailable ? contentImplicitWidth : 0
+        implicitWidth: contentAvailable || modelData === "activity" ? contentImplicitWidth : 0
         implicitHeight: contentAvailable ? contentImplicitHeight : root.pillHeight
         Layout.alignment: Qt.AlignVCenter
         clip: ["visualizer", "activity"].includes(modelData)
@@ -628,6 +628,7 @@ Item {
     MouseArea {
         anchors.fill: parent
         z: 10
+        visible: root.sessionVisible
         enabled: root.sessionVisible
         acceptedButtons: Qt.AllButtons
     }

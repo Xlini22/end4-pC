@@ -15,7 +15,8 @@ StyledPopup {
     popupRadius: 0
     popupBorderWidth: 0
     popupShadowEnabled: false
-    popupEnabled: !GlobalStates.mediaControlsOpen && root.activePlayer !== null
+    popupEnabled: !GlobalStates.mediaControlsOpen
+        && (root.activePlayer !== null || MprisController.hasRememberedTrack)
     property bool barHovered: false
     property bool hoverBridgeActive: false
     readonly property bool keepsBarExpanded: root.popupHovered || root.hoverBridgeActive
@@ -41,9 +42,9 @@ StyledPopup {
             root.hoverBridgeTimer.stop()
             root.barReturnTimer.stop()
         } else if (!root.targetHovered) {
-            root.hoverBridgeActive = false
-            root.hoverBridgeTimer.stop()
-            root.barReturnTimer.stop()
+            root.hoverBridgeActive = true
+            root.hoverBridgeTimer.restart()
+            root.barReturnTimer.restart()
         }
     }
 
@@ -74,6 +75,8 @@ StyledPopup {
 
     Player {
         player: root.activePlayer
+        artSourceOverride: MediaArtwork.source
+        useSharedTimeline: true
         visualizerPoints: GlobalStates.visualizerPoints
         implicitWidth: Appearance.sizes.mediaControlsWidth
         implicitHeight: Appearance.sizes.mediaControlsHeight

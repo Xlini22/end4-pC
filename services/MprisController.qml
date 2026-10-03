@@ -8,6 +8,7 @@ import QtQml.Models
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import Quickshell.Services.Mpris
 import qs.modules.common
 import "MprisFilter.js" as MprisFilter
@@ -75,6 +76,13 @@ Singleton {
 	property var activeTrack;
 
 	function raiseActivePlayer() {
+		const desktopEntry = String(root.activePlayer?.desktopEntry ?? "").replace(/\.desktop$/i, "").toLowerCase();
+		const windows = ToplevelManager.toplevels.values.filter(window => desktopEntry.length > 0
+			&& String(window.appId ?? "").toLowerCase() === desktopEntry);
+		const title = root.activePlayer?.trackTitle ?? "";
+		const window = windows.find(window => title.length > 0 && window.title.includes(title))
+			?? windows.find(window => window.activated) ?? windows[0];
+		window?.activate();
 		const busName = root.activePlayer?.dbusName ?? "";
 		if (busName.length === 0 || raisePlayerProcess.running)
 			return;

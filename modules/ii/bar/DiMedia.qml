@@ -19,6 +19,13 @@ Item {
         color: "transparent"
         radius: height / 2
 
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onClicked: MprisController.raiseActivePlayer()
+        }
+
         layer.enabled: true
         layer.effect: OpacityMask {
             maskSource: Rectangle {
@@ -67,11 +74,6 @@ Item {
                 visible: MediaArtwork.source === ""
             }
 
-            TapHandler {
-                acceptedButtons: Qt.LeftButton
-                cursorShape: Qt.PointingHandCursor
-                onTapped: MprisController.raiseActivePlayer()
-            }
         }
 
         StyledText {
@@ -152,11 +154,6 @@ Item {
                 root.mediaCollapsedWidth = trackInfoColumn.compactContentWidth
             }
 
-            TapHandler {
-                acceptedButtons: Qt.LeftButton
-                cursorShape: Qt.PointingHandCursor
-                onTapped: MprisController.raiseActivePlayer()
-            }
         }
 
         WaveVisualizer {

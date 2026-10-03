@@ -38,6 +38,7 @@ Item {
 
     component TrackChangeButton: RippleButton {
         id: trackChangeButton
+        HoverHandler { cursorShape: trackChangeButton.pointingHandCursor ? Qt.PointingHandCursor : undefined }
         implicitWidth: 24
         implicitHeight: 24
         property var iconName
@@ -188,7 +189,7 @@ Item {
                 font.pixelSize: Appearance.font.pixelSize.large
                 color: root.blendedColors.colOnLayer0
                 elide: Text.ElideRight
-                text: StringUtils.cleanMusicTitle(root.player?.trackTitle) || "Untitled"
+                text: StringUtils.cleanMusicTitle(root.useSharedTimeline ? MprisController.displayTrackTitle : root.player?.trackTitle) || "Untitled"
                 animateChange: true
                 animationDistanceX: 6
                 animationDistanceY: 0
@@ -206,7 +207,7 @@ Item {
                 font.pixelSize: Appearance.font.pixelSize.smaller
                 color: root.blendedColors.colSubtext
                 elide: Text.ElideRight
-                text: root.player?.trackArtist
+                text: (root.useSharedTimeline ? MprisController.displayTrackArtist : root.player?.trackArtist) ?? ""
                 animateChange: true
                 animationDistanceX: 6
                 animationDistanceY: 0
@@ -312,13 +313,14 @@ Item {
 
                 RippleButton {
                     id: playPauseButton
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
                     anchors.right: parent.right
                     anchors.bottom: sliderRow.top
                     anchors.bottomMargin: 5
                     property real size: 44
                     implicitWidth: size
                     implicitHeight: size
-                    downAction: () => root.player.togglePlaying()
+                    downAction: () => root.useSharedTimeline ? MprisController.togglePlaying() : root.player?.togglePlaying()
 
                     buttonRadius: root.player?.isPlaying ? Appearance?.rounding.normal : size / 2
                     colBackground: root.player?.isPlaying ? root.blendedColors.colPrimary : root.blendedColors.colSecondaryContainer
