@@ -53,8 +53,8 @@ Singleton {
 
         // NA
         "America/Mexico_City", "America/Monterrey", "America/Tijuana", 
-        "America/New_York", "America/Miami", "America/Detroit", "America/Chicago", 
-        "America/Houston", "America/Denver", "America/Phoenix", "America/Los_Angeles", 
+        "America/New_York", "America/Detroit", "America/Chicago", 
+        "America/Denver", "America/Phoenix", "America/Los_Angeles", 
         "America/Anchorage", "America/Vancouver", "America/Edmonton", 
         "America/Winnipeg", "America/Toronto", "America/Halifax", "America/St_Johns"
     ]
@@ -150,9 +150,18 @@ Singleton {
         }
     }
 
+    readonly property var zoneAliases: ({
+        "America/Miami": "America/New_York",
+        "America/Houston": "America/Chicago"
+    })
+
+    function effectiveZone(tz) {
+        return root.zoneAliases[tz] ?? tz
+    }
+
     function offsetCommand() {
-        const zones = root.timezones.map(tz => "'" + tz.replace(/'/g, "") + "'").join(" ")
-        return ["bash", "-c", `for tz in ${zones}; do if [ -f "/usr/share/zoneinfo/$tz" ]; then printf '%s %s\\n' "$tz" "$(TZ="$tz" date +%z)"; else printf '%s invalid\\n' "$tz"; fi; done`]
+        const pairs = root.timezones.map(tz => "'" + tz.replace(/[':]/g, "") + ":" + root.effectiveZone(tz).replace(/[':]/g, "") + "'").join(" ")
+        return ["bash", "-c", `for pair in ${pairs}; do tz="\${pair%%:*}"; eff="\${pair##*:}"; if [ -f "/usr/share/zoneinfo/$eff" ]; then printf '%s %s\\n' "$tz" "$(TZ="$eff" date +%z)"; else printf '%s invalid\\n' "$tz"; fi; done`]
     }
 
     Timer {

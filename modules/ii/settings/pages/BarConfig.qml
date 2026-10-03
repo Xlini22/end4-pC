@@ -75,6 +75,38 @@ ContentPage {
         })
     }
 
+    readonly property var usedWidgets: {
+        const layouts = Config.options.bar.layouts
+        const used = [...layouts.leftLayout, ...layouts.middleLayout, ...layouts.rightLayout]
+        if (used.includes("dynamicIsland")) {
+            const island = Config.options.bar.dynamicIsland
+            used.push(...island.leftWidgets, ...island.rightWidgets)
+            if (island.centerEnabled && !Config.options.bar.vertical)
+                used.push(island.centerWidget)
+        }
+        return used
+    }
+
+    function isUsed(id) {
+        return page.usedWidgets.includes(id)
+    }
+
+    readonly property var widgetSections: ({
+        dynamicIsland: Translation.tr("Dynamic Island"),
+        sysTray: Translation.tr("Tray"),
+        leftSidebarButton: Translation.tr("Left sidebar button"),
+        divisor: Translation.tr("Divider"),
+        utilButtons: Translation.tr("Utility buttons"),
+        workspaces: Translation.tr("Workspaces"),
+        resources: Translation.tr("Resources"),
+        media: Translation.tr("Media")
+    })
+
+    function openWidgetSettings(id) {
+        const title = page.widgetSections[id]
+        if (title) page.goTo(title, title)
+    }
+
     function getWidgetName(id) {
         const w = allWidgets.find(w => w.id === id)
         return w ? w.name : id
@@ -176,6 +208,8 @@ ContentPage {
             icon: "splitscreen_add"
             shape: MaterialShape.Shape.Cookie6Sided
             title: Translation.tr("Bar layout")
+            hint: Translation.tr("Right-click a widget to open its settings (not every widget has settings here)")
+            hintIcon: "info"
 
             GroupedList {
                 LayoutSection {
@@ -184,6 +218,7 @@ ContentPage {
                     availableWidgets: page.availableFor("left")
                     getWidgetName: page.getWidgetName
                     onUpdate: list => Config.options.bar.layouts.leftLayout = list
+                    onWidgetContextRequested: id => page.openWidgetSettings(id)
                 }
 
                 LayoutSection {
@@ -192,6 +227,7 @@ ContentPage {
                     availableWidgets: page.availableFor("middle")
                     getWidgetName: page.getWidgetName
                     onUpdate: list => Config.options.bar.layouts.middleLayout = list
+                    onWidgetContextRequested: id => page.openWidgetSettings(id)
                 }
 
                 LayoutSection {
@@ -200,6 +236,7 @@ ContentPage {
                     availableWidgets: page.availableFor("right")
                     getWidgetName: page.getWidgetName
                     onUpdate: list => Config.options.bar.layouts.rightLayout = list
+                    onWidgetContextRequested: id => page.openWidgetSettings(id)
                 }
             }
         }
@@ -338,6 +375,7 @@ ContentPage {
             icon: "nest_wifi_pro"
             shape: MaterialShape.Shape.Cookie4Sided
             title: Translation.tr("Dynamic Island")
+            visible: page.isUsed("dynamicIsland")
 
             GroupedList {
                 ConfigSwitch {
@@ -402,6 +440,7 @@ ContentPage {
                     }
                     availableWidgets: page.availableForIsland()
                     getWidgetName: page.getWidgetName
+                    onWidgetContextRequested: id => page.openWidgetSettings(id)
                     onUpdate: list => Config.options.bar.dynamicIsland.leftWidgets = list
                 }
                 LayoutSection {
@@ -414,6 +453,7 @@ ContentPage {
                     availableWidgets: layout.length === 0
                         ? page.allWidgets.filter(widget => widget.id !== "dynamicIsland") : []
                     getWidgetName: page.getWidgetName
+                    onWidgetContextRequested: id => page.openWidgetSettings(id)
                     modeWidgets: ["clockWidget", "resources", "media", "visualizer"]
                     dynamicHoverModeWidgets: ["media", "visualizer"]
                     widgetModes: Config.options.bar.dynamicIsland.widgetModes
@@ -445,6 +485,7 @@ ContentPage {
                     }
                     availableWidgets: page.availableForIsland()
                     getWidgetName: page.getWidgetName
+                    onWidgetContextRequested: id => page.openWidgetSettings(id)
                     onUpdate: list => Config.options.bar.dynamicIsland.rightWidgets = list
                 }
             }
@@ -547,6 +588,7 @@ ContentPage {
             shape: MaterialShape.Shape.Square
             icon: "inbox_customize"
             title: Translation.tr("Tray")
+            visible: page.isUsed("sysTray")
             GroupedList {
                 ConfigSwitch {
                     buttonIcon: "keep"; text: Translation.tr("Make icons pinned by default")
@@ -565,6 +607,7 @@ ContentPage {
             icon: "right_panel_open"
             shape: MaterialShape.Shape.Pentagon
             title: Translation.tr("Left sidebar button")
+            visible: page.isUsed("leftSidebarButton")
 
             GroupedList {
                 ConfigRow {
@@ -635,6 +678,7 @@ ContentPage {
             icon: "vertical_align_center"
             shape: MaterialShape.Shape.Diamond
             title: Translation.tr("Divider")
+            visible: page.isUsed("divisor")
 
             GroupedList {
                 ConfigSelectionArray {
@@ -667,6 +711,7 @@ ContentPage {
             icon: "buttons_alt"
             shape: MaterialShape.Shape.SoftBurst
             title: Translation.tr("Utility buttons")
+            visible: page.isUsed("utilButtons")
 
             GroupedList {
                 ConfigRow {
@@ -735,6 +780,7 @@ ContentPage {
         ContentSection {
             shape: MaterialShape.Shape.Cookie12Sided
             icon: "steppers"; title: Translation.tr("Workspaces")
+            visible: page.isUsed("workspaces")
             GroupedList {
                 ConfigSelectionArray {
                     text: Translation.tr("Style")
@@ -804,6 +850,7 @@ ContentPage {
             icon: "empty_dashboard"
             shape: MaterialShape.Shape.Burst
             title: Translation.tr("Resources")
+            visible: page.isUsed("resources")
 
             GroupedList {
                 ConfigRow {
@@ -878,6 +925,7 @@ ContentPage {
             icon: "music_note"
             shape: MaterialShape.Shape.Sunny
             title: Translation.tr("Media")
+            visible: page.isUsed("media")
 
             GroupedList {
                 ConfigTextArea {

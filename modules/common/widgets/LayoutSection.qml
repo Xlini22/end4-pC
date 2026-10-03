@@ -22,6 +22,7 @@ ContentSubsection {
     property bool anchorControls: false
     property var rightAnchoredWidgets: []
     property var onAnchorChanged: (widget, anchor) => {}
+    signal widgetContextRequested(string widgetId)
 
     property bool liveReflow: false
     property bool reflowAnimate: true
@@ -254,6 +255,7 @@ ContentSubsection {
                                 leftmost: true; rightmost: true
                                 buttonIcon: "close"
                                 buttonText: root.getWidgetName(modelData)
+                                altAction: () => root.widgetContextRequested(modelData)
                                 toggled: !dragHandler.active
 
 

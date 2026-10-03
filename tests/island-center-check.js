@@ -40,4 +40,20 @@ for (const width of [24, 100, 240]) {
     const islandX = screenCenter - root.width / 2 + root.barCenterOffset
     assert.equal(islandX + root.centerX, screenCenter, 'Selected widget must remain at the screen center')
 }
-console.log('Island center checks passed')
+// Upstream hides unused settings sections: island lists and center must count.
+const usedWidgetsBody = settings.slice(settings.indexOf('    readonly property var usedWidgets: {') + '    readonly property var usedWidgets: {'.length,
+    settings.indexOf('\n    function isUsed(')).trim().replace(/}$/, '')
+const usedConfig = {options: {bar: {vertical: false,
+    layouts: {leftLayout: ['clockWidget'], middleLayout: ['dynamicIsland'], rightLayout: []},
+    dynamicIsland: {leftWidgets: ['resources'], rightWidgets: ['media'],
+        centerEnabled: true, centerWidget: 'workspaces'}}}}
+const usedWidgets = () => Array.from(vm.runInNewContext('(function () {' + usedWidgetsBody + '})()', {Config: usedConfig}))
+assert.deepEqual(usedWidgets(), ['clockWidget', 'dynamicIsland', 'resources', 'media', 'workspaces'])
+usedConfig.options.bar.dynamicIsland.centerEnabled = false
+assert.equal(usedWidgets().includes('workspaces'), false)
+usedConfig.options.bar.dynamicIsland.centerEnabled = true
+usedConfig.options.bar.vertical = true
+assert.equal(usedWidgets().includes('workspaces'), false)
+usedConfig.options.bar.layouts.middleLayout = []
+assert.deepEqual(usedWidgets(), ['clockWidget'])
+console.log('Island center and settings visibility checks passed')

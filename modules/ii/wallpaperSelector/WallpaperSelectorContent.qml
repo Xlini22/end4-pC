@@ -177,7 +177,7 @@ MouseArea {
         focus: true
         border.width: 1
         border.color: Appearance.colors.colLayer0Border
-        color: Appearance.colors.colLayer0
+        color: ColorSchemes.current !== "" ? Qt.rgba(Appearance.colors.colLayer0.r, Appearance.colors.colLayer0.g, Appearance.colors.colLayer0.b, 1) : Appearance.colors.colLayer0
         radius: Appearance.rounding.screenRounding + 5
 
         implicitWidth: gridColumnLayout.implicitWidth
@@ -190,7 +190,7 @@ MouseArea {
             Rectangle {
                 anchors.fill: parent
                 radius: wallpaperGridBackground.radius - 4
-                color: Appearance.colors.colLayer2
+                color: ColorSchemes.current !== "" ? wallpaperGridBackground.color : Appearance.colors.colLayer2
                 visible: !Config.options.wallpaperSelector.showBlurBackground
             }
 

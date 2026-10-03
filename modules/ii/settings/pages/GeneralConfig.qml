@@ -247,6 +247,48 @@ ContentPage {
         }
 
         ContentSection {
+            icon: "mouse"
+            shape: MaterialShape.Shape.Cookie7Sided
+            title: Translation.tr("Device batteries")
+
+            GroupedList {
+                ConfigRow {
+                    uniform: true
+                    ConfigSpinBox {
+                        icon: "warning"
+                        text: Translation.tr("Low warning")
+                        value: Config.options.battery.peripheralLow
+                        from: 0
+                        to: 100
+                        stepSize: 5
+                        onValueChanged: {
+                            Config.options.battery.peripheralLow = value;
+                        }
+                    }
+                    ConfigSpinBox {
+                        icon: "dangerous"
+                        text: Translation.tr("Critical warning")
+                        value: Config.options.battery.peripheralCritical
+                        from: 0
+                        to: 100
+                        stepSize: 5
+                        onValueChanged: {
+                            Config.options.battery.peripheralCritical = value;
+                        }
+                    }
+                }
+                ConfigSwitch {
+                    buttonIcon: "notifications"
+                    text: Translation.tr("Notify when a device battery is low")
+                    checked: Config.options.battery.peripheralNotify
+                    onCheckedChanged: {
+                        Config.options.battery.peripheralNotify = checked;
+                    }
+                }
+            }
+        }
+
+        ContentSection {
             icon: "battery_android_full"
             shape: MaterialShape.Shape.SemiCircle
             title: Translation.tr("Battery")

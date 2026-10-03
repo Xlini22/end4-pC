@@ -16,6 +16,109 @@ ContentPage {
         spacing: 20
 
         ContentSection {
+            icon: "palette"
+            shape: MaterialShape.Shape.Cookie9Sided
+            title: Translation.tr("Color Schemes")
+
+            GroupedList {
+                ConfigComboBox {
+                    Layout.fillWidth: true
+                    buttonIcon: "format_paint"
+                    text: Translation.tr("Color scheme")
+                    description: Translation.tr("Material follows your wallpaper")
+                    fieldWidth: 220
+                    fixedWidth: true
+                    model: ColorSchemes.schemeOptions()
+                    currentValue: ColorSchemes.current
+                    onSelected: newValue => ColorSchemes.setScheme(newValue)
+                }
+                RowLayout {
+                    enabled: ColorSchemes.currentData !== null
+                    opacity: enabled ? 1 : 0.55
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 10
+                    MaterialSymbol {
+                        text: "brush"
+                        iconSize: Appearance.font.pixelSize.normal + 5
+                        color: Appearance.colors.colOnLayer0
+                    }
+                    StyledText {
+                        text: Translation.tr("Accent")
+                        color: Appearance.colors.colOnLayer0
+                    }
+                    Item { Layout.fillWidth: true }
+                    CustomColorSelectionArray {
+                        spacing: 4
+                        swatchSize: 36
+                        options: ColorSchemes.accentOptions()
+                        currentValue: ColorSchemes.currentAccent("primary")
+                        onSelected: newValue => ColorSchemes.setAccent("primary", newValue)
+                    }
+                }
+                RowLayout {
+                    enabled: ColorSchemes.currentData !== null
+                    opacity: enabled ? 1 : 0.55
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 10
+                    MaterialSymbol {
+                        text: "colors"
+                        iconSize: Appearance.font.pixelSize.normal + 5
+                        color: Appearance.colors.colOnLayer0
+                    }
+                    StyledText {
+                        text: Translation.tr("Secondary")
+                        color: Appearance.colors.colOnLayer0
+                    }
+                    Item { Layout.fillWidth: true }
+                    CustomColorSelectionArray {
+                        spacing: 4
+                        swatchSize: 36
+                        options: ColorSchemes.accentOptions()
+                        currentValue: ColorSchemes.currentAccent("secondary")
+                        onSelected: newValue => ColorSchemes.setAccent("secondary", newValue)
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 8
+                    RippleButtonWithIcon {
+                        Layout.fillWidth: true
+                        materialIcon: "add"
+                        mainText: Translation.tr("Add scheme")
+                        onClicked: ColorSchemes.addScheme()
+                        colBackground: Appearance.colors.colSecondaryContainer
+                        colBackgroundHover: Appearance.colors.colSecondaryContainerHover
+                        colRipple: Appearance.colors.colSecondaryContainerActive
+                    }
+                    RippleButtonWithIcon {
+                        Layout.fillWidth: true
+                        materialIcon: "folder_open"
+                        mainText: Translation.tr("Open folder")
+                        onClicked: ColorSchemes.openFolder()
+                        colBackground: Appearance.colors.colSecondaryContainer
+                        colBackgroundHover: Appearance.colors.colSecondaryContainerHover
+                        colRipple: Appearance.colors.colSecondaryContainerActive
+                    }
+                    RippleButtonWithIcon {
+                        Layout.fillWidth: true
+                        materialIcon: "refresh"
+                        mainText: Translation.tr("Reload")
+                        onClicked: ColorSchemes.reload()
+                        colBackground: Appearance.colors.colSecondaryContainer
+                        colBackgroundHover: Appearance.colors.colSecondaryContainerHover
+                        colRipple: Appearance.colors.colSecondaryContainerActive
+                    }
+                }
+            }
+        }
+
+        ContentSection {
             icon: "motion_mode"
             shape: MaterialShape.Shape.Cookie6Sided
             title: Translation.tr("Transparency")

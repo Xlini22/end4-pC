@@ -13,6 +13,7 @@ ContentSubsection {
     property var getWidgetName: (id) => id
     property var availableWidgets: []
     property var onUpdate: (list) => {}
+    signal widgetContextRequested(string widgetId)
     property var modeWidgets: []
     property var dynamicHoverModeWidgets: []
     property var widgetModes: ({})
@@ -321,6 +322,7 @@ ContentSubsection {
                 rightmost: true
                 buttonIcon: "close"
                 buttonText: root.getWidgetName(widgetChip.widget)
+                altAction: () => root.widgetContextRequested(widgetChip.widget)
                 toggled: !dragHandler.active
 
                 DragHandler {

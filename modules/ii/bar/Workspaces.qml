@@ -84,6 +84,15 @@ ButtonMouseArea {
         id: altLoader
         active: root.altStyle
         anchors.centerIn: parent
+        scale: 1 - 0.08 * root.specialBlur
+        layer.smooth: true
+        layer.enabled: root.altStyle && root.specialBlur > 0
+        layer.effect: MultiEffect {
+            brightness: -0.1 * root.specialBlur
+            blurEnabled: true
+            blur: root.specialBlur
+            blurMax: 32
+        }
         sourceComponent: WorkspacesAlt {
             host: root
             model: wsModel
