@@ -41,9 +41,9 @@ StyledPopup {
             root.hoverBridgeTimer.stop()
             root.barReturnTimer.stop()
         } else if (!root.targetHovered) {
-            root.hoverBridgeActive = false
-            root.hoverBridgeTimer.stop()
-            root.barReturnTimer.stop()
+            root.hoverBridgeActive = true
+            root.hoverBridgeTimer.restart()
+            root.barReturnTimer.restart()
         }
     }
 

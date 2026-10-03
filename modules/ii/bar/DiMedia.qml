@@ -19,6 +19,13 @@ Item {
         color: "transparent"
         radius: height / 2
 
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            hoverEnabled: true
+            onClicked: MprisController.raiseActivePlayer()
+        }
+
         layer.enabled: true
         layer.effect: OpacityMask {
             maskSource: Rectangle {
@@ -230,7 +237,7 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.activePlayer?.togglePlaying()
+                    onClicked: MprisController.togglePlaying()
                 }
             }
 
