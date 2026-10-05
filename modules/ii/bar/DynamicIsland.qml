@@ -60,7 +60,7 @@ Item {
     readonly property real osdWidth: 132
     readonly property real notificationTextWidth: Math.min(166, Math.max(notificationSummaryMetrics.width, notificationBodyMetrics.width))
     readonly property real notificationWidth: (root.isMaterial ? 48 : 44) + root.notificationTextWidth
-    readonly property real batteryWidth: 170
+    readonly property real batteryWidth: root.batteryAlertKind === "charging" ? 140 : 170
     readonly property real badgeSize: 32
     readonly property real badgeSpacing: 6
     readonly property bool isMaterial: Config.options.bar.cornerStyle === 3 || Config.options.bar.cornerStyle === 4
