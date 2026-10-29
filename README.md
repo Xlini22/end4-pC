@@ -105,6 +105,11 @@ hl.bind("SUPER + escape", hl.dsp.global("quickshell:settingsToggle"), {descripti
 
 ---
 
+## AirDrop (optional)
+
+Add the AirDrop widget from the bar settings after installing Omdrop and a compatible
+radio backend. See [AirDrop setup and limitations](docs/airdrop.md).
+
 ## ❓ FAQ
 
 ### How do I see my keybinds?
