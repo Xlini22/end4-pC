@@ -93,6 +93,7 @@ else: time.sleep(0.1); sys.exit(2)
         for part in ('config', 'runtime', 'state', 'cache', 'data'):
             (temporary / part).mkdir(mode=0o700)
         text = '''import QtQuick
+import qs.modules.common
 import Quickshell
 import qs.modules.ii.bar
 import Quickshell.Wayland
@@ -100,6 +101,11 @@ ShellRoot {
     id: testRoot
     property var initialPopup: null
     property string scenario: SCENARIO
+    function barButton() {
+        for (let i = 0; i < widget.data.length; i++)
+            if (widget.data[i].objectName === "omdropButtonLoader") return widget.data[i].item
+        throw new Error("Bar button not created")
+    }
     PanelWindow {
         visible: false
         exclusiveZone: 0
@@ -109,6 +115,32 @@ ShellRoot {
             width: 100; height: 40
             widgetName: "omdrop"
             Omdrop { id: widget; cli: CLI_PATH }
+        }
+    }
+    Timer {
+        interval: 600; running: testRoot.scenario === "ready"
+        onTriggered: { widget.isMaterial = true; widget.vertical = false }
+    }
+    Timer {
+        interval: 1550; running: testRoot.scenario === "ready"
+        onTriggered: widget.vertical = true
+    }
+    Timer {
+        interval: 2000; running: testRoot.scenario === "ready"
+        onTriggered: {
+            const button = testRoot.barButton()
+            if (button.objectName !== "omdropMaterialButton" || button.implicitWidth !== 26 || Math.abs(button.implicitHeight - 54) > 0.1)
+                throw new Error("Material vertical geometry differs from Util Buttons")
+            widget.vertical = false; widget.isMaterial = false
+        }
+    }
+    Timer {
+        interval: 2600; running: testRoot.scenario === "ready"
+        onTriggered: {
+            const button = testRoot.barButton()
+            if (button.objectName !== "omdropLegacyButton" || widget.implicitWidth !== button.implicitWidth + 4 || widget.implicitHeight !== Appearance.sizes.barHeight)
+                throw new Error("Legacy geometry differs from Util Buttons")
+            widget.isMaterial = true
         }
     }
     Timer {
@@ -131,6 +163,10 @@ ShellRoot {
                 widget.run(["on", "-e", "10m"], "Starting test"); return
             }
             if (!widget.stateKnown || !widget.ready) throw new Error("Status not loaded")
+            const button = testRoot.barButton()
+            if (button.objectName !== "omdropMaterialButton" || Math.abs(button.implicitWidth - 54) > 0.1 || button.implicitHeight !== 26 || widget.implicitHeight !== 32)
+                throw new Error("Material horizontal geometry differs from Util Buttons")
+
             if (widget.hasOwnProperty("mirrored")) throw new Error("Bar root exposes read-only mirrored")
             widget.popupOpen = true
             Qt.callLater(() => {

@@ -7,9 +7,10 @@ import qs.modules.common.widgets
 
 Item {
     id: root
-    property color contentColor: Appearance.colors.colOnLayer1
+    property color contentColor: Appearance.colors.colOnLayer2
     property bool contentColorOverridden: false
-    property bool vertical: false
+    property bool vertical: Config.options.bar.vertical
+    property bool isMaterial: Config.options.bar.cornerStyle === 3 || Config.options.bar.cornerStyle === 4
     property string cli: Quickshell.env("OMDROP_CLI") || `${Quickshell.env("HOME")}/.local/bin/omdrop`
     // ponytail: a shell exec returns 127 for a missing CLI, including on cold start.
     // Arguments stay separate so device names and paths cannot become shell code.
@@ -47,37 +48,78 @@ Item {
         return Translation.tr("Receiving")
     }
 
-    implicitWidth: vertical ? Appearance.sizes.verticalBarWidth : 34
-    implicitHeight: vertical ? 34 : Appearance.sizes.barHeight
-    RippleButton {
-        id: button
-        anchors.fill: parent
-        padding: 0
-        buttonRadius: Appearance.rounding.small
-        colBackground: "transparent"
-        colBackgroundHover: Appearance.colors.colLayer2Hover
-        Accessible.name: `AirDrop · ${root.stateText}`
-        onClicked: root.popupOpen = !root.popupOpen
-        altAction: () => { root.popupOpen = !root.popupOpen }
+    implicitWidth: isMaterial && !vertical ? buttonLoader.implicitWidth
+        : vertical ? Appearance.sizes.verticalBarWidth - 14 : buttonLoader.implicitWidth + 4
+    implicitHeight: isMaterial && vertical ? buttonLoader.implicitHeight
+        : isMaterial ? 32 : vertical ? buttonLoader.implicitHeight + 4 : Appearance.sizes.barHeight
 
-        contentItem: Item {
+    Loader {
+        id: buttonLoader
+        objectName: "omdropButtonLoader"
+        anchors.centerIn: parent
+        sourceComponent: root.isMaterial ? materialButton : legacyButton
+    }
+    Component {
+        id: materialButton
+        UtilButton {
+            id: button
+            objectName: "omdropMaterialButton"
+            property bool vertical: root.vertical
+            iconText: ""
+            forceHovered: root.popupOpen || root.receiving || activeFocus
+            activeFocusOnTab: true
+            Accessible.role: Accessible.Button
+            Accessible.name: `AirDrop · ${root.stateText}`
+            Accessible.onPressAction: root.popupOpen = !root.popupOpen
+            onClicked: root.popupOpen = !root.popupOpen
+            Keys.onSpacePressed: root.popupOpen = !root.popupOpen
+            Keys.onReturnPressed: root.popupOpen = !root.popupOpen
+            Keys.onEnterPressed: root.popupOpen = !root.popupOpen
+
             CustomIcon {
                 anchors.centerIn: parent
-                width: Appearance.font.pixelSize.larger
+                width: Appearance.font.pixelSize.large
                 height: width
+                source: "airdrop-symbolic.svg"
+                colorize: true
+                color: button.hovered ? Appearance.colors.colOnPrimary
+                    : root.failed || root.stateError ? Appearance.colors.colError
+                    : root.contentColorOverridden ? root.contentColor : Appearance.colors.colPrimary
+                Behavior on color {
+                    ColorAnimation { duration: Appearance.animation.elementMoveFast.duration }
+                }
+            }
+            TapHandler {
+                acceptedButtons: Qt.RightButton
+                onTapped: root.popupOpen = !root.popupOpen
+            }
+        }
+    }
+    Component {
+        id: legacyButton
+        CircleUtilButton {
+            id: button
+            objectName: "omdropLegacyButton"
+            Accessible.name: `AirDrop · ${root.stateText}`
+            colBackground: root.popupOpen || root.receiving ? Appearance.colors.colPrimaryContainer : "transparent"
+            buttonRadius: root.popupOpen || root.receiving ? Appearance.rounding.normal : implicitHeight / 2
+            border: visualFocus
+            colBorder: Appearance.colors.colPrimary
+            onClicked: root.popupOpen = !root.popupOpen
+            altAction: () => { root.popupOpen = !root.popupOpen }
+            Behavior on buttonRadius {
+                NumberAnimation { duration: Appearance.animation.elementMoveFast.duration }
+            }
+            CustomIcon {
+                implicitWidth: Appearance.font.pixelSize.large
+                implicitHeight: implicitWidth
+                width: implicitWidth
+                height: implicitHeight
                 source: "airdrop-symbolic.svg"
                 colorize: true
                 color: root.failed || root.stateError ? Appearance.colors.colError
                     : root.receiving ? Appearance.colors.colPrimary : root.contentColor
             }
-        }
-        Rectangle {
-            anchors.fill: parent
-            visible: button.visualFocus
-            color: "transparent"
-            radius: button.buttonRadius
-            border.width: 1
-            border.color: Appearance.colors.colPrimary
         }
     }
 
