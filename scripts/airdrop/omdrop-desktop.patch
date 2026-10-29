@@ -1,0 +1,67 @@
+diff --git a/bin/omdrop b/bin/omdrop
+index 4f5ba6c..a6351f2 100755
+--- a/bin/omdrop
++++ b/bin/omdrop
+@@ -523,2 +523,5 @@ identity_notice() {
+-  command -v omarchy-notification-send >/dev/null 2>&1 \
+-    && omarchy-notification-send -t 8000 "Omdrop" "$msg" >/dev/null 2>&1
++  if command -v omarchy-notification-send >/dev/null 2>&1; then
++    omarchy-notification-send -t 8000 "Omdrop" "$msg" >/dev/null 2>&1
++  else
++    notify-send -t 8000 -a AirDrop "Omdrop" "$msg" >/dev/null 2>&1
++  fi
+@@ -1043 +1046,2 @@ $self_q firewall install"
+-  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
++  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1 \
++      && ! command -v kitty >/dev/null 2>&1; then
+@@ -1083 +1087,2 @@ $self_q firewall install"
+-  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
++  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1 \
++      && ! command -v kitty >/dev/null 2>&1; then
+@@ -1100 +1105,5 @@ launch_install() {
+-  omarchy-launch-floating-terminal-with-presentation "echo '$intro'; echo; $script"
++  if command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
++    omarchy-launch-floating-terminal-with-presentation "echo '$intro'; echo; $script"
++  else
++    kitty --detach --hold bash -c 'printf "%s\n\n" "$1"; bash -c "$2"' _ "$intro" "$script"
++  fi
+@@ -2298 +2307,5 @@ cmd_open_link() {
+-    omarchy-launch-browser "$url" >/dev/null 2>&1
++    if command -v omarchy-launch-browser >/dev/null 2>&1; then
++      omarchy-launch-browser "$url" >/dev/null 2>&1
++    else
++      launch xdg-open "$url"
++    fi
+@@ -2306,2 +2319 @@ cmd_open_link() {
+-  omarchy-notification-send "Can't open $(basename "$f")" "$why" >/dev/null 2>&1 \
+-    || echo "omdrop: can't open $f: $why" >&2
++  identity_notice "Can't open $(basename "$f"): $why"
+@@ -2543,0 +2556,6 @@ act_notify() {
++  if ! command -v omarchy-notification-send >/dev/null 2>&1; then
++    # ponytail: the native notification lives in its own user unit so that
++    # closing a one-file receive window cannot kill its clickable action.
++    launch "$SELF" act notify-native "$f"
++    return
++  fi
+@@ -2572,0 +2591,6 @@ cmd_act() {
++    notify-native)
++      local action
++      action=$(notify-send --app-name=AirDrop --expire-time=8000 --wait \
++        --action=default=Open "$(basename "$f")" "Saved in $(tildify "$dir")") || return
++      [[ "$action" != default ]] || act_open "$f"
++      ;;
+@@ -2574 +2598,3 @@ cmd_act() {
+-    shell)  ( cd "$dir" && launch "$(omarchy-default-terminal)" ) ;;
++    shell)  ( cd "$dir" && if command -v omarchy-default-terminal >/dev/null 2>&1; then
++                launch "$(omarchy-default-terminal)"
++              else launch kitty; fi ) ;;
+diff --git a/share/airdrop-receiver.service b/share/airdrop-receiver.service
+index 7ec49c6..bc1b5b6 100644
+--- a/share/airdrop-receiver.service
++++ b/share/airdrop-receiver.service
+@@ -20 +20 @@
+-Description=AirDrop receiver over firmware-native AWDL (awdl0)
++Description=AirDrop receiver
+@@ -48 +48 @@ ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do ip -6 addr show dev awdl0 scop
+-ExecStart=/usr/bin/python3 @PLUGIN_DIR@/bin/airdrop-serve.py --iface awdl0 --port 8771
++ExecStart=/usr/bin/python3 "@PLUGIN_DIR@/bin/airdrop-serve.py" --iface awdl0 --port 8771
