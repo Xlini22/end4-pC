@@ -1,67 +1,139 @@
-diff --git a/bin/omdrop b/bin/omdrop
-index 4f5ba6c..a6351f2 100755
 --- a/bin/omdrop
 +++ b/bin/omdrop
-@@ -523,2 +523,5 @@ identity_notice() {
+@@ -666,8 +666,11 @@
+ identity_notice() {
+   local msg=$1
+   printf '%s\n' "$msg" >&2
 -  command -v omarchy-notification-send >/dev/null 2>&1 \
 -    && omarchy-notification-send -t 8000 "Omdrop" "$msg" >/dev/null 2>&1
 +  if command -v omarchy-notification-send >/dev/null 2>&1; then
 +    omarchy-notification-send -t 8000 "Omdrop" "$msg" >/dev/null 2>&1
 +  else
-+    notify-send -t 8000 -a AirDrop "Omdrop" "$msg" >/dev/null 2>&1
++    notify-send -t 8000 -a AirDrop -- "Omdrop" "$msg" >/dev/null 2>&1
 +  fi
-@@ -1043 +1046,2 @@ $self_q firewall install"
+   return 0
+ }
+ 
+@@ -1323,7 +1326,8 @@
+     build="$build
+ $self_q firewall install"
+   fi
 -  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
 +  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1 \
 +      && ! command -v kitty >/dev/null 2>&1; then
-@@ -1083 +1087,2 @@ $self_q firewall install"
+     echo "Omdrop requires a patched wifi driver, which requires administrative privilege to install. You will be prompted for your password."
+     echo
+     echo "Install the driver with:"
+@@ -1363,7 +1367,8 @@
+     echo "The receiver's packages are installed and the radio comes from $(probe_field backend) $(probe_field version). Nothing to do."
+     return 0
+   fi
 -  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
 +  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1 \
 +      && ! command -v kitty >/dev/null 2>&1; then
-@@ -1100 +1105,5 @@ launch_install() {
+     echo "Install what the receiver needs with:"
+     printf '\n%s\n\n' "$build"
+     return 0
+@@ -1380,7 +1385,11 @@
+   local build=$1 intro=$2
+   local script="( $build
+ ); rc=\$?; if [ \$rc -ne 0 ]; then echo; echo \"Installing failed (exit \$rc). The messages above say why.\"; read -rsn 1 -p 'Press any key to close...' </dev/tty; echo; exit 130; fi"
 -  omarchy-launch-floating-terminal-with-presentation "echo '$intro'; echo; $script"
 +  if command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
 +    omarchy-launch-floating-terminal-with-presentation "echo '$intro'; echo; $script"
 +  else
 +    kitty --detach --hold bash -c 'printf "%s\n\n" "$1"; bash -c "$2"' _ "$intro" "$script"
 +  fi
-@@ -2298 +2307,5 @@ cmd_open_link() {
+ }
+ 
+ # omdrop-core is built from this plugin's own core/, so the core a user runs
+@@ -1522,7 +1531,8 @@
+ echo
+ echo 'omdrop-core is installed, and omdrop now runs it. OMDROP_IMPLEMENTATION=python runs the Python version instead.'"
+   local intro="omdrop-core is installed as a system package, which requires administrative privilege. You will be prompted for your password."
+-  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
++  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1 \
++      && ! command -v kitty >/dev/null 2>&1; then
+     echo "$intro"
+     echo
+     echo "Install omdrop-core with:"
+@@ -3004,7 +3014,11 @@
+ cmd_open_link() {
+   local f=${1:?usage: omdrop open-link FILE} url raw why
+   if url=$(link_target "$f"); then
 -    omarchy-launch-browser "$url" >/dev/null 2>&1
 +    if command -v omarchy-launch-browser >/dev/null 2>&1; then
 +      omarchy-launch-browser "$url" >/dev/null 2>&1
 +    else
 +      launch xdg-open "$url"
 +    fi
-@@ -2306,2 +2319 @@ cmd_open_link() {
--  omarchy-notification-send "Can't open $(basename "$f")" "$why" >/dev/null 2>&1 \
+     return
+   fi
+   if raw=$(link_url "$f") && [[ "$raw" == *:* ]]; then
+@@ -3012,8 +3026,7 @@
+   else
+     why="There is no web link in it."
+   fi
+-  omarchy-notification-send "Can't open $(basename -- "$f")" "$why" >/dev/null 2>&1 \
 -    || echo "omdrop: can't open $f: $why" >&2
-+  identity_notice "Can't open $(basename "$f"): $why"
-@@ -2543,0 +2556,6 @@ act_notify() {
++  identity_notice "Can't open $(basename -- "$f"): $why"
+   return 1
+ }
+ 
+@@ -3323,6 +3336,12 @@
+   # claiming the urgency of one.
+   local what="Saved to $(tildify "$(dirname -- "$f")")/"
+   command -v wl-copy >/dev/null 2>&1 && what="Copied to clipboard, saved to $(tildify "$(dirname -- "$f")")/"
 +  if ! command -v omarchy-notification-send >/dev/null 2>&1; then
-+    # ponytail: the native notification lives in its own user unit so that
-+    # closing a one-file receive window cannot kill its clickable action.
-+    launch "$SELF" act notify-native "$f"
++    # ponytail: keep the action outside the receive window's systemd unit.
++    # Forward the bounded preview prepared above, including HEIC conversions.
++    launch "$SELF" act notify-native "$f" "${args[@]}"
 +    return
 +  fi
-@@ -2572,0 +2591,6 @@ cmd_act() {
+   omarchy-notification-send -t 8000 "$(toast_name "$f")" "$what (or click this)" \
+     "${args[@]}" --exec "$SELF" act open "$f" >/dev/null \
+     || echo "omdrop: notification failed for $f" >&2
+@@ -3335,8 +3354,22 @@
+   local what=${1:?usage: omdrop act open|shell|browse FILE} f=${2:?}
+   local dir; dir=$(dirname "$f")
+   case "$what" in
 +    notify-native)
-+      local action
++      shift 2
++      local action args=()
++      case $# in
++        0) ;;
++        2) [[ "$1" == --image ]] || return 2; args=(--icon "$2") ;;
++        *) return 2 ;;
++      esac
 +      action=$(notify-send --app-name=AirDrop --expire-time=8000 --wait \
-+        --action=default=Open "$(basename "$f")" "Saved in $(tildify "$dir")") || return
++        --action=default=Open "${args[@]}" -- "$(toast_name "$f")" "Saved in $(tildify "$dir")") || return
 +      [[ "$action" != default ]] || act_open "$f"
 +      ;;
-@@ -2574 +2598,3 @@ cmd_act() {
+     open)   act_open "$f" ;;
 -    shell)  ( cd "$dir" && launch "$(omarchy-default-terminal)" ) ;;
 +    shell)  ( cd "$dir" && if command -v omarchy-default-terminal >/dev/null 2>&1; then
 +                launch "$(omarchy-default-terminal)"
 +              else launch kitty; fi ) ;;
-diff --git a/share/airdrop-receiver.service b/share/airdrop-receiver.service
-index 7ec49c6..bc1b5b6 100644
+     browse) launch xdg-open "$dir" ;;
+     *) die "act $what: one of open, shell, browse" ;;
+   esac
 --- a/share/airdrop-receiver.service
 +++ b/share/airdrop-receiver.service
-@@ -20 +20 @@
+@@ -17,7 +17,7 @@
+ # Config change = restart: systemctl --user restart airdrop-receiver.service
+ 
+ [Unit]
 -Description=AirDrop receiver over firmware-native AWDL (awdl0)
 +Description=AirDrop receiver
-@@ -48 +48 @@ ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do ip -6 addr show dev awdl0 scop
+ Documentation=file:@PLUGIN_DIR@/README.md
+ # awdl0 is created by the root-side control plane; wait for it, do not create it.
+ # No After=/BindsTo= on sys-subsystem-net-devices-awdl0.device: awdl0 appears
+@@ -45,7 +45,7 @@
+ # running"). This unit once burned three restarts on that gap and gave up.
+ # Wait for the address.
+ ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do ip -6 addr show dev awdl0 scope link 2>/dev/null | grep -q inet6 && exit 0; sleep 0.5; done; echo "awdl0 has no link-local after 30s" >&2; exit 1'
 -ExecStart=/usr/bin/python3 @PLUGIN_DIR@/bin/airdrop-serve.py --iface awdl0 --port 8771
 +ExecStart=/usr/bin/python3 "@PLUGIN_DIR@/bin/airdrop-serve.py" --iface awdl0 --port 8771
+ Restart=on-failure
+ RestartSec=2s
+ # Hardening: it serves HTTPS on one port and writes into one directory.

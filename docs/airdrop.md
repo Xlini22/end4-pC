@@ -1,7 +1,7 @@
 # AirDrop
 
 The optional `omdrop` bar widget sends and receives files through
-[Omdrop](https://github.com/brentkearney/omdrop-plugin) and a compatible radio
+[Omdrop](https://github.com/netmojo-systems/omdrop-plugin) and a compatible radio
 backend such as [Owly](https://github.com/t4t5/owly). Adding the widget or opening
 its popup only reads status; receiving starts when you turn on its switch.
 The receive window is ten minutes or until one file arrives.
@@ -21,15 +21,15 @@ services and the radio backend's helpers. The desktop adaptation uses
 file chooser portal. Kitty is used only for commands that open a terminal.
 Use the upstream dependency instructions for other distributions.
 
-The integration was tested with Omdrop 0.16.1 at commit
-`3f936be7faa7f49180ab5167fa82066ef6d79891` and Owly 0.4.1. Omdrop's CLI and
+The integration targets Omdrop 0.18.7 at commit
+`c73e8a696bee6ade33c3aad920bba9240de2481a` and Owly 0.4.1. Omdrop's CLI and
 receiver are kept outside this repository. To prepare the tested Omdrop version
 without an Omarchy installation:
 
 ```bash
 # Run from the root of your end4-pC checkout. Keep the backend in a stable path.
-git clone https://github.com/brentkearney/omdrop-plugin.git "$HOME/.local/share/omdrop"
-git -C "$HOME/.local/share/omdrop" checkout --detach 3f936be7faa7f49180ab5167fa82066ef6d79891
+git clone https://github.com/netmojo-systems/omdrop-plugin.git "$HOME/.local/share/omdrop"
+git -C "$HOME/.local/share/omdrop" checkout --detach c73e8a696bee6ade33c3aad920bba9240de2481a
 patch --batch --forward -d "$HOME/.local/share/omdrop" -p1 < scripts/airdrop/omdrop-desktop.patch
 "$HOME/.local/share/omdrop/bin/omdrop" setup
 "$HOME/.local/bin/omdrop" doctor --json
@@ -42,6 +42,16 @@ required by systemd's parser. Omdrop's setup installs its user service and CLI
 link; keep that checkout in place. Review the pinned version and patch together
 when updating. This source patch retains Omdrop's MIT notice in
 [`LICENSE.omdrop`](../scripts/airdrop/LICENSE.omdrop).
+
+Omdrop 0.18.7 also contains omdrop-core 0.1.11 in Rust. The widget does not
+install it. For the Owly integration, keep the Python fallback until core has
+been validated with that backend; upstream does not yet offer core automatically
+on Owly. If core is installed separately, `OMDROP_IMPLEMENTATION=python` in the
+environment that launches Quickshell keeps the fallback selected.
+
+HEIC/HEIF/AVIF notification previews and JPEG clipboard conversion use the
+optional `heif-convert` command (`libheif` on Arch). ImageMagick is optional for
+shrinking previews. Without these tools, receiving and saving still work.
 
 The widget defaults to `~/.local/bin/omdrop`. If the CLI lives elsewhere, set
 `OMDROP_CLI` to its executable path in the environment that launches Quickshell.
@@ -71,6 +81,10 @@ stores preferences in `~/.config/airdrop` and its identity in `~/.omdrop`.
   that is already active. Use the switch or `omdrop off` to stop it.
 - Sending requires an active receive window. Peer names can take time to resolve;
   opening the AirDrop share sheet on an iPhone can help it answer discovery.
+- Name lookups back off after two fruitless attempts and recheck after one
+  minute. Names are accepted only for current peers, stripped of control
+  characters and bounded for display. Failed lookups, including exit 65 for
+  suspected forged rows, roll back names learned during that lookup.
 - A firewall must permit the backend's required traffic, including TCP 8771 on
   `awdl0` for this receiver. Follow the backend's firewall instructions.
 
@@ -88,7 +102,8 @@ revision, validates the service with systemd using a path with spaces, and check
 that native actions preserve literal file and URL arguments. It does not modify
 the supplied checkout or acquire the radio. The UI smoke checks ready, missing,
 unsupported and invalid-output states, popup reuse, peers and failed commands,
-including an unsuccessful attempt to start receiving.
+including an unsuccessful attempt to start receiving. It also checks rollback
+after a forged stream and backoff after repeated fruitless name lookups.
 
 For a hardware test, receive and send a file, check the files, turn AirDrop off
 and confirm Wi-Fi reconnects. Also check the ten-minute and one-file deadlines
