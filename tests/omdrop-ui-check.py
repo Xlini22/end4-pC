@@ -5,7 +5,8 @@ import subprocess
 source = (Path(__file__).resolve().parents[1] / 'modules/ii/bar/Omdrop.qml').read_text()
 parsers = source[source.index('    function parseStatus('):source.index('    function refresh(')]
 commands = source[source.index('    function run('):source.index('    onPopupOpenChanged:')]
-script = parsers + commands + r'''
+names = source[source.index('    function learnPeerName('):source.index('    function run(')]
+script = parsers + names + commands + r'''
 const assert = require('node:assert/strict');
 const valid = {receiving: true, visible: false, remaining: 60, name: 'PC', dir: '/tmp'};
 assert.equal(parseStatus(JSON.stringify(valid)).visible, false);
@@ -20,6 +21,14 @@ const peers = parsePeers(JSON.stringify([
 ]));
 assert.equal(peers.length, 1);
 assert.equal(peers[0].name, '<b>Telefono</b>');
+let peerNames = {};
+assert.equal(learnPeerName({mac: '02:00:00:00:00:ff', name: 'forged device'}), false);
+assert.equal(learnPeerName({mac: peers[0].mac, name: '\u202e\nPhone\u0000'}), true);
+assert.equal(peerNames[peers[0].mac], 'Phone');
+assert.equal(learnPeerName({mac: peers[0].mac, name: 'Phone'}), false);
+assert.equal(learnPeerName({mac: peers[0].mac, name: '\u0000\n'}), false);
+assert.equal(learnPeerName({mac: peers[0].mac, name: 'a'.repeat(254) + '\ud83d\ude00'}), true);
+assert.equal(peerNames[peers[0].mac], 'a'.repeat(254));
 let busy = false, shuttingDown = false, message = '', failed = true, cancelled = false;
 let operation = '', choosing = false, popupOpen = true;
 const cli = '/directory with spaces/omdrop';
@@ -81,11 +90,16 @@ import sys,json,time,os
 with open(os.environ['OMDROP_TEST_CALLS'], 'a') as log: log.write(json.dumps(sys.argv[1:])+'\\n')
 scenario=os.environ['OMDROP_TEST_SCENARIO']
 peers=[dict(mac='02:00:00:00:00:01',name='<b>Telefono</b>',rssi=-30),dict(mac='02:00:00:00:00:02',name=None,rssi=-50)]
-if sys.argv[1]=='status': print('{}' if scenario=='invalid' else json.dumps(dict(receiving=scenario=='ready',visible=scenario=='ready',remaining=60,name='PC',dir='/tmp',mode='timed',reason=None)))
+if sys.argv[1]=='status': print('{}' if scenario=='invalid' else json.dumps(dict(receiving=scenario in ('ready','forged','backoff'),visible=scenario in ('ready','forged','backoff'),remaining=60,name='PC',dir='/tmp',mode='timed',reason=None)))
 elif sys.argv[1]=='doctor': print(json.dumps(dict(ready=scenario!='unsupported',missing=[dict(id='hardware',say='Unsupported test hardware')] if scenario=='unsupported' else [])))
 elif sys.argv[1]=='peers':
     if '--stream' in sys.argv:
-        for peer in peers: print(json.dumps(peer))
+        if scenario=='forged':
+            print(json.dumps(dict(mac=peers[0]['mac'],name='forged name')))
+            print(json.dumps(dict(mac='02:00:00:00:00:ff',name='unknown device')))
+            sys.exit(65)
+        elif scenario!='backoff':
+            for peer in peers: print(json.dumps(peer))
     else: print(json.dumps(peers))
 else: time.sleep(0.1); sys.exit(2)
 ''')
@@ -162,6 +176,10 @@ ShellRoot {
                 if (!widget.stateKnown || !widget.ready || widget.receiving) throw new Error("Invalid initial state for failed start")
                 widget.run(["on", "-e", "10m"], "Starting test"); return
             }
+            if (testRoot.scenario === "forged" || testRoot.scenario === "backoff") {
+                if (!widget.stateKnown || !widget.receiving || !widget.ready) throw new Error("Names test backend not ready")
+                widget.popupOpen = true; return
+            }
             if (!widget.stateKnown || !widget.ready) throw new Error("Status not loaded")
             const button = testRoot.barButton()
             if (button.objectName !== "omdropMaterialButton" || Math.abs(button.implicitWidth - 54) > 0.1 || button.implicitHeight !== 26 || widget.implicitHeight !== 32)
@@ -193,14 +211,23 @@ ShellRoot {
         }
     }
     Timer {
-        interval: 2200; running: true
+        interval: 2800; running: testRoot.scenario === "forged" || testRoot.scenario === "backoff"
+        onTriggered: {
+            if (Object.keys(widget.peerNames).length !== 0) throw new Error("Untrusted peer name retained")
+            if (testRoot.scenario === "backoff" && widget.namesMisses !== 2) throw new Error("Fruitless lookups did not back off")
+            if (testRoot.scenario === "forged" && widget.namesMisses !== 1) throw new Error("Forged lookup retried immediately")
+            console.log("AirDrop names security and backoff smoke passed"); Qt.quit()
+        }
+    }
+    Timer {
+        interval: 2200; running: testRoot.scenario === "ready"
         onTriggered: {
             if (widget.peers.length !== 2) throw new Error("Device delegates not loaded")
             widget.run(["simulate-failure"], "Testing failure")
         }
     }
     Timer {
-        interval: 3200; running: true
+        interval: 3200; running: testRoot.scenario === "ready"
         onTriggered: {
             if (!widget.failed || !widget.message.includes("(2)")) throw new Error("Failure incorrectly reported as success")
             if (!testRoot.initialPopup || testRoot.initialPopup.objectName !== "omdropPopup") throw new Error("Dismissal destroyed the native popup")
@@ -215,8 +242,11 @@ ShellRoot {
         os.close(descriptor)
         harness = Path(filename)
         display = os.environ.get('WAYLAND_DISPLAY', 'wayland-1')
+        real_runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
         if not display.startswith('/'):
-            display = str(Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / display)
+            display = str(real_runtime / display)
+        if (real_runtime / 'hypr').is_dir():
+            (temporary / 'runtime/hypr').symlink_to(real_runtime / 'hypr', target_is_directory=True)
         env = {**os.environ, 'WAYLAND_DISPLAY': display, 'QT_QPA_PLATFORM': 'wayland',
                'QT_QUICK_BACKEND': 'software'}
         env.update({f'XDG_{key}_HOME': str(temporary / key.lower()) for key in ('CONFIG','STATE','CACHE','DATA')})
@@ -224,10 +254,14 @@ ShellRoot {
         if '--visible' in sys.argv:
             env.pop('QT_QUICK_BACKEND', None)
         try:
-            for scenario in ('ready', 'missing', 'unsupported', 'invalid', 'failed-start'):
+            for scenario in ('ready', 'missing', 'unsupported', 'invalid', 'failed-start', 'forged', 'backoff'):
                 calls = temporary / (scenario + '.calls')
                 cli = temporary / 'missing-cli' if scenario == 'missing' else fake
-                harness.write_text(text.replace('CLI_PATH', json.dumps(str(cli))).replace('SCENARIO', json.dumps(scenario)))
+                case_text = text.replace('CLI_PATH', json.dumps(str(cli))).replace('SCENARIO', json.dumps(scenario))
+                if scenario in ('forged', 'backoff'):
+                    # Names checks need an open controller, independent of popup focus.
+                    case_text = case_text.replace('visible: true', 'visible: false', 1)
+                harness.write_text(case_text)
                 env.update(OMDROP_TEST_SCENARIO=scenario, OMDROP_TEST_CALLS=str(calls))
                 result = subprocess.run(['qs', '-p', str(harness)], env=env, text=True,
                                         capture_output=True, timeout=15)
@@ -236,6 +270,9 @@ ShellRoot {
                 assert not any(error in output for error in ('ReferenceError:', 'TypeError:', 'Failed to load configuration', 'Cannot open:')), output
                 if calls.exists():
                     commands = [json.loads(line) for line in calls.read_text().splitlines()]
+                    if scenario in ('forged', 'backoff'):
+                        lookups = [command for command in commands if command[0] == 'peers' and '--stream' in command]
+                        assert len(lookups) == (1 if scenario == 'forged' else 2), lookups
                     allowed = ('status', 'doctor', 'peers', 'simulate-failure')
                     if scenario == 'failed-start':
                         assert [command for command in commands if command[0] == 'on'] == [['on', '-e', '10m']], commands

@@ -22,6 +22,8 @@ Item {
     property var status: ({receiving: false, visible: false, remaining: null, name: "", dir: ""})
     property var peers: []
     property var peerNames: ({})
+    property int namesMisses: 0
+    readonly property bool namesWanted: peers.length === 0 || peers.some(peer => !peer.name && !peerNames[peer.mac])
     property string duration: "10m"
     property string message: ""
     property string stateError: ""
@@ -147,6 +149,15 @@ Item {
         if (!stateProcess.running) stateProcess.running = true
     }
 
+    function learnPeerName(peer) {
+        if (!peer || typeof peer.name !== "string" || !peers.some(known => known.mac === peer.mac)) return false
+        let name = peer.name.replace(/[\x00-\x1f\x7f-\x9f\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/g, "").trim().slice(0, 255)
+        if (/[\uD800-\uDBFF]$/.test(name)) name = name.slice(0, -1)
+        if (!name || peerNames[peer.mac] === name) return false
+        peerNames = Object.assign({}, peerNames, { [peer.mac]: name })
+        return true
+    }
+
     function run(args, label) {
         if (busy || shuttingDown) return
         message = label
@@ -168,6 +179,7 @@ Item {
 
     onPopupOpenChanged: {
         if (popupOpen) {
+            namesMisses = 0
             popupCreated = true
             refresh()
             if (!doctor.running) doctor.running = true
@@ -177,8 +189,12 @@ Item {
         if (!receiving) { peers = []; peerNames = ({}) }
     }
     onScanningChanged: {
-        if (!scanning) {
-            if (namesProcess.running) namesProcess.signal(15)
+        if (scanning) {
+            namesTimer.interval = 250
+            namesTimer.restart()
+        } else {
+            namesTimer.stop()
+            if (namesProcess.running) { namesProcess.stopped = true; namesProcess.signal(15) }
             if (peersProcess.running) peersProcess.signal(15)
         }
     }
@@ -279,31 +295,49 @@ Item {
         onExited: code => {
             if (root.shuttingDown) return
             if (code !== 0 || !root.scanning) return
-            try { root.peers = root.parsePeers(peersOutput.text) } catch (error) {
+            try {
+                const peers = root.parsePeers(peersOutput.text)
+                const appeared = peers.some(peer => !root.peers.some(known => known.mac === peer.mac))
+                root.peers = peers
+                if (appeared && root.namesMisses < 2 && root.namesWanted && !namesProcess.running) {
+                    namesTimer.interval = 250
+                    namesTimer.restart()
+                }
+            } catch (error) {
                 root.message = String(error); root.failed = true
             }
         }
     }
     Timer {
+        id: namesTimer
+        // ponytail: two fruitless lookups back off globally for this popup.
+        // Per-peer retry counters are unnecessary until this conservative cap is limiting.
         interval: 5000
-        running: root.scanning
-        repeat: true
-        triggeredOnStart: true
-        onTriggered: if (!namesProcess.running) namesProcess.running = true
+        onTriggered: if (root.scanning && !namesProcess.running) namesProcess.running = true
     }
     Process {
         id: namesProcess
+        property var namesBefore: ({})
+        property bool learnt: false
+        property bool stopped: false
+        onStarted: { namesBefore = root.peerNames; learnt = false; stopped = false }
         command: root.cliCommand.concat(["peers", "--json", "-n", "--stream"])
         stdout: SplitParser {
             onRead: line => {
                 if (root.shuttingDown) return
                 try {
                     const values = root.parsePeers(`[${line}]`)
-                    if (!values.length || !values[0].name) return
-                    const names = Object.assign({}, root.peerNames)
-                    names[values[0].mac] = values[0].name
-                    root.peerNames = names
+                    if (values.length && root.learnPeerName(values[0])) namesProcess.learnt = true
                 } catch (error) { /* A terminated lookup can end with a partial line. */ }
+            }
+        }
+        onExited: code => {
+            if (root.shuttingDown) return
+            if (code !== 0 && root.receiving) root.peerNames = namesBefore
+            if (!stopped) root.namesMisses = code === 0 && learnt ? 0 : Math.min(2, root.namesMisses + 1)
+            if (root.scanning) {
+                namesTimer.interval = root.namesMisses >= 2 || !root.namesWanted ? 60000 : code !== 0 ? 10000 : 250
+                namesTimer.restart()
             }
         }
     }
