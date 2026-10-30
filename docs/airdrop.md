@@ -59,13 +59,17 @@ Arguments are passed separately; paths and device names can contain spaces.
 
 Once `doctor --json` reports `ready: true`, add **AirDrop** from the bar settings.
 The widget is opt-in; no default layout is changed. On the Apple device, select
-**Everyone for 10 minutes**. Turn on the switch, then receive a file or select
+**Everyone for 10 minutes** and disable Personal Hotspot on that device. No
+Internet connection is needed for the transfer. Turn on the switch, then receive a file or select
 **Send…** beside a discovered device. The popup also changes the advertised
 computer name and download directory. Files default to `~/Downloads`; Omdrop
 stores preferences in `~/.config/airdrop` and its identity in `~/.omdrop`.
 
 ## Behaviour and limitations
 
+- The popup accepts keyboard input and closes on outside click or Escape.
+  Name edits survive status refreshes, closing and failed saves; use **Save**
+  or Enter to apply them. Closing the popup does not turn receiving off.
 - The popup reports Omdrop's actual state, remaining time and prerequisites.
   Missing CLI, unsupported hardware and failed commands do not confirm receiving.
 - Hardware determines whether Wi-Fi stays connected. Owly's exclusive mode
