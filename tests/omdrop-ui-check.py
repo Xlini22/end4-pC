@@ -90,7 +90,12 @@ import sys,json,time,os
 with open(os.environ['OMDROP_TEST_CALLS'], 'a') as log: log.write(json.dumps(sys.argv[1:])+'\\n')
 scenario=os.environ['OMDROP_TEST_SCENARIO']
 peers=[dict(mac='02:00:00:00:00:01',name='<b>Telefono</b>',rssi=-30),dict(mac='02:00:00:00:00:02',name=None,rssi=-50)]
-if sys.argv[1]=='status': print('{}' if scenario=='invalid' else json.dumps(dict(receiving=scenario in ('ready','forged','backoff'),visible=scenario in ('ready','forged','backoff'),remaining=60,name='PC',dir='/tmp',mode='timed',reason=None)))
+from pathlib import Path
+name_file=Path(os.environ['OMDROP_TEST_CALLS']+'.name')
+if sys.argv[1]=='status': print('{}' if scenario=='invalid' else json.dumps(dict(receiving=scenario in ('ready','forged','backoff'),visible=scenario in ('ready','forged','backoff'),remaining=60,name=name_file.read_text() if name_file.exists() else 'PC',dir='/tmp',mode='timed',reason=None)))
+elif sys.argv[1]=='name':
+    if sys.argv[2]=='Rejected': sys.exit(2)
+    name_file.write_text(sys.argv[2])
 elif sys.argv[1]=='doctor': print(json.dumps(dict(ready=scenario!='unsupported',missing=[dict(id='hardware',say='Unsupported test hardware')] if scenario=='unsupported' else [])))
 elif sys.argv[1]=='peers':
     if '--stream' in sys.argv:
@@ -115,6 +120,19 @@ ShellRoot {
     id: testRoot
     property var initialPopup: null
     property string scenario: SCENARIO
+    function findItem(parent, name) {
+        if (parent.objectName === name) return parent
+        for (const child of parent.children ?? []) {
+            const found = findItem(child, name)
+            if (found) return found
+        }
+        return null
+    }
+    function popup() {
+        for (const child of widget.data)
+            if (child.objectName === "omdropPopupLoader") return child.item
+        return null
+    }
     function barButton() {
         for (let i = 0; i < widget.data.length; i++)
             if (widget.data[i].objectName === "omdropButtonLoader") return widget.data[i].item
@@ -160,6 +178,11 @@ ShellRoot {
     Timer {
         interval: 1200; running: true
         onTriggered: {
+            if (testRoot.scenario === "editing") {
+                if (!widget.stateKnown || widget.receiving) throw new Error("Editing backend not ready")
+                widget.popupOpen = true
+                return
+            }
             if (testRoot.scenario === "missing") {
                 if (widget.stateKnown || widget.ready || !widget.stateError.includes("Install and set up")) throw new Error("Missing backend not explained")
                 console.log("AirDrop missing backend smoke passed"); Qt.quit(); return
@@ -220,6 +243,57 @@ ShellRoot {
         }
     }
     Timer {
+        interval: 1700; running: testRoot.scenario === "editing"
+        onTriggered: {
+            const popup = testRoot.popup()
+            const field = testRoot.findItem(popup.contentItem, "omdropNameField")
+            if (field.text !== "PC" || field.maximumLength !== 63) throw new Error("Initial name or limit incorrect")
+            field.forceActiveFocus()
+            // Drive the TextField's editing signal; the next real CLI poll must preserve the draft.
+            field.text = "Nuovo PC"
+            field.textEdited()
+            field.focus = false
+        }
+    }
+    Timer {
+        interval: 3800; running: testRoot.scenario === "editing"
+        onTriggered: {
+            const popup = testRoot.popup()
+            const field = testRoot.findItem(popup.contentItem, "omdropNameField")
+            if (field.text !== "Nuovo PC" || !field.edited) throw new Error("Status poll overwrote the draft")
+            popup.dismissed()
+            if (widget.popupOpen) throw new Error("Dismissal did not close the popup")
+            widget.popupOpen = true
+            if (field.text !== "Nuovo PC") throw new Error("Reopening overwrote the draft")
+            popup.saveName()
+        }
+    }
+    Timer {
+        interval: 4500; running: testRoot.scenario === "editing"
+        onTriggered: {
+            const popup = testRoot.popup()
+            const field = testRoot.findItem(popup.contentItem, "omdropNameField")
+            if (widget.status.name !== "Nuovo PC" || field.edited) throw new Error("Name was not saved or reconciled")
+            field.text = "Rejected"
+            field.textEdited()
+            popup.saveName()
+        }
+    }
+    Timer {
+        interval: 5200; running: testRoot.scenario === "editing"
+        onTriggered: {
+            const field = testRoot.findItem(testRoot.popup().contentItem, "omdropNameField")
+            if (widget.status.name !== "Nuovo PC" || !widget.failed || field.text !== "Rejected" || !field.edited)
+                throw new Error("Failed save lost the draft or changed the saved name")
+            field.text = ""
+            field.textEdited()
+            if (testRoot.findItem(testRoot.popup().contentItem, "omdropSaveName").enabled)
+                throw new Error("Empty name can be submitted")
+            console.log("AirDrop name editing, polling, persistence and rejection smoke passed")
+            Qt.quit()
+        }
+    }
+    Timer {
         interval: 2200; running: testRoot.scenario === "ready"
         onTriggered: {
             if (widget.peers.length !== 2) throw new Error("Device delegates not loaded")
@@ -254,7 +328,7 @@ ShellRoot {
         if '--visible' in sys.argv:
             env.pop('QT_QUICK_BACKEND', None)
         try:
-            for scenario in ('ready', 'missing', 'unsupported', 'invalid', 'failed-start', 'forged', 'backoff'):
+            for scenario in ('ready', 'missing', 'unsupported', 'invalid', 'failed-start', 'forged', 'backoff', 'editing'):
                 calls = temporary / (scenario + '.calls')
                 cli = temporary / 'missing-cli' if scenario == 'missing' else fake
                 case_text = text.replace('CLI_PATH', json.dumps(str(cli))).replace('SCENARIO', json.dumps(scenario))
@@ -274,6 +348,9 @@ ShellRoot {
                         lookups = [command for command in commands if command[0] == 'peers' and '--stream' in command]
                         assert len(lookups) == (1 if scenario == 'forged' else 2), lookups
                     allowed = ('status', 'doctor', 'peers', 'simulate-failure')
+                    if scenario == 'editing':
+                        assert [command for command in commands if command[0] == 'name'] == [['name', 'Nuovo PC'], ['name', 'Rejected']], commands
+                        allowed += ('name',)
                     if scenario == 'failed-start':
                         assert [command for command in commands if command[0] == 'on'] == [['on', '-e', '10m']], commands
                         allowed += ('on',)
