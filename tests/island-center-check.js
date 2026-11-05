@@ -6,6 +6,21 @@ const read = path => fs.readFileSync(`${__dirname}/../${path}`, 'utf8')
 const config = read('modules/common/Config.qml')
 const source = read('modules/ii/bar/DynamicIsland.qml')
 const settings = read('modules/ii/settings/pages/BarConfig.qml')
+const bar = read('modules/ii/bar/BarContent.qml')
+const mirrorGuards = [...bar.matchAll(/onLoaded: \{\n\s+if \((.*)\)/g)]
+assert.equal(mirrorGuards.length, 9)
+for (const [, guard] of mirrorGuards) {
+    for (const modelData of ['clockWidget', 'resources', 'media', 'activeWindow', 'omdrop']) {
+        const item = Object.defineProperty({}, 'mirrored', {get: () => false,
+            set: () => { throw new Error('Qt control mirrored is read-only') }})
+        vm.runInNewContext(`if (${guard}) item.mirrored = true`, {item, modelData})
+    }
+    for (const modelData of ['visualizer', 'dynamicIsland']) {
+        const item = {mirrored: false}
+        vm.runInNewContext(`if (${guard}) item.mirrored = true`, {item, modelData})
+        assert.equal(item.mirrored, true)
+    }
+}
 const migration = config.match(/if \(!island.centerWidgetMigrated\) \{[^}]+\}/)[0]
 for (const enabled of [true, false]) {
     const island = {centerWorkspaces: enabled, centerEnabled: false, centerWidget: 'workspaces'}

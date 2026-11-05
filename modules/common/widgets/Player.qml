@@ -194,7 +194,7 @@ Item {
         WaveVisualizer {
             id: visualizerCanvas
             anchors.fill: parent
-            live: root.player?.isPlaying
+            live: root.player?.isPlaying ?? false
             points: root.visualizerPoints
             maxVisualizerValue: root.maxVisualizerValue
             smoothing: root.visualizerSmoothing

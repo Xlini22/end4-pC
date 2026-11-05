@@ -77,6 +77,7 @@ Item {
         return Qt.resolvedUrl("./" + formattedName + ".qml");
     }
 
+    // ponytail: only Visualizer and DynamicIsland have writable mirror flags; Qt controls have read-only mirrored.
     function getMirroredForIndex(layout, idx) {
         const prevCount = layout.slice(0, idx).filter(w => w === "visualizer").length
         return prevCount % 2 === 1
@@ -320,7 +321,7 @@ Item {
                                 Layout.fillHeight: true
                                 source: root.getWidgetUrl(modelData)
                                 onLoaded: {
-                                    if (item && item.hasOwnProperty("mirrored"))
+                                    if (item && (modelData === "visualizer" || modelData === "dynamicIsland"))
                                         item.mirrored = root.getMirroredForIndex(root.effectiveLeftLayout, index)
                                 }
                             }
@@ -367,7 +368,7 @@ Item {
                             Layout.fillHeight: true
                             source: root.getWidgetUrl(modelData)
                             onLoaded: {
-                                if (item && item.hasOwnProperty("mirrored"))
+                                if (item && (modelData === "visualizer" || modelData === "dynamicIsland"))
                                     item.mirrored = root.getMirroredForIndex(root.effectiveLeftLayout, index)
                             }
                         }
@@ -382,7 +383,7 @@ Item {
                         Layout.alignment: Qt.AlignVCenter
                         source: root.getWidgetUrl(modelData)
                         onLoaded: {
-                            if (item && item.hasOwnProperty("mirrored"))
+                            if (item && (modelData === "visualizer" || modelData === "dynamicIsland"))
                                 item.mirrored = root.getMirroredForIndex(root.effectiveLeftLayout, index)
                         }
                     }
@@ -499,7 +500,7 @@ Item {
                                     when: modelData === "dynamicIsland" && middleMaterialWidgetLoader.status === Loader.Ready
                                 }
                                 onLoaded: {
-                                    if (item && item.hasOwnProperty("mirrored"))
+                                    if (item && (modelData === "visualizer" || modelData === "dynamicIsland"))
                                         item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
                                 }
                             }
@@ -572,7 +573,7 @@ Item {
                                 when: modelData === "dynamicIsland" && middleWidgetLoader.status === Loader.Ready
                             }
                             onLoaded: {
-                                if (item && item.hasOwnProperty("mirrored"))
+                                if (item && (modelData === "visualizer" || modelData === "dynamicIsland"))
                                     item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
                             }
                         }
@@ -586,7 +587,7 @@ Item {
                         Layout.topMargin: Config.options.bar.bottom ? -5 : 3
                         source: root.getWidgetUrl(modelData)
                         onLoaded: {
-                            if (item && item.hasOwnProperty("mirrored"))
+                            if (item && (modelData === "visualizer" || modelData === "dynamicIsland"))
                                 item.mirrored = root.getMirroredForIndex(root.effectiveMiddleLayout, index)
                         }
                     }
@@ -673,7 +674,7 @@ Item {
                                 Layout.fillHeight: true
                                 source: root.getWidgetUrl(modelData)
                                 onLoaded: {
-                                    if (item && item.hasOwnProperty("mirrored")) {
+                                    if (item && (modelData === "visualizer" || modelData === "dynamicIsland")) {
                                         try {
                                             item.mirrored = root.getMirroredForIndex(root.effectiveRightLayout, index);
                                         } catch (e) {}
@@ -711,7 +712,7 @@ Item {
                             Layout.fillHeight: true
                             source: root.getWidgetUrl(modelData)
                             onLoaded: {
-                                if (item && item.hasOwnProperty("mirrored")) {
+                                if (item && (modelData === "visualizer" || modelData === "dynamicIsland")) {
                                     try {
                                         item.mirrored = root.getMirroredForIndex(root.effectiveRightLayout, index);
                                     } catch (e) {}
@@ -728,7 +729,7 @@ Item {
                         Layout.topMargin: Config.options.bar.bottom ? -5 : 3
                         source: root.getWidgetUrl(modelData)
                         onLoaded: {
-                            if (item && item.hasOwnProperty("mirrored")) {
+                            if (item && (modelData === "visualizer" || modelData === "dynamicIsland")) {
                                 try {
                                     item.mirrored = root.getMirroredForIndex(root.effectiveRightLayout, index);
                                 } catch (e) {}

@@ -168,7 +168,7 @@ Item {
             }
             width: root.isMaterial ? 60 : 50
             height: root.isMaterial ? root.pillHeight * 1.5 : root.pillHeight * 0.85
-            live: root.activePlayer?.isPlaying
+            live: root.activePlayer?.isPlaying ?? false
             points: GlobalStates.visualizerPoints
             maxVisualizerValue: 1000
             smoothing: 2
