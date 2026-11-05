@@ -13,10 +13,13 @@ BarWidgetSwitcherArea {
     property bool alwaysShowAllResources: false
     property bool islandMode: false
     property bool islandExpanded: false
-    property real valueReveal: Config.options.bar.resources.showValue
-        && (!islandMode || islandExpanded) ? 1 : 0
+    property real islandRevealProgress: islandExpanded ? 1 : 0
+    readonly property bool stagedExpansion: islandMode
+        && Config.options.bar.dynamicIsland.animationStyle === "staged"
+    property real valueReveal: !Config.options.bar.resources.showValue ? 0
+        : stagedExpansion ? islandRevealProgress : (!islandMode || islandExpanded ? 1 : 0)
     Behavior on valueReveal {
-        enabled: root.islandMode
+        enabled: root.islandMode && !root.stagedExpansion
         NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
     }
     horizontalExtraPadding: islandMode ? 0 : 12
@@ -25,11 +28,15 @@ BarWidgetSwitcherArea {
 
     rowDefault: Component {
         RowLayout {
+            readonly property real islandExpandedWidth: children.reduce((total, child) => total
+                + (child.shown && child.islandExpandedWidth !== undefined
+                    ? child.islandExpandedWidth + child.Layout.leftMargin : 0), 0)
             spacing: 0
             Resource {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "memory"
                 shown: Config.options.bar.resources.alwaysShowRam
                 percentage: ResourceUsage.memoryUsedPercentage
@@ -39,6 +46,7 @@ BarWidgetSwitcherArea {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "planner_review"
                 shown: Config.options.bar.resources.alwaysShowCpu
                 percentage: ResourceUsage.cpuUsage
@@ -49,6 +57,7 @@ BarWidgetSwitcherArea {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "thermostat"
                 shown: Config.options.bar.resources.alwaysShowCpuTemp
                 percentage: ResourceUsage.cpuTemp / 100
@@ -58,6 +67,7 @@ BarWidgetSwitcherArea {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "hard_drive"
                 shown: Config.options.bar.resources.alwaysShowDisk
                 percentage: ResourceUsage.diskUsedPercentage
@@ -67,6 +77,7 @@ BarWidgetSwitcherArea {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "swap_horiz"
                 shown: Config.options.bar.resources.alwaysShowSwap
                 percentage: ResourceUsage.swapUsedPercentage
@@ -78,11 +89,15 @@ BarWidgetSwitcherArea {
 
     rowMaterial: Component {
         RowLayout {
+            readonly property real islandExpandedWidth: children.reduce((total, child) => total
+                + (child.shown && child.islandExpandedWidth !== undefined
+                    ? child.islandExpandedWidth + child.Layout.leftMargin : 0), 0)
             spacing: 0
             Resource {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "memory"
                 shown: Config.options.bar.resources.alwaysShowRam
                 percentage: ResourceUsage.memoryUsedPercentage
@@ -92,6 +107,7 @@ BarWidgetSwitcherArea {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "planner_review"
                 shown: Config.options.bar.resources.alwaysShowCpu
                 percentage: ResourceUsage.cpuUsage
@@ -102,6 +118,7 @@ BarWidgetSwitcherArea {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "thermostat"
                 shown: Config.options.bar.resources.alwaysShowCpuTemp
                 percentage: ResourceUsage.cpuTemp / 100
@@ -111,6 +128,7 @@ BarWidgetSwitcherArea {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "hard_drive"
                 shown: Config.options.bar.resources.alwaysShowDisk
                 percentage: ResourceUsage.diskUsedPercentage
@@ -120,6 +138,7 @@ BarWidgetSwitcherArea {
                 contentColor: root.contentColor
                 contentColorOverridden: root.contentColorOverridden
                 valueReveal: root.valueReveal
+                slideReveal: root.stagedExpansion
                 iconName: "swap_horiz"
                 shown: Config.options.bar.resources.alwaysShowSwap
                 percentage: ResourceUsage.swapUsedPercentage

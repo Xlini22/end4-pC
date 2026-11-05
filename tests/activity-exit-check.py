@@ -28,6 +28,8 @@ Item {
     Item {
         id: sideDelegate
         property string modelData: "activity"
+        property bool stagedExpansion: false
+        property real reservedContentWidth: contentImplicitWidth
         property bool contentAvailable: root.opened
         property real contentImplicitWidth: indicator.width
         property real contentImplicitHeight: root.pillHeight

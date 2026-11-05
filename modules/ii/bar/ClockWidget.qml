@@ -12,11 +12,14 @@ BarWidgetSwitcher {
     property bool borderless: Config.options.bar.borderless
     property bool islandMode: false
     property bool islandExpanded: false
+    property real islandRevealProgress: islandExpanded ? 1 : 0
+    readonly property bool stagedExpansion: islandMode
+        && Config.options.bar.dynamicIsland.animationStyle === "staged"
     property bool showDate: islandMode ? islandExpanded : Config.options.time.showDate
-    property real dateReveal: showDate ? 1 : 0
+    property real dateReveal: stagedExpansion ? islandRevealProgress : (showDate ? 1 : 0)
     horizontalExtraPadding: islandMode ? 0 : 12
     Behavior on dateReveal {
-        enabled: root.islandMode
+        enabled: root.islandMode && !root.stagedExpansion
         NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
     }
     property var today: new Date()
@@ -118,12 +121,14 @@ BarWidgetSwitcher {
 
     rowDefault: Component {
         RowLayout {
+            readonly property real islandExpandedWidth: Math.ceil(dateLabel.implicitWidth)
+                + Math.ceil(dateSeparator.implicitWidth) + Math.ceil(timeLabel.implicitWidth) + 8
             spacing: 4 * root.dateReveal
             Item {
                 visible: root.dateReveal > 0
                 implicitWidth: dateLabel.implicitWidth * root.dateReveal
                 implicitHeight: dateLabel.implicitHeight
-                opacity: root.dateReveal
+                opacity: root.stagedExpansion ? 1 : root.dateReveal
                 clip: true
                 StyledText {
                     id: dateLabel
@@ -136,7 +141,7 @@ BarWidgetSwitcher {
                 visible: root.dateReveal > 0
                 implicitWidth: dateSeparator.implicitWidth * root.dateReveal
                 implicitHeight: dateSeparator.implicitHeight
-                opacity: root.dateReveal
+                opacity: root.stagedExpansion ? 1 : root.dateReveal
                 clip: true
                 StyledText {
                     id: dateSeparator
@@ -146,6 +151,7 @@ BarWidgetSwitcher {
                 }
             }
             StyledText {
+                id: timeLabel
                 font.pixelSize: Appearance.font.pixelSize.small
                 color: root.contentColor
                 text: DateTime.time
@@ -159,6 +165,9 @@ BarWidgetSwitcher {
         RowLayout {
             spacing: 4
             id: pill
+            readonly property real islandExpandedWidth: Math.ceil(materialDate.implicitWidth)
+                + Math.ceil(timeText.implicitWidth + 16) + 4
+                + (ampm !== "" ? Math.ceil(ampmText.implicitWidth + 8) - 6 : 0)
 
             property var timeParts: DateTime.time.split(/[: ]/)
             property string ampm: timeParts.find(part => /^(am|pm)$/i.test(part)) ?? ""
@@ -169,7 +178,7 @@ BarWidgetSwitcher {
                 implicitWidth: materialDate.implicitWidth * root.dateReveal
                 implicitHeight: materialDate.implicitHeight
                 Layout.alignment: Qt.AlignVCenter
-                opacity: root.dateReveal
+                opacity: root.stagedExpansion ? 1 : root.dateReveal
                 clip: true
                 StyledText {
                     id: materialDate

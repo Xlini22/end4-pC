@@ -14,6 +14,9 @@ Item {
     property int warningThreshold: 100
     property bool shown: true
     property real valueReveal: Config.options.bar.resources.showValue ? 1 : 0
+    property bool slideReveal: false
+    readonly property real islandExpandedWidth: 20 + (Config.options.bar.resources.showValue
+        ? Math.ceil(fullPercentageTextMetrics.width) + 2 : 0)
     clip: !vertical
     visible: vertical ? true : width > 0 && height > 0
     implicitWidth:  vertical ? Appearance.sizes.verticalBarWidth : (resourceRowLayout.x < 0 ? 0 : resourceRowLayout.implicitWidth)
@@ -96,7 +99,7 @@ Item {
         Item {
             Layout.alignment: Qt.AlignVCenter
             visible: root.valueReveal > 0
-            opacity: root.valueReveal
+            opacity: root.slideReveal ? 1 : root.valueReveal
             clip: true
             implicitWidth: fullPercentageTextMetrics.width * root.valueReveal
             implicitHeight: percentageText.implicitHeight

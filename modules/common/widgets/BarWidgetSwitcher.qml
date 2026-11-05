@@ -13,6 +13,10 @@ Item {
     property Component rowDefault
     property Component rowMaterial
 
+    readonly property real islandExpandedWidth: root.vertical ? implicitWidth
+        : (rowLoader.item?.islandExpandedWidth ?? rowLoader.implicitWidth)
+            + (root.isMaterial ? 0 : root.horizontalExtraPadding)
+
     implicitWidth: root.vertical
         ? Appearance.sizes.verticalBarWidth
         : (rowLoader.item?.implicitWidth ?? 0) + (root.isMaterial ? 0 : root.horizontalExtraPadding)

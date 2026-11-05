@@ -102,9 +102,12 @@ Item {
                 rightMargin: 8
             }
             spacing: root.isMaterial ? -2 : -4
-            opacity: root.mediaTrackInfoVisible ? 1 : 0
+            clip: diMediaRoot.parent.stagedExpansion
+            visible: !diMediaRoot.parent.stagedExpansion || diMediaRoot.parent.islandRevealProgress > 0
+            opacity: diMediaRoot.parent.stagedExpansion ? 1 : (root.mediaTrackInfoVisible ? 1 : 0)
 
             Behavior on opacity {
+                enabled: !diMediaRoot.parent.stagedExpansion
                 NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
             }
 

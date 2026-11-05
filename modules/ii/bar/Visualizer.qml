@@ -16,6 +16,9 @@ Item {
     property bool mirrored: false
     property bool islandMode: false
     property bool islandExpanded: true
+    property real islandRevealProgress: islandExpanded ? 1 : 0
+    readonly property bool stagedExpansion: islandMode
+        && Config.options.bar.dynamicIsland.animationStyle === "staged"
     property bool islandAnchorRight: false
     readonly property MprisPlayer activePlayer: MprisController.activePlayer
     readonly property bool isPlaying: activePlayer?.isPlaying ?? false
@@ -31,12 +34,12 @@ Item {
     property list<real> smoothedPoints: []
     readonly property list<real> renderedPoints: frameSmoothing ? smoothedPoints : points
     readonly property int compactBarCount: Math.max(1, Math.round(barCount / 3))
-    property real expansionProgress: islandExpanded ? 1 : 0
+    property real expansionProgress: stagedExpansion ? islandRevealProgress : (islandExpanded ? 1 : 0)
     readonly property int displayedBarCount: islandMode && expansionProgress <= 0.001
         ? compactBarCount : barCount
 
     Behavior on expansionProgress {
-        enabled: root.islandMode
+        enabled: root.islandMode && !root.stagedExpansion
         NumberAnimation {
             readonly property bool simultaneous:
                 Config.options.bar.dynamicIsland.animationStyle === "simultaneous"
@@ -86,6 +89,7 @@ Item {
         + (isMaterial && !islandMode ? 16 : 0)
     readonly property real compactHorizontalWidth: compactBarCount * dotSize
         + (compactBarCount - 1) * dotSpacing
+    readonly property real islandExpandedWidth: vertical ? implicitWidth : fullHorizontalWidth
     implicitWidth: vertical
         ? Appearance.sizes.verticalBarWidth
         : (islandMode

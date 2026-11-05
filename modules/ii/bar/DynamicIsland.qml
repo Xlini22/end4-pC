@@ -332,11 +332,16 @@ Item {
         Item {
             id: mediaSideRoot
             readonly property bool containsMouse: mediaSideHover.hovered
-            implicitWidth: root.hasMedia ? root.mediaWidth : 0
+            readonly property bool stagedExpansion: Config.options.bar.dynamicIsland.animationStyle === "staged"
+            property real islandRevealProgress: root.mediaTrackInfoVisible ? 1 : 0
+            implicitWidth: !root.hasMedia ? 0 : stagedExpansion
+                ? root.mediaCollapsedWidth + (root.mediaExpandedWidth - root.mediaCollapsedWidth) * islandRevealProgress
+                : root.mediaWidth
             implicitHeight: root.pillHeight
             visible: root.hasMedia
 
             Behavior on implicitWidth {
+                enabled: !mediaSideRoot.stagedExpansion
                 NumberAnimation {
                     duration: 350
                     easing.type: Easing.BezierSpline
@@ -448,24 +453,61 @@ Item {
         required property bool anchorRight
         readonly property bool supportsExpansion: ["clockWidget", "resources", "visualizer"].includes(modelData)
         readonly property string displayMode: Config.options.bar.dynamicIsland.widgetModes[modelData] ?? "dynamic"
+        readonly property bool stagedExpansion: (supportsExpansion || modelData === "media")
+            && Config.options.bar.dynamicIsland.animationStyle === "staged"
+        readonly property bool expansionRequested: modelData === "media" ? root.mediaTrackInfoVisible
+            : displayMode === "expanded"
+                || (displayMode === "dynamic" && root.expanded)
+                || (displayMode === "dynamicHover" && sideWidgetHover.hovered)
+        property real layoutProgress: expansionRequested ? 1 : 0
+        property real revealProgress: expansionRequested ? 1 : 0
+        Behavior on layoutProgress {
+            id: layoutAnimation
+            enabled: sideDelegate.stagedExpansion
+            SequentialAnimation {
+                PauseAnimation { duration: layoutAnimation.targetValue === 1 ? 0 : 350 }
+                NumberAnimation {
+                    duration: 350
+                    easing.type: Easing.BezierSpline
+                    // Join both movements with a flat tangent at halfway and at the end.
+                    easing.bezierCurve: [0.30, 0, 0.20, 0.5, 0.5, 0.5,
+                                         0.80, 0.5, 0.70, 1, 1, 1]
+                }
+            }
+        }
+        Behavior on revealProgress {
+            id: revealAnimation
+            enabled: sideDelegate.stagedExpansion
+            SequentialAnimation {
+                PauseAnimation { duration: revealAnimation.targetValue === 1 ? 350 : 0 }
+                NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
+            }
+        }
         readonly property bool contentAvailable: (modelData !== "media" || root.hasMedia)
             && (modelData !== "activity" || root.hasActiveActivity)
             && (modelData !== "visualizer" || (root.activePlayer?.isPlaying ?? false))
         readonly property real contentImplicitWidth: mediaLoader.active ? mediaLoader.implicitWidth
             : (activityLoader.active ? activityLoader.implicitWidth : regularLoader.implicitWidth)
+        readonly property real expandedContentWidth: modelData === "media" ? root.mediaExpandedWidth
+            : (regularLoader.item?.islandExpandedWidth ?? contentImplicitWidth)
+        // Only the slot grows first. Its loader keeps the existing edge anchor
+        // and the compact widget moves with that edge before revealing content.
+        readonly property real reservedContentWidth: stagedExpansion
+            ? contentImplicitWidth + Math.max(0, expandedContentWidth - contentImplicitWidth) * layoutProgress
+            : contentImplicitWidth
         readonly property real contentImplicitHeight: mediaLoader.active ? mediaLoader.implicitHeight
             : (activityLoader.active ? activityLoader.implicitHeight : regularLoader.implicitHeight)
 
         visible: contentAvailable || implicitWidth > 0.5
         enabled: contentAvailable && (modelData === "media" || root.componentInteractionReady)
         opacity: contentAvailable ? 1 : 0
-        implicitWidth: contentAvailable || modelData === "activity" ? contentImplicitWidth : 0
+        implicitWidth: contentAvailable || modelData === "activity" ? reservedContentWidth : 0
         implicitHeight: contentAvailable ? contentImplicitHeight : root.pillHeight
         Layout.alignment: Qt.AlignVCenter
         clip: ["visualizer", "activity"].includes(modelData)
 
         Behavior on implicitWidth {
-            enabled: sideDelegate.modelData !== "activity"
+            enabled: sideDelegate.modelData !== "activity" && !sideDelegate.stagedExpansion
                 && (sideDelegate.modelData === "visualizer"
                     || Config.options.bar.dynamicIsland.animationStyle === "staged")
             NumberAnimation {
@@ -530,10 +572,15 @@ Item {
         Binding {
             target: sideDelegate.supportsExpansion ? regularLoader.item : null
             property: "islandExpanded"
-            value: sideDelegate.displayMode === "expanded"
-                || (sideDelegate.displayMode === "dynamic" && root.expanded)
-                || (sideDelegate.displayMode === "dynamicHover" && sideWidgetHover.hovered)
+            value: sideDelegate.expansionRequested
             when: sideDelegate.supportsExpansion && regularLoader.status === Loader.Ready
+        }
+        Binding {
+            target: sideDelegate.modelData === "media" ? mediaLoader.item : regularLoader.item
+            property: "islandRevealProgress"
+            value: sideDelegate.revealProgress
+            when: sideDelegate.stagedExpansion
+                && (sideDelegate.modelData === "media" ? mediaLoader.status : regularLoader.status) === Loader.Ready
         }
         Binding {
             target: sideDelegate.modelData === "visualizer" ? regularLoader.item : null
