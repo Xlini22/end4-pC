@@ -211,6 +211,7 @@ Item {
             contentVisible: !root.showLyrics
             artInteractive: !root.showLyrics
             onToggleLyrics: {
+                if (!root.allowLyrics) return
                 root.showLyrics = true
                 Config.options.bar.media.showLyrics = true
             }

@@ -193,8 +193,6 @@ LazyLoader {
             return Math.max(margin, Math.min(base, maxTop))
         }
 
-        Component.onCompleted: HyprlandData.updateLayers()
-
         Binding {
             target: root.group
             property: "morphEdge"
@@ -247,7 +245,10 @@ LazyLoader {
         WlrLayershell.namespace: root.morph ? "quickshell:popupMorph" : "quickshell:popup"
         WlrLayershell.layer: WlrLayer.Overlay
 
-        Component.onCompleted: GlobalFocusGrab.addPersistent(popupWindow)
+        Component.onCompleted: {
+            HyprlandData.updateLayers()
+            GlobalFocusGrab.addPersistent(popupWindow)
+        }
         Component.onDestruction: {
             GlobalFocusGrab.removePersistent(popupWindow)
             root.popupHovered = false

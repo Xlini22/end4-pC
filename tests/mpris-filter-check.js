@@ -37,6 +37,16 @@ assert.deepEqual(launchCommand("example", "javascript:alert(1)", "--unsafe"), []
 
 // Exercise the production action: compositor activation must accompany MPRIS Raise.
 const controller = fs.readFileSync("services/MprisController.qml", "utf8")
+const activeExpression = controller.match(/property MprisPlayer activePlayer: ([\s\S]*?);/)[1]
+const select = root => vm.runInNewContext(activeExpression, {...root, root})
+assert.equal(select({players: [appleMusic], manualPlayer: twitch,
+    preferredPlayer: appleMusic, trackedPlayer: twitch}), appleMusic)
+assert.equal(select({players: [appleMusic, spotify], manualPlayer: spotify,
+    preferredPlayer: appleMusic, trackedPlayer: appleMusic}), spotify)
+assert.equal(select({players: [spotify], manualPlayer: null,
+    preferredPlayer: null, trackedPlayer: twitch}), spotify)
+assert.equal(select({players: [], manualPlayer: twitch,
+    preferredPlayer: null, trackedPlayer: spotify}), null)
 const start = controller.indexOf("function raiseActivePlayer()")
 const activation = controller.slice(start, controller.indexOf("\n\tProcess {", start))
 let activated = ""

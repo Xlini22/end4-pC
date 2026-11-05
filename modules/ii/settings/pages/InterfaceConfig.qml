@@ -231,12 +231,15 @@ ContentPage {
                     currentValue: Config.options.sidebar.mainPage
                     onSelected: newValue => { Config.options.sidebar.mainPage = newValue }
                     options: [
+                        { displayName: Translation.tr("Home"), icon: "home", value: "home" },
                         ...(Config.options.policies.ai !== 0
                             ? [{ displayName: Translation.tr("Intelligence"), icon: "neurology", value: "intelligence" }] : []),
                         ...(Config.options.sidebar.translator.enable
                             ? [{ displayName: Translation.tr("Translator"), icon: "translate", value: "translator" }] : []),
                         ...(Config.options.sidebar.media.enable
                             ? [{ displayName: Translation.tr("Media"), icon: "music_note", value: "media" }] : []),
+                        ...(Config.options.sidebar.football.enable
+                            ? [{ displayName: Translation.tr("Sports"), icon: "sports", value: "sports" }] : []),
                         ...(Config.options.policies.weeb === 1
                             ? [{ displayName: Translation.tr("Anime"), icon: "bookmark_heart", value: "anime" }] : [])
                     ]
