@@ -218,7 +218,11 @@ PanelWindow {
                         anchors.fill: parent
                         anchors.margins: 12
                         spacing: 8
-                        StyledPopupHeaderRow { icon: "devices"; label: Translation.tr("Nearby devices") }
+                        RowLayout {
+                            spacing: 5
+                            MaterialSymbol { text: "devices"; iconSize: Appearance.font.pixelSize.large; color: Appearance.colors.colOnSurfaceVariant }
+                            StyledText { text: Translation.tr("Nearby devices"); font.weight: Font.DemiBold; color: Appearance.colors.colOnSurfaceVariant }
+                        }
                         StyledText {
                             Layout.fillWidth: true
                             visible: !root.backend.receiving || root.backend.peers.length === 0
