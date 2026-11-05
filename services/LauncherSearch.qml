@@ -257,7 +257,26 @@ Singleton {
                     blurImage: shouldBlurImage
                 });
             }).filter(Boolean);
-            return [...clipboardResults.filter(result => result.pinned), ...clipboardResults.filter(result => !result.pinned)];
+            const lostPins = Cliphist.missingPins(searchString).map(pin => resultComp.createObject(null, {
+                rawValue: `${pin.id}\t${pin.text}`,
+                name: pin.text,
+                verb: "",
+                type: `#${pin.id}`,
+                clipboard: true,
+                pinned: true,
+                execute: () => {
+                    Quickshell.clipboardText = pin.content && pin.content !== "" ? pin.content : pin.text;
+                },
+                actions: [resultComp.createObject(null, {
+                    name: Translation.tr("Unpin"),
+                    iconName: "keep_off",
+                    iconType: LauncherSearchResult.IconType.Material,
+                    execute: () => {
+                        Cliphist.removePin(pin);
+                    }
+                })]
+            }));
+            return [...lostPins, ...clipboardResults.filter(result => result.pinned), ...clipboardResults.filter(result => !result.pinned)];
         } else if (root.query.startsWith(Config.options.search.prefix.emojis)) {
             // Emojis
             const searchString = StringUtils.cleanPrefix(root.query, Config.options.search.prefix.emojis);
@@ -378,7 +397,8 @@ Singleton {
             });
         });
         ////////////////// Settings search //////////////////
-        const settingsResults = SettingsSearchIndex.search(root.query, 8).map(entry => {
+        const settingsEntries = Config.options.settings.style === "dashboard" ? [] : SettingsSearchIndex.search(root.query, 8);
+        const settingsResults = settingsEntries.map(entry => {
             const breadcrumb = entry.kind === "page" ? Translation.tr("Settings") : [entry.pageName, entry.kind === "option" ? entry.section : "", entry.kind === "option" ? entry.subsection : ""].filter(part => part).join(" › ");
             return resultComp.createObject(null, {
                 control: entry.kind === "option" ? SettingsQuickControls.find(entry.pageId, entry.rawSection, entry.rawSubsection, entry.rawLabel) : null,

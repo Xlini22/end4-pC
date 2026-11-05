@@ -25,6 +25,9 @@ Item {
     property int displayedActiveIndex: LyricsService.activeIndex
 
     clip: true
+    property real fontScale: 1.0
+    property bool animateTransitions: false
+    property real lineSpacing: 6
 
     implicitWidth: 200
     implicitHeight: 200
@@ -75,7 +78,7 @@ Item {
             y: Math.round((parent.height - height) / 2) + transitionOffset
             opacity: transitionOpacity
             visible: LyricsService.status === "ok"
-            spacing: root.compact ? 2 : 6
+            spacing: root.compact ? 2 : root.lineSpacing
 
             Repeater {
                 model: root.slotCount
@@ -91,9 +94,9 @@ Item {
                     text: LyricsService.slots[slotIndex] ?? ""
                     readonly property int dist: Math.abs(slotIndex - LyricsService.before)
                     font.pixelSize: {
-                        if (dist === 0) return root.activeFontSize
-                        if (dist === 1) return root.adjacentFontSize
-                        return root.distantFontSize
+                        if (dist === 0) return root.activeFontSize * root.fontScale
+                        if (dist === 1) return root.adjacentFontSize * root.fontScale
+                        return root.distantFontSize * root.fontScale
                     }
                     opacity: {
                         if (dist === 0) return 1.0
@@ -102,6 +105,19 @@ Item {
                         return 0.15
                     }
                     color: dist === 0 ? root.activeColor : root.textColor
+                    transform: Translate { id: lineSlide }
+                    onTextChanged: {
+                        if (root.animateTransitions) slideAnim.restart();
+                    }
+                    SequentialAnimation {
+                        id: slideAnim
+                        ScriptAction { script: lineSlide.y = 28 * root.fontScale }
+                        NumberAnimation { target: lineSlide; property: "y"; to: 0; duration: 420; easing.type: Easing.OutBack }
+                    }
+                    Behavior on font.pixelSize {
+                        enabled: root.animateTransitions
+                        NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+                    }
                     Behavior on opacity { NumberAnimation { duration: 250; easing.type: Easing.OutCubic } }
                 }
             }

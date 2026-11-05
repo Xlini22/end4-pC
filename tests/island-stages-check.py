@@ -136,14 +136,16 @@ singletons = {
                 memoryWarningThreshold: 100, cpuWarningThreshold: 100, swapWarningThreshold: 100}},
             time: {showDate: true}})''',
     'Appearance': '''property var colors: ({colOnLayer0: "white", colOnLayer1: "white",
-        colOnSecondaryContainer: "white", colPrimary: "white", colOnPrimary: "black",
+        colOnSecondaryContainer: "white", colPrimary: "white", colTertiary: "white", colOnPrimary: "black",
         colError: "red", colOnPrimaryContainer: "white", colTertiaryContainer: "gray"})
         property var sizes: ({barHeight: 32, verticalBarWidth: 32})
         property var rounding: ({full: 20, unsharpen: 1})
         property var font: ({pixelSize: {small: 15, smaller: 13, smallie: 14, normal: 16}})
         property Component movement: NumberAnimation { duration: 100 }
-        property var animation: ({elementMove: {numberAnimation: movement}})
+        property Component colourMovement: ColorAnimation { duration: 100 }
+        property var animation: ({elementMove: {numberAnimation: movement}, elementMoveFast: {colorAnimation: colourMovement}})
         property var animationCurves: ({expressiveDefaultSpatial: [0, 0, 0.2, 1, 1, 1]})''',
+    'ColorUtils': 'function mix(a, b, amount) { return a }\n        function transparentize(color, amount) { return color }',
     'DateTime': '''property string time: "12:34"
         property string longDate: "Monday, October 5"
         function format(value, format) { return "12:34" }''',
@@ -180,6 +182,8 @@ Item { property real lineWidth: 1; property real value: 0; property real implici
     property color colPrimary: "white"; property bool enableAnimation: false
     property bool accountForLightBleeding: false
     implicitWidth: implicitSize; implicitHeight: implicitSize }''')
+    # ponytail: this check measures geometry; the new text-style progress bar only needs its size contract.
+    target.joinpath('StyledProgressBar.qml').write_text('import QtQuick\nItem { property real valueBarWidth: 30; property real valueBarHeight: 4\n    property real value: 0; property color highlightColor; property color trackColor\n    implicitWidth: valueBarWidth; implicitHeight: valueBarHeight }')
     target.joinpath('tst_stages.qml').write_text(qml)
     subprocess.run(['/usr/lib/qt6/bin/qmltestrunner', '-input', directory],
                    env={**os.environ, 'QT_QPA_PLATFORM': 'offscreen', 'QT_QUICK_BACKEND': 'software',

@@ -298,6 +298,35 @@ ContentPage {
             }
         
             ContentSubsection {
+                title: Translation.tr("Live wallpaper")
+                Layout.fillWidth: true
+
+                GroupedList {
+                    ConfigSwitch {
+                        Layout.fillWidth: true
+                        buttonIcon: "battery_saver"
+                        text: Translation.tr("Pause on battery")
+                        checked: Config.options.background.liveWallpaper.pauseOnBattery
+                        onClicked: {
+                            Config.options.background.liveWallpaper.pauseOnBattery = !Config.options.background.liveWallpaper.pauseOnBattery;
+                        }
+                    }
+                    ConfigSpinBox {
+                        Layout.fillWidth: true
+                        icon: "battery_android_alert"
+                        text: Translation.tr("Pause below charge (%, 0 to ignore)")
+                        value: Config.options.background.liveWallpaper.pauseBelowPercent
+                        from: 0
+                        to: 100
+                        stepSize: 5
+                        onValueChanged: {
+                            Config.options.background.liveWallpaper.pauseBelowPercent = value;
+                        }
+                    }
+                }
+            }
+
+            ContentSubsection {
                 title: Translation.tr("Centered wallpaper")
                 Layout.fillWidth: true
 
@@ -442,6 +471,16 @@ ContentPage {
                         Config.options.background.collage.enable = checked
                     }
                 }
+                ConfigComboBox {
+                    Layout.fillWidth: true
+                    buttonIcon: "dashboard_customize"
+                    text: Translation.tr("Layout")
+                    fieldWidth: 220
+                    fixedWidth: true
+                    model: Collage.presetOptions
+                    currentValue: Collage.currentPreset
+                    onSelected: newValue => Collage.applyPresetByName(newValue)
+                }
                 ConfigSpinBox {
                     icon: "space_bar"
                     text: Translation.tr("Spacing")
@@ -579,6 +618,11 @@ ContentPage {
                             value: "cookie"
                         },
                         {
+                            displayName: Translation.tr("Daily"),
+                            icon: "today",
+                            value: "daily"
+                        },
+                        {
                             displayName: Translation.tr("Pixel"),
                             icon: "grid_view",
                             value: "pixel"
@@ -602,6 +646,11 @@ ContentPage {
                             displayName: Translation.tr("Cookie"),
                             icon: "cookie",
                             value: "cookie"
+                        },
+                        {
+                            displayName: Translation.tr("Daily"),
+                            icon: "today",
+                            value: "daily"
                         },
                         {
                             displayName: Translation.tr("Pixel"),
@@ -1080,6 +1129,31 @@ ContentPage {
                         Config.options.background.widgets.customImage.shape = newValue
                     }
                 }
+                ConfigSwitch {
+                    Layout.fillWidth: true
+                    buttonIcon: "photo_size_select_large"
+                    text: Translation.tr("Image card")
+                    checked: Config.options.background.widgets.imageCard.enable
+                    onCheckedChanged: {
+                        Config.options.background.widgets.imageCard.enable = checked;
+                    }
+                }
+                ConfigSelectionArray {
+                    enabled: Config.options.background.widgets.imageCard.enable
+                    text: Translation.tr("Image card layout")
+                    icon: "grid_view"
+                    currentValue: Config.options.background.widgets.imageCard.sizeMode
+                    options: [
+                        { displayName: "1x1", icon: "crop_square", value: "1x1" },
+                        { displayName: "1x2", icon: "crop_landscape", value: "1x2" },
+                        { displayName: "1x3", icon: "crop_16_9", value: "1x3" },
+                        { displayName: "2x2", icon: "grid_view", value: "2x2" },
+                        { displayName: "2x3", icon: "view_module", value: "2x3" }
+                    ]
+                    onSelected: newValue => {
+                        Config.options.background.widgets.imageCard.sizeMode = newValue
+                    }
+                }
             }
         }
 
@@ -1370,6 +1444,8 @@ ContentPage {
             icon: "widgets"
             shape: MaterialShape.Shape.Pill
             title: Translation.tr("Widgets")
+            hint: Translation.tr("Widgets with a star are shown in the desktop menu")
+            hintIcon: "info"
 
             ContentSubsection {
                 title: Translation.tr("Show widgets on")
@@ -1390,56 +1466,67 @@ ContentPage {
                     model: [
                         {
                             icon: "weather_mix",
+                            key: "weather",
                             name: Translation.tr("Weather"),
                             enabled: Config.options.background.widgets.weather.enable
                         },
                         {
                             icon: "image",
+                            key: "images",
                             name: Translation.tr("Image converter"),
                             enabled: Config.options.background.widgets.images.enable
                         },
                         {
                             icon: "music_note",
+                            key: "media",
                             name: Translation.tr("Media Player"),
                             enabled: Config.options.background.widgets.media.enable
                         },
                         {
                             icon: "memory",
+                            key: "resources",
                             name: Translation.tr("Resources"),
                             enabled: Config.options.background.widgets.resources.enable
                         },
                         {
                             icon: "calendar_month",
+                            key: "calendar",
                             name: Translation.tr("Calendar"),
                             enabled: Config.options.background.widgets.calendar.enable
                         },
                         {
                             icon: "public",
+                            key: "worldClock",
                             name: Translation.tr("World Clock"),
                             enabled: Config.options.background.widgets.worldClock.enable
                         },
                         {
                             icon: "person",
+                            key: "userCard",
                             name: Translation.tr("User Card"),
                             enabled: Config.options.background.widgets.userCard.enable
                         },
                         {
                             icon: "note_stack_add",
+                            key: "notes",
                             name: Translation.tr("Notes"),
                             enabled: Config.options.background.widgets.notes.enable
                         },
                         {
                             icon: "add_task",
+                            key: "todo",
                             name: Translation.tr("To-Do"),
                             enabled: Config.options.background.widgets.todo.enable
                         },
                         {
                             icon: "timer",
+                            key: "timers",
                             name: Translation.tr("Timers"),
                             enabled: Config.options.background.widgets.timers.enable
                         },
                         {
                             icon: "sticker",
+                            key: "sticker",
                             name: Translation.tr("Sticker"),
                             enabled: Config.options.background.widgets.sticker.enable
                         },
@@ -1508,6 +1595,55 @@ ContentPage {
                                 color: Appearance.colors.colSubtext
                             }
                         }
+                        RippleButton {
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            anchors.margins: 8
+                            implicitWidth: 30
+                            implicitHeight: 30
+                            buttonRadius: 15
+                            colBackground: "transparent"
+                            downAction: () => DesktopWidgets.toggleStar(modelData.key)
+                            contentItem: MaterialSymbol {
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                text: "star"
+                                fill: DesktopWidgets.isStarred(modelData.key) ? 1 : 0
+                                iconSize: Appearance.font.pixelSize.larger
+                                color: DesktopWidgets.isStarred(modelData.key) ? Appearance.colors.colTertiary : Appearance.colors.colSubtext
+                            }
+                            StyledToolTip {
+                                text: DesktopWidgets.isStarred(modelData.key) ? Translation.tr("Shown in the desktop menu") : Translation.tr("Hidden from the desktop menu")
+                            }
+                        }
+                    }
+                }
+            }
+            ContentSubsection {
+                title: Translation.tr("Also in the desktop menu")
+                Layout.bottomMargin: 10
+
+                GroupedList {
+                    ConfigSwitch {
+                        Layout.fillWidth: true
+                        buttonIcon: "schedule"
+                        text: Translation.tr("Clock")
+                        checked: DesktopWidgets.isStarred("clock")
+                        onCheckedChanged: DesktopWidgets.setStarred("clock", checked)
+                    }
+                    ConfigSwitch {
+                        Layout.fillWidth: true
+                        buttonIcon: "graphic_eq"
+                        text: Translation.tr("Visualizer")
+                        checked: DesktopWidgets.isStarred("visualizer")
+                        onCheckedChanged: DesktopWidgets.setStarred("visualizer", checked)
+                    }
+                    ConfigSwitch {
+                        Layout.fillWidth: true
+                        buttonIcon: "image"
+                        text: Translation.tr("Custom Image")
+                        checked: DesktopWidgets.isStarred("customImage")
+                        onCheckedChanged: DesktopWidgets.setStarred("customImage", checked)
                     }
                 }
             }

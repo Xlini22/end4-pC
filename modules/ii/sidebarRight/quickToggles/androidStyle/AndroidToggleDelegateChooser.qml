@@ -305,6 +305,23 @@ DelegateChooser {
         isUnused: root.isUnused
     } }
 
+    DelegateChoice { roleValue: "vpn"; AndroidVpnToggle {
+        required property int index
+        required property var modelData
+        buttonIndex: root.startingIndex + index
+        buttonData: modelData
+        editMode: root.editMode
+        gridRef: root.gridRef
+        expandedSize: modelData.size > 1
+        baseCellWidth: root.baseCellWidth
+        baseCellHeight: root.baseCellHeight
+        cellSpacing: root.spacing
+        cellSize: modelData.size
+        dropIndicatorRef: root.dropIndicatorRef
+        isUnused: root.isUnused
+        onOpenMenu: root.openVpnDialog()
+    } }
+
     DelegateChoice { roleValue: "screenSnip"; AndroidScreenSnipToggle {
         required property int index
         required property var modelData

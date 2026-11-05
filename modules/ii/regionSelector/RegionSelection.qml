@@ -28,7 +28,7 @@ PanelWindow {
 
     // Modes
     // TODO: Ask: sidebar AI
-    enum SnipAction { Copy, Edit, Search, CharRecognition, Record, RecordWithSound } 
+    enum SnipAction { Copy, Edit, Search, CharRecognition, QrCode, Record, RecordWithSound }
     enum SelectionMode { RectCorners, Circle, ScreenTarget }
     enum Phase { Select, Post }
     property var action: RegionSelection.SnipAction.Copy
@@ -263,6 +263,8 @@ PanelWindow {
                 return ScreenshotAction.Action.Search;
             case RegionSelection.SnipAction.CharRecognition:
                 return ScreenshotAction.Action.CharRecognition;
+            case RegionSelection.SnipAction.QrCode:
+                return ScreenshotAction.Action.QrCode;
             case RegionSelection.SnipAction.Record:
                 return ScreenshotAction.Action.Record;
             case RegionSelection.SnipAction.RecordWithSound:
@@ -324,10 +326,12 @@ PanelWindow {
         }
     }
 
-    ScreencopyView { // For freezing
+    Image { // For freezing
         anchors.fill: parent
-        live: false
-        captureSource: root.screen
+        source: root.preparationDone ? `file://${root.screenshotPath}` : ""
+        cache: false
+        asynchronous: false
+        fillMode: Image.Stretch
         visible: root.phase === RegionSelection.Phase.Select
 
         focus: root.visible

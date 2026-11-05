@@ -70,6 +70,7 @@ Scope {
                 }
                 property bool superShow: false
                 property bool mustShow: hoverRegion.containsMouse || superShow
+                    || (Config.options.bar.autoHide.enable && GlobalStates.isFrameHovered(barRoot.screen?.name, Config.options.bar.bottom ? "bottom" : "top"))
                 property var thisMonitorData: HyprlandData.monitors.find(m => m.name === barRoot.screen?.name)
                 property bool monitorHasFullscreen: HyprlandData.workspaceById[thisMonitorData?.activeWorkspace?.id]?.hasfullscreen ?? false
                 property bool monitorHasSpecialOpen: (thisMonitorData?.specialWorkspace?.name ?? "") !== ""
@@ -82,7 +83,7 @@ Scope {
 
                 readonly property int contentExclusiveZone: (barContent.centerOnly && Config.options.bar.centerOnlyReserveFrame)
                     ? Config.options.bar.frameThickness
-                    : (Config.options.bar.cornerStyle === 4 || Config.options.bar.cornerStyle === 5) ? normalExclusiveZone + 4 : normalExclusiveZone
+                    : (Config.options.bar.cornerStyle === 4 || Config.options.bar.cornerStyle === 5 || Config.options.bar.cornerStyle === 6) ? normalExclusiveZone + 4 : normalExclusiveZone
                 // The former top layer-shell margin contributed to the reserved area.
                 // Preserve that space now that the hover strip lives inside the window.
                 exclusiveZone: contentExclusiveZone > 0
@@ -151,6 +152,19 @@ Scope {
 
                 MouseArea  {
                     id: hoverRegion
+                    Binding {
+                        target: GlassLayers
+                        property: "barZone"
+                        value: Math.max(0, barRoot.exclusiveZone)
+                        restoreMode: Binding.RestoreBinding
+                    }
+                    Binding {
+                        target: GlassLayers
+                        property: "barEdge"
+                        value: Config.options.bar.bottom ? "bottom" : "top"
+                        restoreMode: Binding.RestoreBinding
+                    }
+
                     hoverEnabled: true
                     anchors {
                         fill: parent
@@ -219,8 +233,8 @@ Scope {
                             bottom: undefined
                         }
                         height: Appearance.rounding.screenRounding
-                        active: (showBarBackground && Config.options.bar.cornerStyle === 0 && !barContent.centerOnly)
-                             || (Config.options.bar.cornerStyle === 4)
+                        active: !barContent.glassTabs && !barContent.glassHug && ((showBarBackground && Config.options.bar.cornerStyle === 0 && !barContent.centerOnly)
+                             || (Config.options.bar.cornerStyle === 4 || Config.options.bar.cornerStyle === 6))
 
                         states: State {
                             name: "bottom"
@@ -239,14 +253,15 @@ Scope {
                         sourceComponent: Item {
                             implicitHeight: Appearance.rounding.screenRounding
 
-                            readonly property color decoratorColor: (Config.options.bar.cornerStyle === 4 || showBarBackground)
+                            readonly property color decoratorColor: (Config.options.bar.cornerStyle === 4 || Config.options.bar.cornerStyle === 6 || showBarBackground)
                                 ? (Config.options.bar.followFrameColor && Config.options.bar.frameColor
                                     ? Appearance.getColorFromName(Config.options.bar.frameColor)
-                                    : Appearance.colors.colLayer0)
+                                    : Appearance.colors.colUiBackground)
                                 : "transparent"
 
                             RoundCorner {
                                 id: leftCorner
+                                glass: true
                                 visible: Config.options.bar.cornerStyle === 0 || barContent.effectiveLeftLayout.length > 0
                                 anchors {
                                     top: parent.top
@@ -268,6 +283,7 @@ Scope {
                             }
                             RoundCorner {
                                 id: rightCorner
+                                glass: true
                                 visible: Config.options.bar.cornerStyle === 0 || barContent.effectiveRightLayout.length > 0
                                 anchors {
                                     right: parent.right

@@ -61,6 +61,7 @@ WindowDialog {
         Layout.rightMargin: -Appearance.rounding.large
     }
     ListView {
+        id: networksView
         Layout.fillHeight: true
         Layout.fillWidth: true
         Layout.topMargin: -15
@@ -74,6 +75,9 @@ WindowDialog {
         model: ScriptModel {
             values: Network.friendlyWifiNetworks
         }
+
+        TouchpadScrollArea { flickable: networksView }
+
         delegate: WifiNetworkItem {
             required property WifiAccessPoint modelData
             wifiNetwork: modelData

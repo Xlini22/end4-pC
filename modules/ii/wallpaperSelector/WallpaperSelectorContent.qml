@@ -144,9 +144,6 @@ MouseArea {
                 root.activeFilterField?.forceActiveFocus();
             }
             event.accepted = true;
-        } else if (event.modifiers & Qt.ControlModifier && event.key === Qt.Key_L) {
-            addressBar.focusBreadcrumb();
-            event.accepted = true;
         } else if (event.key === Qt.Key_Slash) {
             root.activeFilterField?.forceActiveFocus();
             event.accepted = true;
@@ -170,6 +167,12 @@ MouseArea {
 
     Rectangle {
         id: wallpaperGridBackground
+        WindowGlass {
+            anchors.fill: parent
+            glassEnabled: (parent?.color.a ?? 0) > 0
+            cardRadius: parent?.radius ?? 0
+            tint: parent?.color ?? 'transparent'
+        }
         anchors {
             fill: parent
             margins: Appearance.sizes.elevationMargin
@@ -177,7 +180,7 @@ MouseArea {
         focus: true
         border.width: 1
         border.color: Appearance.colors.colLayer0Border
-        color: Appearance.colors.colLayer0
+        color: ColorSchemes.current !== "" ? Qt.rgba(Appearance.colors.colUiBackground.r, Appearance.colors.colUiBackground.g, Appearance.colors.colUiBackground.b, 1) : Appearance.colors.colUiBackground
         radius: Appearance.rounding.screenRounding + 5
 
         implicitWidth: gridColumnLayout.implicitWidth
@@ -190,8 +193,8 @@ MouseArea {
             Rectangle {
                 anchors.fill: parent
                 radius: wallpaperGridBackground.radius - 4
-                color: Appearance.colors.colLayer2
-                visible: !Config.options.wallpaperSelector.showBlurBackground
+                color: ColorSchemes.current !== "" ? wallpaperGridBackground.color : Appearance.colors.colLayer2
+                visible: !Config.options.wallpaperSelector.showBlurBackground && !Config.options.background.widgets.glass.enable
             }
 
             StyledImage {
@@ -274,6 +277,9 @@ MouseArea {
                     Toolbar {
                         anchors.centerIn: parent
                         visible: root.source !== "blapples" && root.source !== "naive" && root.source !== "wallhaven"
+                        colBackground: Appearance.colors.colLayer1
+                        outerShadow: true
+                        glass: true
 
                         Loader {
                             active: root.source === "local"
@@ -384,6 +390,7 @@ MouseArea {
 
                         StyledComboBox {
                             id: sourceCombo
+                            glass: true
                             implicitWidth: 120
                             model: [
                                 { value: "local",     displayName: Translation.tr("Local") },
@@ -405,6 +412,7 @@ MouseArea {
                             implicitHeight: 36
                             buttonRadius: height / 2
                             toggled: root.toolbarVisible
+                            glass: true
                             colBackground: Appearance.colors.colSecondaryContainer
                             onClicked: {
                                 if (Config.options.wallpaperSelector.showSearchbar) {
@@ -605,6 +613,7 @@ MouseArea {
                             active: root.source === "local"
                             visible: active
                             sourceComponent: Toolbar {
+                                glass: true
                                 IconToolbarButton {
                                     implicitWidth: height
                                     onClicked: {
@@ -694,6 +703,7 @@ MouseArea {
                             active: root.source !== "local" && root.source !== "wallhaven"
                             visible: active
                             sourceComponent: Toolbar {
+                                glass: true
                                 ToolbarTextField {
                                     id: onlineSearchField
                                     Component.onCompleted: {
@@ -733,6 +743,7 @@ MouseArea {
                             active: root.source === "wallhaven"
                             visible: active
                             sourceComponent: Toolbar {
+                                glass: true
                                 id: wallhavenToolbar
 
                                 property bool _searchFieldReady: false
@@ -852,6 +863,7 @@ MouseArea {
 
                         ToolbarPairedFab {
                             iconText: "close"
+                            glass: true
                             onClicked: {
                                 Wallpapers.stopPreview();
                                 GlobalStates.wallpaperSelectorOpen = false;

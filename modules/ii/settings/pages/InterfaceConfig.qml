@@ -16,6 +16,109 @@ ContentPage {
         spacing: 20
 
         ContentSection {
+            icon: "palette"
+            shape: MaterialShape.Shape.Cookie9Sided
+            title: Translation.tr("Color Schemes")
+
+            GroupedList {
+                ConfigComboBox {
+                    Layout.fillWidth: true
+                    buttonIcon: "format_paint"
+                    text: Translation.tr("Color scheme")
+                    description: Translation.tr("Material follows your wallpaper")
+                    fieldWidth: 220
+                    fixedWidth: true
+                    model: ColorSchemes.schemeOptions()
+                    currentValue: ColorSchemes.current
+                    onSelected: newValue => ColorSchemes.setScheme(newValue)
+                }
+                RowLayout {
+                    enabled: ColorSchemes.currentData !== null
+                    opacity: enabled ? 1 : 0.55
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 10
+                    MaterialSymbol {
+                        text: "brush"
+                        iconSize: Appearance.font.pixelSize.normal + 5
+                        color: Appearance.colors.colOnLayer0
+                    }
+                    StyledText {
+                        text: Translation.tr("Accent")
+                        color: Appearance.colors.colOnLayer0
+                    }
+                    Item { Layout.fillWidth: true }
+                    CustomColorSelectionArray {
+                        spacing: 4
+                        swatchSize: 36
+                        options: ColorSchemes.accentOptions()
+                        currentValue: ColorSchemes.currentAccent("primary")
+                        onSelected: newValue => ColorSchemes.setAccent("primary", newValue)
+                    }
+                }
+                RowLayout {
+                    enabled: ColorSchemes.currentData !== null
+                    opacity: enabled ? 1 : 0.55
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 10
+                    MaterialSymbol {
+                        text: "colors"
+                        iconSize: Appearance.font.pixelSize.normal + 5
+                        color: Appearance.colors.colOnLayer0
+                    }
+                    StyledText {
+                        text: Translation.tr("Secondary")
+                        color: Appearance.colors.colOnLayer0
+                    }
+                    Item { Layout.fillWidth: true }
+                    CustomColorSelectionArray {
+                        spacing: 4
+                        swatchSize: 36
+                        options: ColorSchemes.accentOptions()
+                        currentValue: ColorSchemes.currentAccent("secondary")
+                        onSelected: newValue => ColorSchemes.setAccent("secondary", newValue)
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 8
+                    RippleButtonWithIcon {
+                        Layout.fillWidth: true
+                        materialIcon: "add"
+                        mainText: Translation.tr("Add scheme")
+                        onClicked: ColorSchemes.addScheme()
+                        colBackground: Appearance.colors.colSecondaryContainer
+                        colBackgroundHover: Appearance.colors.colSecondaryContainerHover
+                        colRipple: Appearance.colors.colSecondaryContainerActive
+                    }
+                    RippleButtonWithIcon {
+                        Layout.fillWidth: true
+                        materialIcon: "folder_open"
+                        mainText: Translation.tr("Open folder")
+                        onClicked: ColorSchemes.openFolder()
+                        colBackground: Appearance.colors.colSecondaryContainer
+                        colBackgroundHover: Appearance.colors.colSecondaryContainerHover
+                        colRipple: Appearance.colors.colSecondaryContainerActive
+                    }
+                    RippleButtonWithIcon {
+                        Layout.fillWidth: true
+                        materialIcon: "refresh"
+                        mainText: Translation.tr("Reload")
+                        onClicked: ColorSchemes.reload()
+                        colBackground: Appearance.colors.colSecondaryContainer
+                        colBackgroundHover: Appearance.colors.colSecondaryContainerHover
+                        colRipple: Appearance.colors.colSecondaryContainerActive
+                    }
+                }
+            }
+        }
+
+        ContentSection {
             icon: "motion_mode"
             shape: MaterialShape.Shape.Cookie6Sided
             title: Translation.tr("Transparency")
@@ -32,6 +135,12 @@ ContentPage {
                     checked: Config.options.appearance.transparency.automatic
                     enabled: Config.options.appearance.transparency.enable
                     onCheckedChanged: { Config.options.appearance.transparency.automatic = checked }
+                }
+                ConfigSwitch {
+                    buttonIcon: "water_drop"
+                    text: Translation.tr("Glassy UI")
+                    checked: Config.options.background.widgets.glass.enable
+                    onCheckedChanged: { Config.options.background.widgets.glass.enable = checked }
                 }
                 ConfigSlider {
                     buttonIcon: "layers"
@@ -72,7 +181,21 @@ ContentPage {
                     onSelected: newValue => { Config.options.settings.style = newValue }
                     options: [
                         { displayName: Translation.tr("Default"), icon: "settings_panorama", value: "default" },
-                        { displayName: Translation.tr("Minimal"), icon: "settings_heart", value: "minimal" }
+                        { displayName: Translation.tr("Minimal"), icon: "settings_heart", value: "minimal" },
+                        { displayName: Translation.tr("Dashboard"), icon: "dashboard", value: "dashboard" }
+                    ]
+                }
+                ConfigSelectionArray {
+                    enabled: Config.options.settings.style === "dashboard"
+                    text: Translation.tr("Dashboard animation speed")
+                    icon: "speed"
+                    currentValue: Config.options.settings.animationSpeed
+                    onSelected: newValue => { Config.options.settings.animationSpeed = newValue }
+                    options: [
+                        { displayName: "1x", icon: "slow_motion_video", value: 1 },
+                        { displayName: "1.5x", icon: "play_arrow", value: 1.5 },
+                        { displayName: "2x", icon: "fast_forward", value: 2 },
+                        { displayName: "3x", icon: "bolt", value: 3 }
                     ]
                 }
                 ConfigSpinBox {
@@ -272,6 +395,12 @@ ContentPage {
                             text: Translation.tr("Enable Translator")
                             checked: Config.options.sidebar.translator.enable
                             onCheckedChanged: { Config.options.sidebar.translator.enable = checked }
+                        }
+                        ConfigSwitch {
+                            buttonIcon: "sports_soccer"
+                            text: Translation.tr("Football")
+                            checked: Config.options.sidebar.football.enable
+                            onCheckedChanged: { Config.options.sidebar.football.enable = checked }
                         }
                     }
                 }
@@ -671,6 +800,127 @@ ContentPage {
                 }
             }
 
+            ContentSubsection {
+                title: Translation.tr("Appearance")
+                GroupedList {
+                    ConfigSelectionArray {
+                        text: Translation.tr("Style")
+                        icon: "dock_to_bottom"
+                        currentValue: Config.options.dock.style
+                        onSelected: newValue => { Config.options.dock.style = newValue }
+                        options: [
+                            { displayName: Translation.tr("Float"), icon: "call_to_action", value: "float" },
+                            { displayName: Translation.tr("Hug"), icon: "dock_to_bottom", value: "hug" }
+                        ]
+                    }
+                    ConfigSwitch {
+                        buttonIcon: "zoom_in"
+                        text: Translation.tr("Magnification")
+                        checked: Config.options.dock.magnify
+                        onCheckedChanged: { Config.options.dock.magnify = checked }
+                    }
+                    ConfigSpinBox {
+                        visible: Config.options.dock.magnify
+                        icon: "zoom_out_map"
+                        text: Translation.tr("Magnification amount (%)")
+                        value: Config.options.dock.magnification * 100
+                        from: 110
+                        to: 220
+                        stepSize: 10
+                        onValueChanged: { Config.options.dock.magnification = value / 100 }
+                    }
+                    ConfigSelectionArray {
+                        text: Translation.tr("Position")
+                        icon: "dock_to_bottom"
+                        currentValue: Config.options.dock.position
+                        onSelected: newValue => { Config.options.dock.position = newValue }
+                        options: [
+                            { displayName: Translation.tr("Left"), icon: "dock_to_left", value: "left" },
+                            { displayName: Translation.tr("Bottom"), icon: "dock_to_bottom", value: "bottom" },
+                            { displayName: Translation.tr("Right"), icon: "dock_to_right", value: "right" }
+                        ]
+                    }
+                    ConfigSpinBox {
+                        icon: "rounded_corner"
+                        text: Translation.tr("Corner radius")
+                        value: Config.options.dock.radius
+                        from: 0
+                        to: 40
+                        stepSize: 1
+                        onValueChanged: { Config.options.dock.radius = value }
+                    }
+                    ColorSelectionArray {
+                        icon: "format_paint"
+                        text: Translation.tr("Background color")
+                        options: ["layer0", "layer1", "primaryContainer", "secondaryContainer", "tertiaryContainer", "primary", "secondary", "tertiary"]
+                        currentValue: Config.options.dock.backgroundColor
+                        onSelected: newValue => { Config.options.dock.backgroundColor = newValue }
+                    }
+                    ConfigSwitch {
+                        enabled: Config.options.dock.style === "hug"
+                        buttonIcon: "filter_frames"
+                        text: Translation.tr("Follow frame color")
+                        checked: Config.options.dock.followFrameColor
+                        onCheckedChanged: { Config.options.dock.followFrameColor = checked }
+                    }
+                    ConfigSwitch {
+                        enabled: Config.options.dock.style !== "hug"
+                        buttonIcon: "border_style"
+                        text: Translation.tr("Border")
+                        checked: Config.options.dock.showBorder
+                        onCheckedChanged: { Config.options.dock.showBorder = checked }
+                    }
+                    ConfigSpinBox {
+                        enabled: Config.options.dock.showBorder && Config.options.dock.style !== "hug"
+                        icon: "line_weight"
+                        text: Translation.tr("Border width")
+                        value: Config.options.dock.borderWidth
+                        from: 1
+                        to: 10
+                        stepSize: 1
+                        onValueChanged: { Config.options.dock.borderWidth = value }
+                    }
+                    ColorSelectionArray {
+                        enabled: Config.options.dock.showBorder && Config.options.dock.style !== "hug"
+                        icon: "format_paint"
+                        text: Translation.tr("Border color")
+                        options: ["layer0Border", "primary", "secondary", "tertiary", "primaryContainer", "secondaryContainer", "tertiaryContainer", "layer1"]
+                        currentValue: Config.options.dock.borderColor
+                        onSelected: newValue => { Config.options.dock.borderColor = newValue }
+                    }
+                }
+            }
+
+
+            ContentSubsection {
+                title: Translation.tr("Icons")
+                GroupedList {
+                    ConfigSwitch {
+                        buttonIcon: "preview"
+                        text: Translation.tr("Window previews")
+                        checked: Config.options.dock.showPreviews
+                        onCheckedChanged: { Config.options.dock.showPreviews = checked }
+                    }
+                    ConfigSpinBox {
+                        icon: "photo_size_select_large"
+                        text: Translation.tr("Icon size")
+                        value: Config.options.dock.iconSize
+                        from: 20
+                        to: 48
+                        stepSize: 1
+                        onValueChanged: { Config.options.dock.iconSize = value }
+                    }
+                    ConfigSpinBox {
+                        icon: "space_bar"
+                        text: Translation.tr("Icon spacing")
+                        value: Config.options.dock.iconSpacing
+                        from: 0
+                        to: 12
+                        stepSize: 1
+                        onValueChanged: { Config.options.dock.iconSpacing = value }
+                    }
+                }
+            }
 
             ContentSubsection {
                 title: Translation.tr("Buttons & Media")
@@ -1274,6 +1524,12 @@ ContentPage {
                     text: Translation.tr("Terminal")
                     checked: Config.options.appearance.wallpaperTheming.enableTerminal
                     onCheckedChanged: { Config.options.appearance.wallpaperTheming.enableTerminal = checked }
+                }
+                ConfigSwitch {
+                    buttonIcon: "lock"
+                    text: Translation.tr("Keep Konsole color scheme")
+                    checked: Config.options.appearance.wallpaperTheming.lockKonsoleColors
+                    onCheckedChanged: { Config.options.appearance.wallpaperTheming.lockKonsoleColors = checked }
                 }
                 ConfigRow {
                     uniform: true

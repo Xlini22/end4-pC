@@ -37,6 +37,9 @@ Scope {
         WlrLayershell.keyboardFocus: GlobalStates.overviewOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         color: "transparent"
 
+        // While a window preview is being dragged, take input over the whole screen.
+        // Otherwise the pointer leaves the mask, Hyprland ends the focus grab and the overview closes.
+        readonly property bool windowDragging: (overviewLoader.item?.draggingFromWorkspace ?? -1) !== -1
         mask: Region {
             item: GlobalStates.overviewOpen ? overviewInputArea : null
             Region {
