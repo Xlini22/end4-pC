@@ -59,13 +59,11 @@ Item {
     property var pages: SettingsPages.pages
 
     Component.onCompleted: {
-        Config.readWriteDelay = 0
         Qt.callLater(() => {
-            for (let i = 0; i < root.pages.length; i++) {
-                let loader = pagesRepeater.itemAt(i)
-                if (loader) loader.active = true
+            if (GlobalStates.settingsTarget) {
+                root.goToTarget(GlobalStates.settingsTarget)
+                GlobalStates.settingsTarget = null
             }
-            if (profileLoader) profileLoader.active = true
         })
     }
 
@@ -85,8 +83,17 @@ Item {
                 Layout.fillHeight: true
                 Layout.margins: 0
                 implicitWidth: navRail.expanded ? 195 : fab.baseSize
-                color: isMinimal ? "transparent" : Appearance.colors.colLayer1
+                color: isMinimal || navRailGlass.live ? "transparent" : Appearance.colors.colLayer1
                 radius: Appearance.rounding.normal
+
+                WindowGlass {
+                    id: navRailGlass
+                    anchors.fill: parent
+                    glassEnabled: !root.isMinimal
+                    cardRadius: navRailWrapper.radius
+                    tint: Appearance.colors.colLayer1
+                    frost: Math.max(8, Config.options.background.widgets.glass.haze)
+                }
 
                 Behavior on implicitWidth {
                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
@@ -238,6 +245,7 @@ Item {
                             required property var modelData
                             required property var index
                             source: modelData.component
+                            asynchronous: true
 
                             active: Config.ready && (root.currentPage === index || item !== null)
 
@@ -274,7 +282,8 @@ Item {
 
                     Loader {
                         id: profileLoader
-                        active: false
+                        active: Config.ready && (root.showingProfile || item !== null)
+                        asynchronous: true
                         anchors.fill: parent
                         source: Qt.resolvedUrl("pages/Profile.qml")
 
@@ -283,6 +292,8 @@ Item {
                         enabled: isActive
                         visible: isActive
                         anchors.topMargin: isActive ? 0 : 12
+
+                        onLoaded: if (isActive) GlobalStates.currentPageInstance = item
 
                         onIsActiveChanged: {
                             if (isActive && item) {

@@ -18,6 +18,8 @@ layout(std140, binding = 0) uniform buf {
     vec2 flares;
     vec2 hangs;
     float edge;
+    float enhanced;
+    float frosted;
 };
 
 layout(binding = 1) uniform sampler2D backdrop;
@@ -27,6 +29,29 @@ float roundedDist(vec2 p, vec2 half_, vec4 radii) {
     r = min(r, min(half_.x, half_.y));
     vec2 q = abs(p) - half_ + r;
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+}
+
+vec3 cornerOptics(vec2 p, float width, float depth, vec2 outward) {
+    float r = p.x > 0.0 ? (p.y > 0.0 ? radii.z : radii.y) : (p.y > 0.0 ? radii.w : radii.x);
+    r = min(r, min(size.x, size.y) * 0.5);
+    vec3 optics = vec3(outward, depth);
+    if (r >= width || depth >= width) return optics;
+    // Keep a curved inner lip while retaining the actual outline normal at the boundary.
+    vec2 q = max(abs(p) - size * 0.5 + width, vec2(0.0));
+    if (max(q.x, q.y) < 0.001) return optics;
+    optics.xy = normalize(mix(outward, normalize(q) * sign(p), smoothstep(0.0, max(r, 0.001), depth)));
+    if (min(q.x, q.y) > 0.0) {
+        float radial = length(q);
+        vec2 ray = q / radial;
+        float reach = width / max(ray.x, ray.y);
+        float inset = width - r;
+        if (min(ray.x, ray.y) * reach > inset) {
+            float projection = inset * (ray.x + ray.y);
+            reach = projection + sqrt(max(r * r - 2.0 * inset * inset + projection * projection, 0.0));
+        }
+        optics.z = max(reach - radial, 0.0);
+    }
+    return optics;
 }
 
 float boxDist(vec2 p, vec2 half_) {
@@ -74,6 +99,7 @@ vec3 backdropAt(vec2 px, float lod) {
 }
 
 vec3 diffuseAt(vec2 px, float lod, float reach) {
+    if (enhanced > 0.5 && haze < 0.001) return backdropAt(px, 0.0);
     vec3 acc = backdropAt(px, lod) * 2.0;
     for (int i = 0; i < 6; ++i) {
         float a = 1.0471976 * float(i) + 0.3;
@@ -89,7 +115,7 @@ float domeHeight(float u) {
 
 float domeSlope(float u) {
     float v = 1.0 - u;
-    return min(v / max(sqrt(max(1.0 - v * v, 0.0)), 0.12), 5.0);
+    return min(v / max(sqrt(max(1.0 - v * v, 0.0)), 0.12), enhanced > 0.5 ? 8.0 : 5.0);
 }
 
 vec2 bendRay(vec2 outward, float slope, float ior, float travel) {
@@ -115,6 +141,11 @@ void main() {
     outward = length(outward) > 1e-4 ? normalize(outward) : vec2(0.0, -1.0);
 
     float bezel = max(rimWidth, 1.0);
+    if (enhanced > 0.5 && all(equal(flares, vec2(0.0))) && all(equal(hangs, vec2(0.0)))) {
+        vec3 optics = cornerOptics(p, bezel, depth, outward);
+        outward = optics.xy;
+        depth = optics.z;
+    }
     float u = clamp(depth / bezel, 0.0, 1.0);
     float slope = domeSlope(u);
     float fall = (1.0 - u) * (1.0 - u);
@@ -123,6 +154,7 @@ void main() {
     vec2 shiftG = bendRay(outward, slope, GLASS_IOR, pull);
     vec2 shiftR = bendRay(outward, slope, GLASS_IOR - spreadK, pull);
     vec2 shiftB = bendRay(outward, slope, GLASS_IOR + spreadK, pull);
+    if (enhanced > 0.5) { shiftR = shiftG * 0.965; shiftB = shiftG * 1.035; }
 
     float lod = log2(max(haze, 1.0));
     float reach = haze * 0.6;
@@ -134,6 +166,13 @@ void main() {
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(vec3(lum), col, vividness);
 
+    float rimLight = 0.0;
+    if (enhanced > 0.5) {
+        float proximity = 1.0 - smoothstep(0.0, bezel, depth);
+        float topBias = pow(max(1.0 - qt_TexCoord0.y, 0.0), 2.0);
+        rimLight = proximity * proximity * (0.35 * 0.15 + topBias * 0.5 * 0.08);
+        col *= 1.0 - pow(qt_TexCoord0.y, 2.0) * proximity * proximity * 0.06;
+    } else {
     vec2 L = normalize(LIGHT);
     float facing = dot(outward, L);
     float lit = pow(max(facing, 0.0), 1.6);
@@ -141,7 +180,7 @@ void main() {
 
     float hair = exp(-depth / 1.0);
     float wide = exp(-depth / (bezel * 0.5));
-    float rimLight = (hair * (0.2 + 0.75 * lit + 0.25 * away) + wide * 0.14 * lit) * sheen;
+    rimLight = (hair * (0.2 + 0.75 * lit + 0.25 * away) + wide * 0.14 * lit) * sheen;
 
     float rimEnv = pow(1.0 - clamp(u, 0.0, 1.0), 2.0);
     vec3 env = backdropAt(p + outward * bezel * 1.2, min(lod + 2.0, 6.0));
@@ -152,8 +191,10 @@ void main() {
     float top = 1.0 - smoothstep(0.0, size.y * 0.55, p.y + size.y * 0.5);
     col += vec3(0.03 * top * sheen);
 
+    }
+
     col = mix(col, wash.rgb, wash.a);
-    col += vec3(rimLight);
+    if (frosted < 0.5) col += vec3(rimLight);
 
     fragColor = vec4(clamp(col, 0.0, 1.0) * cover, cover) * qt_Opacity;
 }

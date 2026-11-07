@@ -142,6 +142,43 @@ ContentPage {
                     checked: Config.options.background.widgets.glass.enable
                     onCheckedChanged: { Config.options.background.widgets.glass.enable = checked }
                 }
+                ConfigSelectionArray {
+                    text: Translation.tr("Glass source")
+                    icon: "layers"
+                    enabled: Config.options.background.widgets.glass.enable
+                    currentValue: Config.options.background.widgets.glass.source
+                    onSelected: newValue => { Config.options.background.widgets.glass.source = newValue }
+                    options: [
+                        { displayName: Translation.tr("Wallpaper"), icon: "wallpaper", value: "wallpaper" },
+                        { displayName: Translation.tr("Windows underneath"), icon: "select_window", value: "windows" }
+                    ]
+                    visible: WM.compositor === "hyprland"
+                }
+                ConfigSwitch {
+                    buttonIcon: "motion_mode"
+                    text: Translation.tr("True Glassy")
+                    checked: Config.options.background.widgets.glass.trueGlassy
+                    enabled: Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.source === "windows"
+                    visible: WM.compositor === "hyprland"
+                    onCheckedChanged: Config.options.background.widgets.glass.trueGlassy = checked
+                }
+                ConfigSwitch {
+                    buttonIcon: "auto_awesome"
+                    text: Translation.tr("Enhanced")
+                    checked: Config.options.background.widgets.glass.enhanced
+                    enabled: Config.options.background.widgets.glass.enable
+                    onCheckedChanged: Config.options.background.widgets.glass.enhanced = checked
+                }
+                ConfigSlider {
+                    buttonIcon: "blur_on"
+                    text: Translation.tr("Glass intensity")
+                    enabled: Config.options.background.widgets.glass.enable
+                    from: 0; to: 1
+                    stepSize: 0.01
+                    stopIndicatorValues: [0]
+                    value: (Config.options.background.widgets.glass.haze - 1) / 15
+                    onMoved: Config.options.background.widgets.glass.haze = 1 + value * 15
+                }
                 ConfigSlider {
                     buttonIcon: "layers"
                     text: Translation.tr("Background")

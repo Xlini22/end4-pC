@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import qs
+import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 
@@ -16,7 +17,7 @@ Scope {
         sourceComponent: FloatingWindow {
             id: window
             title: "illogical-impulse Settings"
-            color: Appearance.colors.colUiBackground
+            color: GlassCompositor.active ? "transparent" : Appearance.colors.colUiBackground
 
             WindowGlass {
                 anchors.fill: parent

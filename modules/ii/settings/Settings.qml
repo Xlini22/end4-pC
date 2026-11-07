@@ -19,6 +19,7 @@ Scope {
 
     readonly property real sizeScale: Config.options.settings.style === "minimal" ? 0.75 : 1.0
     property bool isMinimal: Config.options.settings.style === "minimal"
+    property int lastPage: 0
 
     Component.onCompleted: {
         GlobalStates.settingsOpen = false;
@@ -81,14 +82,15 @@ Scope {
         Rectangle {
             id: settingsWindow
             WindowGlass {
+                id: settingsGlass
                 anchors.fill: parent
-                glassEnabled: (parent?.color.a ?? 0) > 0
+                glassEnabled: Appearance.colors.colUiBackground.a > 0
                 cardRadius: parent?.radius ?? 0
-                tint: parent?.color ?? 'transparent'
+                tint: Appearance.colors.colUiBackground
             }
             width: Config.options.settings.style === "minimal" ? Math.min(parent.width - 70, 980 * sizeScale) : Math.min(parent.width - 80, 980 * sizeScale)
             height: Math.min(parent.height - 80, 720 * sizeScale)
-            color: Appearance.colors.colUiBackground
+            color: settingsGlass.nativeGlass ? "transparent" : Appearance.colors.colUiBackground
             border.width: Config.options.settings.borderSize
             border.color: CF.ColorUtils.transparentize(Appearance.getColorFromName(Config.options.settings.borderColor), 0.8)
             radius: !isMinimal ? Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 5 : Appearance.rounding.screenRounding + 5
@@ -108,16 +110,22 @@ Scope {
             }
 
             Keys.onTabPressed: (event) => {
-            const count = settingsContent.pages.length;
-            settingsContent.currentPage = (settingsContent.currentPage + 1) % count;
-            settingsContent.showingProfile = false;
+            if (settingsContent.status !== Loader.Ready) return;
+            const content = settingsContent.item;
+            if (!content) return;
+            const count = content.pages.length;
+            content.currentPage = (content.currentPage + 1) % count;
+            content.showingProfile = false;
             event.accepted = true;
         }
 
         Keys.onBacktabPressed: (event) => {
-            const count = settingsContent.pages.length;
-            settingsContent.currentPage = (settingsContent.currentPage - 1 + count) % count;
-            settingsContent.showingProfile = false;
+            if (settingsContent.status !== Loader.Ready) return;
+            const content = settingsContent.item;
+            if (!content) return;
+            const count = content.pages.length;
+            content.currentPage = (content.currentPage - 1 + count) % count;
+            content.showingProfile = false;
             event.accepted = true;
         }
 
@@ -160,9 +168,16 @@ Scope {
                 }
             }
 
-            SettingsContent {
+            Loader {
                 id: settingsContent
                 anchors.fill: parent
+                active: panelWindow.visible
+                asynchronous: true
+                sourceComponent: SettingsContent {
+                    currentPage: root.lastPage
+                    onCurrentPageChanged: root.lastPage = currentPage
+                    Component.onDestruction: GlobalStates.currentPageInstance = null
+                }
             }
         }
     }
@@ -172,6 +187,11 @@ Scope {
         function toggle(): void { GlobalStates.settingsOpen = !GlobalStates.settingsOpen; }
         function open(): void   { GlobalStates.settingsOpen = true; }
         function close(): void  { GlobalStates.settingsOpen = false; }
+        function glassStatus(): string {
+            return JSON.stringify({ native: settingsGlass.nativeGlass, live: settingsGlass.live,
+                windows: settingsGlass.windowBackdrop, color: String(settingsWindow.color), namespace: panelWindow.WlrLayershell.namespace,
+                contentReady: settingsContent.status === Loader.Ready })
+        }
     }
 
     CompositorGlobalShortcut {

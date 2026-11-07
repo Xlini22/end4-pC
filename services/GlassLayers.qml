@@ -3,10 +3,12 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import qs.services
 
 Singleton {
     id: root
     property var layers: ({})
+    property int backdropConsumers: 0
     property real barZone: 0
     property string barEdge: "top"
     property real dockZone: 0
@@ -18,6 +20,14 @@ Singleton {
 
     function refresh() {
         debounce.restart()
+    }
+
+    Timer {
+        // ponytail: share a 10 Hz geometry poll; compositor-side refraction would track window motion every frame.
+        interval: 100
+        repeat: true
+        running: root.backdropConsumers > 0
+        onTriggered: HyprlandData.updateWindowList()
     }
 
     Timer {

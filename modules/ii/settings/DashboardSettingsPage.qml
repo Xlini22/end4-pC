@@ -146,6 +146,7 @@ Item {
         if (e.when === "layoutmaster" && (WM.compositor !== "hyprland" || Config.options.hyprland.general.layout !== "master")) return false;
         if (e.when === "hyprbordercolor" && (WM.compositor !== "hyprland" || !Config.options.hyprland.general.borderColor.enable)) return false;
         if (e.when === "glass" && !Config.options.background.widgets.glass.enable) return false;
+        if (e.when === "glasshyprland" && (!Config.options.background.widgets.glass.enable || WM.compositor !== "hyprland")) return false;
         if (e.when === "football" && !Config.options.sidebar.football.enable) return false;
         if (e.when === "dockmagnify" && !Config.options.dock.magnify) return false;
         if (e.when === "dockhug" && Config.options.dock.style !== "hug") return false;

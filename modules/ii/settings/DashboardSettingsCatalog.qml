@@ -32,6 +32,9 @@ QtObject {
     }
 
     readonly property var glassDefaults: ({
+        source: "wallpaper",
+        trueGlassy: true,
+        enhanced: false,
         tintStrength: 0.3,
         rimWidth: 16,
         pull: 26,
@@ -168,12 +171,15 @@ QtObject {
         "desktop:Visualizer size": { type: "slider", get: () => Config.options.background.widgets.visualizer.ringSize, set: v => { Config.options.background.widgets.visualizer.ringSize = Math.round(v); }, from: 200, to: 900, stopIndicatorValues: [], usePercentTooltip: false },
         "interface:Glass tint": { type: "select", get: () => Config.options.background.widgets.glass.tint, set: v => { Config.options.background.widgets.glass.tint = v; }, options: [{ displayName: Translation.tr("Transparent"), icon: "opacity", value: "transparent" }, { displayName: Translation.tr("Primary"), icon: "palette", value: "primary" }, { displayName: Translation.tr("Black"), icon: "contrast", value: "black" }] },
         "interface:Glass tint strength": glassSlider("tintStrength", 100, 0, 100),
+        "interface:Glass intensity": { type: "slider", get: () => Math.round((Config.options.background.widgets.glass.haze - 1) / 15 * 100), set: v => { Config.options.background.widgets.glass.haze = 1 + Math.max(0, Math.min(100, Math.round(v))) / 100 * 15; }, from: 0, to: 100, stopIndicatorValues: [], usePercentTooltip: false, defaultValue: 13, reset: () => { Config.options.background.widgets.glass.haze = glassDefaults.haze; } },
         "interface:Glass bezel": glassSlider("rimWidth", 1, 4, 40),
         "interface:Glass refraction": glassSlider("pull", 1, 0, 80),
         "interface:Glass dispersion": glassSlider("split", 100, 0, 30),
-        "interface:Glass blur": glassSlider("haze", 1, 1, 16),
         "interface:Glass vividness": glassSlider("vividness", 100, 50, 200),
         "interface:Glass shine": glassSlider("sheen", 100, 0, 150),
+        "interface:Glass source": { type: "select", get: () => Config.options.background.widgets.glass.source, set: v => { Config.options.background.widgets.glass.source = v; }, options: [{ displayName: Translation.tr("Wallpaper"), icon: "wallpaper", value: "wallpaper" }, { displayName: Translation.tr("Windows underneath"), icon: "select_window", value: "windows" }] },
+        "interface:Enhanced": { type: "switch", get: () => Config.options.background.widgets.glass.enhanced, set: v => { Config.options.background.widgets.glass.enhanced = v; } },
+        "interface:True Glassy": { type: "switch", get: () => Config.options.background.widgets.glass.trueGlassy, set: v => { Config.options.background.widgets.glass.trueGlassy = v; } },
         "interface:Glass reset": { type: "action", run: () => resetGlass() },
         "interface:Glassy UI": { type: "switch", get: () => Config.options.background.widgets.glass.enable, set: v => { Config.options.background.widgets.glass.enable = v; } },
         "desktop:Text enable": { type: "switch", get: () => Config.options.background.widgets.customText.enable, set: v => { Config.options.background.widgets.customText.enable = v; } },
@@ -341,12 +347,15 @@ QtObject {
         },
         {
             page: Translation.tr("Interface"), title: Translation.tr("Glass"), icon: "water_drop", when: "glass", cards: [
+                { type: "select", w: 4, key: "interface:Glass source", title: Translation.tr("Glass source"), icon: "layers", when: "glasshyprland", kw: "glass glassy source wallpaper windows underneath backdrop" },
+                { type: "toggle", key: "interface:True Glassy", title: Translation.tr("True Glassy"), icon: "motion_mode", when: "glasshyprland", kw: "glass true live native performance capture snapshot" },
+                { type: "toggle", key: "interface:Enhanced", title: Translation.tr("Enhanced"), icon: "auto_awesome", when: "glass", kw: "glass enhanced refraction transparent frosted" },
+                { type: "slider", key: "interface:Glass intensity", title: Translation.tr("Glass intensity (%)"), icon: "blur_on", percent: false, kw: "glass glassy intensity blur contrast" },
                 { type: "select", w: 4, key: "interface:Glass tint", title: Translation.tr("Glass tint"), icon: "colorize", kw: "glass glassy tint color transparent primary black" },
                 { type: "slider", key: "interface:Glass tint strength", title: Translation.tr("Tint strength (%)"), icon: "colorize", percent: false },
                 { type: "slider", key: "interface:Glass bezel", title: Translation.tr("Edge width (px)"), icon: "crop_free", percent: false },
                 { type: "slider", key: "interface:Glass refraction", title: Translation.tr("Refraction"), icon: "lens_blur", percent: false },
                 { type: "slider", key: "interface:Glass dispersion", title: Translation.tr("Color split (%)"), icon: "gradient", percent: false },
-                { type: "slider", key: "interface:Glass blur", title: Translation.tr("Blur"), icon: "blur_on", percent: false },
                 { type: "slider", key: "interface:Glass vividness", title: Translation.tr("Vividness (%)"), icon: "palette", percent: false },
                 { type: "slider", key: "interface:Glass shine", title: Translation.tr("Edge shine (%)"), icon: "flare", percent: false },
                 { type: "reset", key: "interface:Glass reset", title: Translation.tr("Reset glass"), icon: "restart_alt" }
