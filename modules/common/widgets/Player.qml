@@ -138,6 +138,7 @@ Item {
 
     StyledRectangularShadow {
         target: background
+        visible: !playerGlass.nativeGlass
     }
 
     Rectangle {
@@ -154,8 +155,16 @@ Item {
             verticalCenter: root.growFrom === "center" ? parent.verticalCenter : undefined
         }
         height: root.cardHeight
-        color: ColorUtils.applyAlpha(blendedColors.colLayer0, 1)
+        color: Config.options.background.widgets.glass.enable
+            ? "transparent" : ColorUtils.applyAlpha(blendedColors.colLayer0, 1)
         radius: root.radius
+
+        WindowGlass {
+            id: playerGlass
+            anchors.fill: parent
+            cardRadius: background.radius
+            tint: root.blendedColors.colLayer0
+        }
 
         layer.enabled: true
         layer.effect: OpacityMask {
@@ -168,6 +177,7 @@ Item {
 
         Image {
             id: blurredArt
+            visible: !Config.options.background.widgets.glass.enable
             anchors.fill: parent
             source: root.displayedArtFilePath
             sourceSize.width: root.width - root.cardMargin * 2
@@ -179,7 +189,7 @@ Item {
             opacity: Math.max(0, Math.min(1, root.artReveal))
             scale: 0.88 + 0.12 * root.artReveal
 
-            layer.enabled: true
+            layer.enabled: visible
             layer.effect: StyledBlurEffect {
                 source: blurredArt
             }

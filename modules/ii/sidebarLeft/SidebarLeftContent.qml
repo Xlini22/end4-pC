@@ -27,17 +27,51 @@ Item {
     ]
     readonly property var pageKeys: ["home", ...root.featurePages.map(page => page.key)]
     property string currentKey: "home"
+    property string displayedKey: "home"
+    onCurrentKeyChanged: {
+        if (!root.restored) root.displayedKey = root.currentKey
+        else {
+            pageEnter.stop()
+            pageExit.restart()
+        }
+    }
     readonly property string mainPageKey: Config.options.sidebar.mainPage === "intelligence" ? "ai" : Config.options.sidebar.mainPage
     onMainPageKeyChanged: if (root.restored) root.goTo(root.mainPageKey)
     readonly property int currentIndex: Math.max(0, root.pageKeys.indexOf(root.currentKey))
-    readonly property var currentPage: root.featurePages.find(page => page.key === root.currentKey) ?? null
+    readonly property var currentPage: root.featurePages.find(page => page.key === root.displayedKey) ?? null
     property bool restored: false
-    property int direction: 1
-    readonly property bool glassPage: ["media", "sports", "ai", "anime", "translator"].includes(root.currentKey)
+    readonly property bool glassPage: ["media", "sports", "ai", "anime", "translator"].includes(root.displayedKey)
+
+    function showRequestedPage() {
+        const slot = pageStack.children.find(child => child.pageKey === root.currentKey)
+        if (pageExit.running || pageLayout.opacity > 0 || !slot?.ready) return
+        root.displayedKey = root.currentKey
+        pageEnter.restart()
+    }
+
+    SequentialAnimation {
+        id: pageExit
+        PauseAnimation {
+            duration: root.displayedKey === "home" && root.currentKey !== "home"
+                ? (homeSlot.item?.exitDuration ?? 0) : 0
+        }
+        NumberAnimation {
+            target: pageLayout; property: "opacity"; to: 0
+            duration: 120 / Math.max(0.5, Config.options.settings.animationSpeed ?? 1)
+            easing.type: Easing.InCubic
+        }
+        onFinished: root.showRequestedPage()
+    }
+
+    NumberAnimation {
+        id: pageEnter
+        target: pageLayout; property: "opacity"; to: 1
+        duration: 200 / Math.max(0.5, Config.options.settings.animationSpeed ?? 1)
+        easing.type: Easing.OutCubic
+    }
 
     function goTo(key) {
         if (root.pageKeys.indexOf(key) < 0) key = "home"
-        root.direction = root.pageKeys.indexOf(key) >= root.currentIndex ? 1 : -1
         root.currentKey = key
         if (Config.options.sidebar.leftRememberPage) Config.options.sidebar.leftLastPage = key
     }
@@ -76,6 +110,8 @@ Item {
     }
 
     ColumnLayout {
+        id: pageLayout
+        enabled: !pageExit.running && !pageEnter.running && root.displayedKey === root.currentKey
         anchors {
             fill: parent
             margins: sidebarPadding
@@ -85,7 +121,7 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             Layout.preferredHeight: 40
-            visible: root.currentKey !== "home"
+            visible: root.displayedKey !== "home"
             spacing: 8
 
             RippleButton {
@@ -122,7 +158,7 @@ Item {
             }
 
             Repeater {
-                model: root.featurePages.filter(page => page.key !== root.currentKey)
+                model: root.featurePages.filter(page => page.key !== root.displayedKey)
                 delegate: RippleButton {
                     required property var modelData
                     implicitWidth: 36
@@ -146,55 +182,37 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: Appearance.rounding.normal
-            color: root.glassPage && Config.options.background.widgets.glass.enable ? "transparent" : Appearance.colors.colLayer1
+            color: Config.options.background.widgets.glass.enable ? "transparent" : Appearance.colors.colLayer1
 
             WindowGlass {
                 anchors.fill: parent
-                glassEnabled: root.currentKey === "sports" || root.currentKey === "ai" || root.currentKey === "anime" || root.currentKey === "translator"
+                glassEnabled: root.glassPage
                 cardRadius: pagesBox.radius
+                frost: ["media", "ai", "anime"].includes(root.displayedKey) ? Math.max(8, Config.options.background.widgets.glass.haze) : 0
             }
 
             Item { // Content pages
                 id: pageStack
                 anchors.fill: parent
 
-                component PageSlot: SidebarPop {
+                component PageSlot: Item {
                     id: slot
                     required property string pageKey
                     property bool enabledPage: true
                     property Component page: null
-                    property bool lingering: false
                     property bool visited: false
-                    readonly property bool current: root.currentKey === pageKey
+                    readonly property bool current: root.displayedKey === pageKey
+                    readonly property bool requested: root.currentKey === pageKey
+                    readonly property bool ready: loader.status === Loader.Ready
                     readonly property bool isHome: pageKey === "home"
                     readonly property alias item: loader.item
 
                     anchors.fill: parent
-                    active: current
-                    visible: current || lingering
-                    minScale: isHome ? 1 : 0.97
-                    travelX: isHome ? 0 : root.direction * slot.width * 0.35
-                    exitX: -travelX
-                    travelY: 0
-                    fade: !isHome
-                    animIndex: 0
-                    smooth: !isHome
+                    visible: current
 
-                    Component.onCompleted: if (current) visited = true
-
-                    onCurrentChanged: {
-                        if (current) visited = true
-                        if (!current) {
-                            lingering = true
-                            lingerTimer.restart()
-                        }
-                    }
-
-                    Timer {
-                        id: lingerTimer
-                        interval: 760
-                        onTriggered: slot.lingering = false
-                    }
+                    Component.onCompleted: if (current || requested) visited = true
+                    onRequestedChanged: if (requested) visited = true
+                    onReadyChanged: if (ready && requested) root.showRequestedPage()
 
                     Loader {
                         id: loader
@@ -202,11 +220,11 @@ Item {
                         asynchronous: !slot.isHome
                         active: slot.enabledPage && (slot.isHome || slot.visited)
                         sourceComponent: slot.page
-                        onLoaded: if (slot.isHome) item.active = Qt.binding(() => slot.current)
+                        onLoaded: if (slot.isHome) item.active = Qt.binding(() => slot.current && slot.requested)
                     }
                 }
 
-                PageSlot { pageKey: "home"; page: home }
+                PageSlot { id: homeSlot; pageKey: "home"; page: home }
                 PageSlot { pageKey: "ai"; enabledPage: root.aiChatEnabled; page: aiChat }
                 PageSlot { pageKey: "translator"; enabledPage: root.translatorEnabled; page: translator }
                 PageSlot { pageKey: "media"; enabledPage: root.mediaEnabled; page: media }

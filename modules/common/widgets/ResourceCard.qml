@@ -14,12 +14,23 @@ Rectangle {
     property color sublabelColor: Appearance.colors.colOnSurfaceVariant
     property int cardWidth: 150 
     property string valueText: ""
+    property bool frosted: false
 
     width: cardWidth
     height: 96 
     radius: 16 
     
-    color: Appearance.colors.colSurfaceContainerLow
+    color: cardGlass.live ? "transparent" : Appearance.colors.colSurfaceContainerLow
+
+    WindowGlass {
+        id: cardGlass
+        anchors.fill: parent
+        z: -1
+        glassEnabled: root.frosted
+        cardRadius: root.radius
+        tint: Appearance.colors.colSurfaceContainerLow
+        frost: Math.max(8, Config.options.background.widgets.glass.haze)
+    }
 
     function usageColor(v) {
         if (v > 0.9) return Appearance.colors.colError

@@ -18,6 +18,7 @@ StyledPopup {
             spacing: 5
 
             ResourceCard {
+                frosted: true
                 label: "RAM"
                 iconText: "memory"
                 iconShape: MaterialShape.Shape.Clover4Leaf
@@ -26,6 +27,7 @@ StyledPopup {
             }
 
             ResourceCard {
+                frosted: true
                 label: "CPU"
                 iconText: "planner_review"
                 iconShape: MaterialShape.Shape.Gem
@@ -41,6 +43,7 @@ StyledPopup {
             spacing: 5
 
             ResourceCard {
+                frosted: true
                 label: "Swap"
                 iconText: "swap_horiz"
                 iconShape: MaterialShape.Shape.Bun
@@ -49,6 +52,7 @@ StyledPopup {
             }
 
             ResourceCard {
+                frosted: true
                 label: "Disk"
                 iconText: "hard_drive"
                 iconShape: MaterialShape.Shape.Circle

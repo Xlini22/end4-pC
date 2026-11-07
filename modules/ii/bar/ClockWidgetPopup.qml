@@ -1,5 +1,6 @@
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions as CF
 import qs.services
 import QtQuick
 import QtQuick.Layouts
@@ -42,6 +43,7 @@ StyledPopup {
             Repeater {
                 model: 7
                 delegate: Rectangle {
+                    id: dayCard
                     required property int index
 
                     readonly property var date: {
@@ -61,9 +63,18 @@ StyledPopup {
                     Layout.fillWidth: true
                     height: 56
                     radius: Appearance.rounding.normal
-                    color: isToday
-                        ? Appearance.colors.colPrimaryContainer
-                        : Appearance.colors.colSurfaceContainerHigh
+                    color: dayGlass.live
+                        ? (isToday ? CF.ColorUtils.applyAlpha(Appearance.colors.colPrimaryContainer, 0.72) : "transparent")
+                        : (isToday ? Appearance.colors.colPrimaryContainer : Appearance.colors.colSurfaceContainerHigh)
+
+                    WindowGlass {
+                        id: dayGlass
+                        anchors.fill: parent
+                        z: -1
+                        cardRadius: dayCard.radius
+                        tint: dayCard.isToday ? Appearance.colors.colPrimaryContainer : Appearance.colors.colSurfaceContainerHigh
+                        frost: Math.max(8, Config.options.background.widgets.glass.haze)
+                    }
 
                     ColumnLayout {
                         anchors.centerIn: parent
@@ -130,6 +141,7 @@ StyledPopup {
                     model: Math.min(3, Todo.list.filter(t => !t.done).length)
 
                     delegate: Rectangle {
+                        id: taskCard
                         required property int index
                         readonly property var filteredList: Todo.list.filter(t => !t.done)
                         readonly property var todo: filteredList[filteredList.length - 1 - index]
@@ -145,7 +157,19 @@ StyledPopup {
                         topRightRadius:    isFirst ? bigRadius : smallRadius
                         bottomLeftRadius:  isLast  ? bigRadius : smallRadius
                         bottomRightRadius: isLast  ? bigRadius : smallRadius
-                        color: Appearance.colors.colSurfaceContainerHigh
+                        color: taskGlass.live ? "transparent" : Appearance.colors.colSurfaceContainerHigh
+
+                        WindowGlass {
+                            id: taskGlass
+                            anchors.fill: parent
+                            z: -1
+                            topLeftRadius: taskCard.topLeftRadius
+                            topRightRadius: taskCard.topRightRadius
+                            bottomLeftRadius: taskCard.bottomLeftRadius
+                            bottomRightRadius: taskCard.bottomRightRadius
+                            tint: Appearance.colors.colSurfaceContainerHigh
+                            frost: Math.max(8, Config.options.background.widgets.glass.haze)
+                        }
 
                         StyledText {
                             anchors {
@@ -164,11 +188,21 @@ StyledPopup {
                 }
 
                 Rectangle {
+                    id: emptyTasksCard
                     width: parent.width
                     height: 64
                     visible: Todo.list.filter(t => !t.done).length === 0
                     radius: Appearance.rounding.normal
-                    color: Appearance.colors.colSurfaceContainerHigh
+                    color: emptyTasksGlass.live ? "transparent" : Appearance.colors.colSurfaceContainerHigh
+
+                    WindowGlass {
+                        id: emptyTasksGlass
+                        anchors.fill: parent
+                        z: -1
+                        cardRadius: emptyTasksCard.radius
+                        tint: Appearance.colors.colSurfaceContainerHigh
+                        frost: Math.max(8, Config.options.background.widgets.glass.haze)
+                    }
 
                     StyledText {
                         anchors.centerIn: parent

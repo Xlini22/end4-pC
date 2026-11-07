@@ -27,7 +27,7 @@ Item {
     property list<real> smoothedPoints: []
 
     FrameAnimation {
-        running: root.frameSmoothing && root.isPlaying
+        running: root.visible && (root.Window.window?.visible ?? false) && root.frameSmoothing && root.isPlaying
         onTriggered: {
             const dt = Math.min(frameTime, 0.05)
             const values = new Array(root.barCount)

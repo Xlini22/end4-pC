@@ -25,8 +25,14 @@ LazyLoader {
     property bool shouldShow: root.popupEnabled && root.targetHovered && Config.options.bar.tooltips.enable && !GlobalStates.barStyleEditorOpen
         && (!Config.options.bar.tooltips.clickToShow || ((root.hoverTarget.pressedButtons ?? Qt.LeftButton) & Qt.LeftButton))
     property bool closing: false
-    active: root.shouldShow || root.closing
-    onShouldShowChanged: if (!root.shouldShow && root.item) root.closing = true
+    property bool popupCreated: false
+    // ponytail: retain one window per opened popup so effects never move between windows.
+    // If many popup types are added, move their content into window-owned Components before unloading.
+    active: root.popupCreated
+    onShouldShowChanged: {
+        if (root.shouldShow) root.popupCreated = true
+        else if (root.item) root.closing = true
+    }
 
     readonly property bool barVertical: Config.options.bar.vertical
     readonly property string barEdge: {
@@ -84,6 +90,8 @@ LazyLoader {
 
     component: PanelWindow {
         id: popupWindow
+        visible: root.shouldShow || root.closing
+        onVisibleChanged: if (!visible) root.popupHovered = false
 
         // Bring contentItem reference into this scope
         property Item innerContent: root.contentItem
@@ -308,15 +316,16 @@ LazyLoader {
 
             StyledRectangularShadow {
                 target: popupBackground
-                visible: root.popupShadowEnabled && !root.morph
+                visible: root.popupShadowEnabled && !root.morph && !GlassCompositor.active
             }
 
             Rectangle {
                 id: popupBackground
                 WindowGlass {
                     anchors.fill: parent
+                    glassEnabled: root.popupColor.a > 0
                     cardRadius: parent?.radius ?? 0
-                    tint: parent?.color ?? 'transparent'
+                    tint: root.popupColor
                 }
                 readonly property real margin: root.popupContentMargin
 
@@ -326,9 +335,9 @@ LazyLoader {
                 implicitWidth: (popupWindow.innerContent?.implicitWidth ?? 0) + margin * 2
                 implicitHeight: (popupWindow.innerContent?.implicitHeight ?? 0) + margin * 2
 
-                color: root.popupColor
+                color: GlassCompositor.active ? "transparent" : root.popupColor
                 radius: root.popupRadius
-                border.width: root.popupBorderWidth
+                border.width: Config.options.background.widgets.glass.enable ? 0 : root.popupBorderWidth
                 topLeftRadius: popupWindow.flat("tl") ? 0 : radius
                 topRightRadius: popupWindow.flat("tr") ? 0 : radius
                 bottomLeftRadius: popupWindow.flat("bl") ? 0 : radius

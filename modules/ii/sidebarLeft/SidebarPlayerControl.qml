@@ -39,7 +39,7 @@ Item {
     readonly property string displayedArtFilePath: MediaArtwork.source
 
     Timer {
-        running: root.player?.playbackState == MprisPlaybackState.Playing
+        running: root.visible && (root.Window.window?.visible ?? false) && root.player?.playbackState == MprisPlaybackState.Playing
         interval: Config.options.resources.updateInterval
         repeat: true
         onTriggered: root.player?.positionChanged()  
@@ -67,13 +67,6 @@ Item {
         radius: Appearance.rounding.normal
         clip: true
 
-        WindowGlass {
-            anchors.fill: parent
-            cardRadius: parent.radius
-            tint: root.artDominantColor
-            tintStrength: 0
-        }
-
         Image {
             id: blurArtSource
             anchors.fill: parent
@@ -90,7 +83,7 @@ Item {
             source: blurArtSource
             radius: 80
             opacity: 0.5
-            visible: root.blurredBackground && root.displayedArtFilePath !== ""
+            visible: !Config.options.background.widgets.glass.enable && root.blurredBackground && root.displayedArtFilePath !== ""
 
             layer.enabled: blurArt.visible
             layer.effect: OpacityMask {

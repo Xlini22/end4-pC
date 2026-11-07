@@ -69,14 +69,22 @@ PanelWindow {
         target: root.backend
         function onStatusChanged() { root.syncName() }
     }
-    StyledRectangularShadow { target: background }
+    StyledRectangularShadow {
+        target: background
+        visible: !Config.options.background.widgets.glass.enable
+    }
+    WindowGlass {
+        anchors.fill: background
+        cardRadius: background.radius
+        tint: Appearance.colors.colLayer1Base
+    }
     Rectangle {
         id: background
         anchors.fill: parent
         anchors.margins: root.padding
         radius: Appearance.rounding.normal + 4
-        color: Appearance.colors.colLayer1Base
-        border.width: 1
+        color: Config.options.background.widgets.glass.enable ? "transparent" : Appearance.colors.colLayer1Base
+        border.width: Config.options.background.widgets.glass.enable ? 0 : 1
         border.color: Appearance.colors.colLayer0Border
         Flickable {
             id: scroll
@@ -142,10 +150,19 @@ PanelWindow {
                     restoreMode: Binding.RestoreNone
                 }
                 Rectangle {
+                    id: settingsCard
                     Layout.fillWidth: true
                     implicitHeight: settings.implicitHeight + 24
                     radius: Appearance.rounding.normal
-                    color: Appearance.colors.colSurfaceContainerLow
+                    color: settingsGlass.live ? "transparent" : Appearance.colors.colSurfaceContainerLow
+                    WindowGlass {
+                        id: settingsGlass
+                        anchors.fill: parent
+                        z: -1
+                        cardRadius: settingsCard.radius
+                        tint: Appearance.colors.colSurfaceContainerLow
+                        frost: Math.max(8, Config.options.background.widgets.glass.haze)
+                    }
                     ColumnLayout {
                         id: settings
                         anchors.fill: parent
@@ -209,10 +226,19 @@ PanelWindow {
                     }
                 }
                 Rectangle {
+                    id: devicesCard
                     Layout.fillWidth: true
                     implicitHeight: devices.implicitHeight + 24
                     radius: Appearance.rounding.normal
-                    color: Appearance.colors.colSurfaceContainerLow
+                    color: devicesGlass.live ? "transparent" : Appearance.colors.colSurfaceContainerLow
+                    WindowGlass {
+                        id: devicesGlass
+                        anchors.fill: parent
+                        z: -1
+                        cardRadius: devicesCard.radius
+                        tint: Appearance.colors.colSurfaceContainerLow
+                        frost: Math.max(8, Config.options.background.widgets.glass.haze)
+                    }
                     ColumnLayout {
                         id: devices
                         anchors.fill: parent

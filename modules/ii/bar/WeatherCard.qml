@@ -16,7 +16,16 @@ Rectangle {
     implicitWidth: rowLayout.implicitWidth + 20
     implicitHeight: rowLayout.implicitHeight + 16
     radius: Appearance.rounding.normal
-    color: Appearance.colors.colSurfaceContainerHigh
+    color: cardGlass.live ? "transparent" : Appearance.colors.colSurfaceContainerHigh
+
+    WindowGlass {
+        id: cardGlass
+        anchors.fill: parent
+        z: -1
+        cardRadius: root.radius
+        tint: Appearance.colors.colSurfaceContainerHigh
+        frost: Math.max(8, Config.options.background.widgets.glass.haze)
+    }
 
     RowLayout {
         id: rowLayout

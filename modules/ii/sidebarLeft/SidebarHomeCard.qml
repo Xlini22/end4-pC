@@ -22,11 +22,20 @@ SidebarPop {
 
     implicitHeight: 112
 
+    WindowGlass {
+        id: cardGlass
+        anchors.fill: card
+        cardRadius: card.radius
+        tint: root.colContainer
+        frost: Math.max(8, Config.options.background.widgets.glass.haze)
+    }
+
     ClippingRectangle {
         id: card
         anchors.fill: parent
         radius: Appearance.rounding.large
-        color: mouse.containsMouse ? ColorUtils.mix(root.colContainer, root.colAccent, 0.88) : root.colContainer
+        color: ColorUtils.transparentize(mouse.containsMouse ? ColorUtils.mix(root.colContainer, root.colAccent, 0.88) : root.colContainer,
+            cardGlass.live ? 0.28 : 0)
 
         Behavior on color {
             ColorAnimation { duration: 160; easing.type: Easing.OutCubic }

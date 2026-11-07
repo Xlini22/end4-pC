@@ -16,6 +16,7 @@ Item {
     property bool smooth: false
     readonly property var smoothCurve: [0.32, 0.72, 0, 1, 1, 1]
     readonly property real speed: Math.max(0.5, Config.options.settings.animationSpeed ?? 1)
+    readonly property real exitDuration: smooth ? 220 / speed : animIndex * (staggerMs - 4) + 280 / speed
 
     property real animScale: active ? 1 : minScale
     property real animOpacity: active || !fade ? 1 : 0

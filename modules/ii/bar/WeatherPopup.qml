@@ -1,6 +1,7 @@
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions as CF
 import QtQuick
 import QtQuick.Layouts
 import qs.modules.ii.bar
@@ -19,12 +20,26 @@ StyledPopup {
         spacing: 4
 
         Rectangle {
+            id: heroCard
             Layout.fillWidth: true
             implicitHeight: heroLayout.implicitHeight + 32
             radius: Appearance.rounding.large
             bottomLeftRadius: Appearance.rounding.small
             bottomRightRadius: Appearance.rounding.small
-            color: Appearance.colors.colPrimaryContainer
+            color: heroGlass.live ? CF.ColorUtils.applyAlpha(Appearance.colors.colPrimaryContainer, 0.72)
+                : Appearance.colors.colPrimaryContainer
+
+            WindowGlass {
+                id: heroGlass
+                anchors.fill: parent
+                z: -1
+                topLeftRadius: heroCard.topLeftRadius
+                topRightRadius: heroCard.topRightRadius
+                bottomLeftRadius: heroCard.bottomLeftRadius
+                bottomRightRadius: heroCard.bottomRightRadius
+                tint: Appearance.colors.colPrimaryContainer
+                frost: Math.max(8, Config.options.background.widgets.glass.haze)
+            }
 
             ColumnLayout {
                 id: heroLayout

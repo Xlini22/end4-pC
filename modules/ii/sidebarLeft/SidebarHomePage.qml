@@ -14,6 +14,8 @@ Item {
     required property var pages
     property bool active: true
     signal pageRequested(string key)
+    readonly property real exitDuration: Math.max(clockCard.exitDuration,
+        cardRepeater.itemAt(cardRepeater.count - 1)?.exitDuration ?? 0)
 
     readonly property var liveMatches: Football.matches.filter(match => Football.isLiveish(match))
     readonly property var nextMatch: {
@@ -88,10 +90,19 @@ Item {
                 travelX: 300
                 travelY: -120
 
+                WindowGlass {
+                    id: clockGlass
+                    anchors.fill: clockBackground
+                    cardRadius: clockBackground.radius
+                    tint: Appearance.colors.colPrimaryContainer
+                    frost: Math.max(8, Config.options.background.widgets.glass.haze)
+                }
+
                 ClippingRectangle {
+                    id: clockBackground
                     anchors.fill: parent
                     radius: Appearance.rounding.large
-                    color: Appearance.colors.colPrimaryContainer
+                    color: ColorUtils.transparentize(Appearance.colors.colPrimaryContainer, clockGlass.live ? 0.28 : 0)
 
                     Item {
                         anchors.fill: parent
@@ -177,6 +188,7 @@ Item {
                 columnSpacing: 10
 
                 Repeater {
+                    id: cardRepeater
                     model: root.pages
                     delegate: SidebarHomeCard {
                         id: homeCard
