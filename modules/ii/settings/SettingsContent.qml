@@ -133,7 +133,8 @@ Item {
                                 StyledText {
                                     text: Config.options.profile.displayName === "" ? SystemInfo.username : Config.options.profile.displayName
                                     font.pixelSize: Appearance.font.pixelSize.normal
-                                    color: Appearance.colors.colOnLayer1
+                                    adaptiveGlass: true
+                                    baseColor: Appearance.colors.colOnLayer1
                                     font.weight: Font.Medium
                                     elide: Text.ElideRight
                                     Layout.maximumWidth: 100
@@ -142,7 +143,8 @@ Item {
                                 StyledText {
                                     id: distroText
                                     font.pixelSize: Appearance.font.pixelSize.smaller
-                                    color: Appearance.colors.colSubtext
+                                    adaptiveGlass: true
+                                    baseColor: Appearance.colors.colSubtext
                                     elide: Text.ElideRight
                                     Layout.maximumWidth: 100
 

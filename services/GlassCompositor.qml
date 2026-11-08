@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Hyprland
+import Quickshell.Wayland
 import qs
 import qs.modules.common
 import qs.services
@@ -21,6 +22,88 @@ Singleton {
     property bool available: false
     property bool enhancedAvailable: false
     property bool frostedAvailable: false
+    property bool windowFrostedAvailable: false
+    property bool contrastAvailable: false
+    property var contrastSamples: []
+    property int contrastTick: 0
+    readonly property bool contrastActive: enhancedActive && contrastAvailable && GlobalStates.settingsOpen
+        && Config.options.settings.style !== "dashboard"
+
+    function foreground(item, base, previous) {
+        if (!contrastActive || !item.visible || item.QsWindow.window?.WlrLayershell.namespace !== "quickshell:settings") return base
+        const win = item.QsWindow.window
+        const sample = contrastSamples.find(s => s.monitor === win.screen?.name
+            && Math.abs(s.width - win.width) <= 2 && Math.abs(s.height - win.height) <= 2)
+        if (!sample) return base
+        const box = item.mapToItem(win.contentItem, Qt.rect(0, 0, item.width, item.height))
+        const luminance = localLuminance(sample, box)
+        if (luminance < 0) return base
+        const light = Qt.rgba(231 / 255, 237 / 255, 242 / 255, base.a)
+        const dark = Qt.rgba(27 / 255, 34 / 255, 41 / 255, base.a)
+        const linear = v => v <= .04045 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4)
+        const ratio = color => {
+            const ink = .2126 * linear(color.r) + .7152 * linear(color.g) + .0722 * linear(color.b)
+            return (Math.max(ink, luminance) + .05) / (Math.min(ink, luminance) + .05)
+        }
+        const lightRatio = ratio(light), darkRatio = ratio(dark)
+        // Keep one ink for the whole label; hysteresis avoids oscillation near equal contrast.
+        const wasDark = previous && previous.r < .2
+        const currentRatio = wasDark ? darkRatio : lightRatio
+        const otherRatio = wasDark ? lightRatio : darkRatio
+        const switchInk = (currentRatio < 4.5 && otherRatio >= 4.5) || otherRatio > currentRatio * 1.15
+        const darkInk = switchInk ? !wasDark : wasDark
+        return darkInk ? dark : light
+    }
+
+    function localLuminance(sample, box) {
+        const [x, y, w, h] = sample.rect
+        const cx = box.x + box.width / 2, cy = box.y + box.height / 2
+        if (cx < x || cy < y || cx > x + w || cy > y + h) return -1
+        const col = Math.max(0, Math.min(sample.columns - 1, Math.floor((cx - x) / w * sample.columns)))
+        const row = Math.max(0, Math.min(sample.rows - 1, Math.floor((cy - y) / h * sample.rows)))
+        let total = 0, count = 0
+        for (let j = Math.max(0, row - 1); j <= Math.min(sample.rows - 1, row + 1); ++j)
+            for (let i = Math.max(0, col - 1); i <= Math.min(sample.columns - 1, col + 1); ++i) {
+                total += sample.luma[j * sample.columns + i] / 255
+                ++count
+            }
+        return total / count
+    }
+
+    function validContrast(sample) {
+        return sample?.name === "quickshell:settings" && typeof sample.monitor === "string"
+            && Number.isFinite(sample.width) && sample.width > 0 && Number.isFinite(sample.height) && sample.height > 0
+            && Array.isArray(sample.rect) && sample.rect.length === 4 && sample.rect.every(Number.isFinite)
+            && sample.rect[2] > 0 && sample.rect[3] > 0 && sample.columns === 32 && sample.rows === 24
+            && Array.isArray(sample.luma) && sample.luma.length === 768
+            && sample.luma.every(v => Number.isInteger(v) && v >= 0 && v <= 255)
+    }
+
+    onContrastActiveChanged: if (!contrastActive) contrastSamples = []
+    Timer {
+        interval: 1250; repeat: true; triggeredOnStart: true
+        running: root.contrastActive
+        onTriggered: if (!contrastSocket.connected) contrastSocket.connected = true
+    }
+    Socket {
+        id: contrastSocket
+        property bool receivedReply: false
+        path: regionSocket.path
+        onConnectionStateChanged: if (connected) { receivedReply = false; write("/end4contrast"); flush() }
+        // Hyprland closes each IPC connection after replying; that close must retain the sample.
+        onError: if (!receivedReply || !connected) { root.contrastSamples = []; root.contrastTick++ }
+        parser: SplitParser {
+            onRead: data => {
+                try {
+                    const samples = JSON.parse(data)
+                    if (!Array.isArray(samples) || samples.length > 32 || !samples.every(root.validContrast)) throw new Error("Invalid contrast samples")
+                    contrastSocket.receivedReply = true
+                    root.contrastSamples = root.contrastActive ? samples : []
+                } catch (error) { root.contrastSamples = [] }
+                root.contrastTick++
+            }
+        }
+    }
     readonly property bool enhancedActive: active && enhancedAvailable && Config.options.background.widgets.glass.enhanced
     property var glassItems: []
     property bool regionsPending: false
@@ -85,6 +168,7 @@ Singleton {
     onEnhancedActiveChanged: queueRegions()
     onEnhancedAvailableChanged: queueRegions()
     onFrostedAvailableChanged: queueRegions()
+    onWindowFrostedAvailableChanged: { queueRegions(); applyTimer.restart() }
 
     Socket {
         id: regionSocket
@@ -147,7 +231,7 @@ Singleton {
         for (const client of HyprlandData.windowList) {
             if (client.pid !== Quickshell.processId) continue
             const tagged = client.tags?.includes("hyprglass_enabled") ?? false
-            const wanted = active && client.title === "illogical-impulse Settings"
+            const wanted = active && windowFrostedAvailable && client.title === "illogical-impulse Settings"
             if (tagged !== wanted) {
                 const tag = (wanted ? "+" : "-") + "hyprglass_enabled"
                 commands.push(root.lua
@@ -193,9 +277,10 @@ Singleton {
             return JSON.stringify({ enabled: root.enabled, available: root.available, active: root.active,
                 reason: root.reason, lua: root.lua, pending: applyTimer.running, updating: updater.running,
                 writes: root.configurationWrites, captures: GlassLayers.backdropConsumers,
-                requested: Config.options.background.widgets.glass.trueGlassy, locked: GlobalStates.screenLocked,
+                requested: root.enabled, locked: GlobalStates.screenLocked,
                 enhanced: root.enhancedActive, enhancedRequested: Config.options.background.widgets.glass.enhanced,
-                enhancedAvailable: root.enhancedAvailable, frostedAvailable: root.frostedAvailable, regionWrites: root.regionWrites })
+                enhancedAvailable: root.enhancedAvailable, frostedAvailable: root.frostedAvailable,
+                windowFrostedAvailable: root.windowFrostedAvailable, contrastAvailable: root.contrastAvailable, regionWrites: root.regionWrites })
         }
     }
 
@@ -227,6 +312,8 @@ Singleton {
                     root.available = result.available
                     root.enhancedAvailable = result.enhanced ?? false
                     root.frostedAvailable = result.frosted ?? false
+                    root.windowFrostedAvailable = result.windowFrosted ?? false
+                    root.contrastAvailable = result.contrast ?? false
                     root.reason = result.reason
                     if (root.available) applyTimer.restart()
                 } catch (error) { root.available = false; root.reason = String(error) }

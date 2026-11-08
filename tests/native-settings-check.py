@@ -34,6 +34,21 @@ ShellRoot {
             WindowGlass { anchors.fill: parent; cardRadius: 20 }
         }
     }
+    property string contrastBackground: ""
+    PanelWindow {
+        visible: contrastBackground !== ""
+        anchors { top: true; bottom: true; left: true; right: true }
+        WlrLayershell.namespace: "end4:contrast-test"
+        WlrLayershell.layer: WlrLayer.Bottom
+        exclusiveZone: 0
+        color: contrastBackground === "black" ? "black" : "white"
+        Rectangle {
+            visible: contrastBackground === "split" || contrastBackground === "vertical"
+            width: contrastBackground === "split" ? parent.width * .27 : parent.width
+            height: contrastBackground === "vertical" ? parent.height / 2 : parent.height
+            color: "black"
+        }
+    }
     Settings.Settings {}
     Window { id: red; visible: true; title: "glass-red"; color: "#c62828"; width: 1000; height: 1100 }
     Window { id: blue; visible: true; title: "glass-blue"; color: "#1565c0"; width: 1000; height: 1100 }
@@ -47,6 +62,25 @@ ShellRoot {
             if (item.pages !== undefined && item.currentPage !== undefined) return item
         return null
     }
+    function rows(item, result) {
+        if (item.nativeRegion !== undefined && item.parent?.isFirst !== undefined) result.push(item)
+        for (const child of item.children ?? []) rows(child, result)
+    }
+    function labels(item, result) {
+        if (item.adaptiveGlass && item.visible && item.text?.length > 0) {
+            const box = item.mapToItem(null, Qt.rect(0, 0, item.width, item.height))
+            const c = item.color, x = box.x + box.width / 2, y = box.y + box.height / 2
+            let clipped = false
+            for (let parent = item.parent; parent; parent = parent.parent) if (parent.clip) {
+                const clip = parent.mapToItem(null, Qt.rect(0, 0, parent.width, parent.height))
+                if (x < clip.x || y < clip.y || x >= clip.x + clip.width || y >= clip.y + clip.height) { clipped = true; break }
+            }
+            if (!clipped && box.x >= 0 && box.y >= 0 && box.x + box.width <= 950 && box.y + box.height <= 1023)
+                result.push({text:item.text, x, y, ink:[c.r,c.g,c.b]})
+        }
+        for (const child of item.children ?? []) labels(child,result)
+    }
+    function viewport() { return GlobalStates.currentPageInstance ? find(GlobalStates.currentPageInstance, item => item.contentY !== undefined) : null }
     IpcHandler {
         target: "settings-check"
         function background(value: bool): void { red.visible = value; blue.visible = value }
@@ -56,6 +90,9 @@ ShellRoot {
             if (force) GlassCompositor.frostedAvailable = true
             GlobalStates.settingsOpen = true
         }
+        function contrast(value: string): void { contrastBackground = value }
+        function scroll(): void { viewport().contentY += 160 }
+        function burst(): void { for (let n=0;n<80;n++) viewport().contentY += 1 }
         function navigate(): void { find(content(), item => item.buttonText === "Interface").click() }
         function move(dx: real, dy: real): void {
             let item = content()
@@ -73,7 +110,17 @@ ShellRoot {
                 const c = item.buttonColor
                 controls.push({name, x: p.x, y: p.y, rgb: [c.r, c.g, c.b].map(v => Math.round(v * 255))})
             }
-            return JSON.stringify({native: GlassCompositor.active, frosted: GlassCompositor.frostedAvailable, regions: GlassCompositor.regionsApplied,
+            const inks=[]
+            if (pane) labels(pane,inks)
+            const allRows=[]
+            if (pane) rows(pane,allRows)
+            const view=viewport()
+            const box=view?.mapToItem(null, Qt.rect(0,0,view.width,view.height))
+            const materials=allRows.map(item=>({live:item.live, satin:item.satinRow, frost:item.frost,
+                track:item.trackGeometry, watches:item.ancestorGeometry.length, alpha:item.parent.color.a,
+                region:item.nativeRegion()?.values}))
+            return JSON.stringify({inks, samples:GlassCompositor.contrastSamples.length, contrast:GlassCompositor.contrastAvailable, rows:materials, viewport:box, writes:GlassCompositor.regionWrites,
+                rejected:GlassCompositor.regionsRejected, native: GlassCompositor.active, frosted: GlassCompositor.frostedAvailable, regions: GlassCompositor.regionsApplied,
                 ready: pane !== null, page: pane?.pages[pane.currentPage]?.id, controls})
         }
     }
@@ -114,6 +161,8 @@ try:
         time.sleep(.1)
     assert state.get('page') == 'interface' and len(state['controls']) == 2, (state, (base / 'fixture.log').read_text()[-4000:])
     print('Real settings regions:', state['regions'], flush=True)
+    time.sleep(.8)
+    state=json.loads(ipc('state'))
     control = scope['control']
     assert control('dispatch', 'workspace', '2') == 'ok'
     checks = 0
@@ -133,8 +182,59 @@ try:
                     assert max(abs(a - b) for a, b in zip(actual, item['rgb'])) <= 8, ('Control missing or detached', item, actual)
                     checks += 1
             time.sleep(.1)
+    for _ in range(3):
+        ipc('scroll')
+        time.sleep(.35)
+        state=json.loads(ipc('state'))
+        assert state['rows'] and not state['rejected'], state
+        assert all(r['live'] and r['satin'] and r['frost']>=8 and r['alpha']==0 for r in state['rows']),state['rows'][:2]
+        assert all(not r['track'] and r['watches']==0 for r in state['rows']),state['rows'][:2]
+        visible=[r['region'] for r in state['rows'] if r.get('region')]
+        assert 0<len(visible)<len(state['rows']),state['rows'][:2]
+        box=state['viewport']
+        for r in visible:
+            assert r[0]>=box['x']-1 and r[1]>=box['y']-1,(r,box)
+            assert r[0]+r[2]<=box['x']+box['width']+1 and r[1]+r[3]<=box['y']+box['height']+1,(r,box)
+        native=json.loads(control('end4glass'))
+        assert native['regions']==len(visible)+3,(native,len(visible))
+    before=state['writes']
+    ipc('burst')
+    time.sleep(.4)
+    state=json.loads(ipc('state'))
+    assert 1<=state['writes']-before<=2,('Scroll updates were not coalesced per frame',before,state)
+    print('Visible satin rows:',len(visible),'of',len(state['rows']),'burst writes:',state['writes']-before,flush=True)
+    if '--contrast' in sys.argv:
+        # Native RGB never leaves the compositor; only its bounded luminance grid reaches QML.
+        for mode in ('black', 'white', 'split', 'vertical', 'black'):
+            ipc('contrast', mode)
+            time.sleep(3)  # Allow two 1.25-second contrast polls, including asynchronous GPU completion.
+            state = json.loads(ipc('state'))
+            assert state['contrast'] and state['samples'] == 1, (mode, state)
+            inks = state['inks']
+            assert inks, (mode, state)
+            if mode in ('black', 'white'):
+                expected = [231/255,237/255,242/255] if mode == 'black' else [27/255,34/255,41/255]
+                assert all(max(abs(v - e) for v,e in zip(ink['ink'],expected)) < .02 for ink in inks), (mode, inks)
+            else:
+                monitor = json.loads(control('monitors', '-j'))[0]
+                axis = 'x' if mode == 'split' else 'y'
+                boundary = monitor['width' if mode == 'split' else 'height'] * (.27 if mode == 'split' else .5)
+                low = [i for i in inks if i[axis] < boundary - 45]
+                high = [i for i in inks if i[axis] > boundary + 45]
+                assert low and high, (mode, inks)
+                assert all(min(i['ink']) > .9 for i in low), (mode, low)
+                assert all(max(i['ink']) < .2 for i in high), (mode, high)
+            print('Adaptive text:',mode,'labels:',len(inks),flush=True)
+        before = state['writes']
+        time.sleep(.8)
+        state = json.loads(ipc('state'))
+        assert state['writes'] == before, 'Contrast polling must not resend geometry'
     assert control('dispatch', 'exit') == 'ok'
     assert scope['processes'][0].wait(timeout=10) == 0
     print(f'Real native Settings: Interface navigation and {checks} control pixels passed across moves')
+except Exception:
+    if 'base' in scope:
+        Path('/tmp/end4-rows-fixture.log').write_text((scope['base']/'fixture.log').read_text())
+    raise
 finally:
     if 'cleanup' in scope: scope['cleanup']()

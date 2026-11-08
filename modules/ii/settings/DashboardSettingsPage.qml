@@ -397,8 +397,8 @@ Item {
     readonly property var layoutResult: computeLayout(tokens)
     readonly property var layoutMap: layoutResult.map
 
-    onTokensChanged: flick.contentY = 0
-    onGroupChanged: flick.contentY = 0
+    onTokensChanged: { scrollAnimation.stop(); flick.contentY = 0 }
+    onGroupChanged: { scrollAnimation.stop(); flick.contentY = 0 }
 
     Component.onCompleted: {
         if (WM.compositor === "hyprland") HyprlandOptions.refresh();
@@ -437,13 +437,23 @@ Item {
 
     function scrollToSection(index) {
         const place = layoutMap["section:" + index];
-        if (place) flick.contentY = Math.max(0, Math.min(place.y, Math.max(0, flick.contentHeight - flick.height)));
+        if (place) scrollBy(place.y - flick.contentY);
     }
 
     function scrollBy(delta) {
-        flick.contentY = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), flick.contentY + delta));
+        scrollAnimation.stop();
+        scrollAnimation.to = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), flick.contentY + delta));
+        if (touchpadScroll.scrolling || flick.moving) flick.contentY = scrollAnimation.to;
+        else scrollAnimation.start();
     }
 
+    NumberAnimation {
+        id: scrollAnimation
+        target: flick
+        property: "contentY"
+        duration: 180
+        easing.type: Easing.OutCubic
+    }
 
         DashboardGroupRail {
             id: rail
@@ -538,6 +548,11 @@ Item {
 
         Flickable {
             id: flick
+            readonly property bool dashboardSettingsViewport: true
+            readonly property var glassGeometry: [x, y, width, height]
+            onGlassGeometryChanged: if (GlassCompositor.enhancedActive) glassFrame.running = true
+            onContentYChanged: if (GlassCompositor.enhancedActive) glassFrame.running = true
+            onMovingChanged: if (moving) scrollAnimation.stop()
             anchors.left: rail.right
             anchors.leftMargin: 16
             anchors.right: parent.right
@@ -554,11 +569,20 @@ Item {
             TouchpadScrollArea {
                 id: touchpadScroll
                 flickable: flick
+                visible: true
+                touchpadScrollFactor: Config.options.interactions.scrolling.fasterTouchpadScroll
+                    ? Config.options.interactions.scrolling.touchpadScrollFactor : 1
+                touchpadSensitivity: Config.options.interactions.scrolling.fasterTouchpadScroll
+                    ? Config.options.interactions.scrolling.touchpadSensitivity : 1
+                onScrollingChanged: if (scrolling) scrollAnimation.stop()
             }
 
-            Behavior on contentY {
-                enabled: !touchpadScroll.scrolling && !flick.moving && !flick.dragging
-                NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+            FrameAnimation {
+                id: glassFrame
+                onTriggered: {
+                    running = false
+                    GlassCompositor.queueRegions()
+                }
             }
 
             Item {

@@ -1,2 +1,3 @@
 # Unified diff context includes otherwise empty lines.
 scripts/airdrop/*.patch whitespace=-blank-at-eol
+scripts/glass/native/*.patch whitespace=-blank-at-eol

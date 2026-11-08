@@ -1,6 +1,7 @@
 import QtQuick
 import qs.modules.common
 import qs.modules.common.functions
+import qs.services
 
 Rectangle {
     id: root
@@ -23,9 +24,33 @@ Rectangle {
     property real offsetY: travelY
 
     readonly property bool glassDimmed: Config.options.background.widgets.glass.enable && Qt.colorEqual(tint, Appearance.colors.colLayer1)
+    readonly property Item glassViewport: {
+        for (let item = parent; item; item = item.parent)
+            if (item.clip === true) return item
+        return null
+    }
 
-    color: blurSource ? "transparent" : glassDimmed ? ColorUtils.applyAlpha(ColorUtils.mix(tint, "#000000", 0.5), 0.6) : tint
+    color: blurSource ? "transparent" : cardGlass.live ? ColorUtils.applyAlpha(tint, 0.72)
+        : glassDimmed ? ColorUtils.applyAlpha(ColorUtils.mix(tint, "#000000", 0.5), 0.6) : tint
     radius: cardRadius
+
+    WindowGlass {
+        id: cardGlass
+        anchors.fill: parent
+        // Render the glass behind the card's coloured wash, including the wallpaper fallback.
+        z: -1
+        glassEnabled: !root.blurSource && GlassCompositor.windowFrostedAvailable
+        cardRadius: root.cardRadius
+        tint: root.tint
+        frost: Math.max(8, Config.options.background.widgets.glass.haze)
+        nativeClip: root.glassViewport
+        trackGeometry: root.glassViewport?.dashboardSettingsViewport !== true
+    }
+
+    // The settings viewport tracks scrolling once; each tile only tracks its own animation and loader slot.
+    readonly property var settingsGlassGeometry: cardGlass.enhancedNative && !cardGlass.trackGeometry
+        ? [x, y, scale, opacity, offsetX, offsetY, parent?.x, parent?.y, parent?.scale, parent?.opacity] : []
+    onSettingsGlassGeometryChanged: if (cardGlass.enhancedNative) GlassCompositor.queueRegions()
 
     transformOrigin: Item.Center
     scale: animScale
@@ -77,6 +102,6 @@ Rectangle {
     Connections {
         target: root.pager
         ignoreUnknownSignals: true
-        function onPageExitRequested() { exitAnim.restart() }
+        function onPageExitRequested() { enterAnim.stop(); exitAnim.restart() }
     }
 }

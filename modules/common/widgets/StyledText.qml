@@ -1,5 +1,6 @@
 import qs.modules.common
 import QtQuick
+import qs.services
 
 Text {
     id: root
@@ -18,7 +19,23 @@ Text {
         pixelSize: Appearance?.font.pixelSize.small ?? 15
         variableAxes: shouldUseNumberFont ? ({}) : Appearance.font.variableAxes.main
     }
-    color: Appearance?.m3colors.m3onBackground ?? "black"
+    // Opt in only for labels painted directly on glass; filled controls keep their own ink.
+    property bool adaptiveGlass: false
+    property color baseColor: Appearance?.m3colors.m3onBackground ?? "black"
+    property color glassInk: baseColor
+    function updateGlassInk() {
+        glassInk = adaptiveGlass ? GlassCompositor.foreground(root, baseColor, glassInk) : baseColor
+    }
+    onAdaptiveGlassChanged: updateGlassInk()
+    onBaseColorChanged: updateGlassInk()
+    onVisibleChanged: if (visible) updateGlassInk()
+    color: adaptiveGlass ? glassInk : baseColor
+    Connections {
+        target: GlassCompositor
+        enabled: root.adaptiveGlass && root.visible
+        function onContrastTickChanged() { root.updateGlassInk() }
+        function onContrastActiveChanged() { root.updateGlassInk() }
+    }
     linkColor: Appearance?.m3colors.m3primary
 
     component Anim: NumberAnimation {
@@ -29,6 +46,7 @@ Text {
     }
 
     Component.onCompleted: {
+        root.updateGlassInk()
         textAnimationBehavior.originalX = root.x;
         textAnimationBehavior.originalY = root.y;
     }

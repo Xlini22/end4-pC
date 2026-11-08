@@ -42,11 +42,13 @@ ContentPage {
                     MaterialSymbol {
                         text: "brush"
                         iconSize: Appearance.font.pixelSize.normal + 5
-                        color: Appearance.colors.colOnLayer0
+                        adaptiveGlass: true
+                        baseColor: Appearance.colors.colOnLayer0
                     }
                     StyledText {
                         text: Translation.tr("Accent")
-                        color: Appearance.colors.colOnLayer0
+                        adaptiveGlass: true
+                        baseColor: Appearance.colors.colOnLayer0
                     }
                     Item { Layout.fillWidth: true }
                     CustomColorSelectionArray {
@@ -67,11 +69,13 @@ ContentPage {
                     MaterialSymbol {
                         text: "colors"
                         iconSize: Appearance.font.pixelSize.normal + 5
-                        color: Appearance.colors.colOnLayer0
+                        adaptiveGlass: true
+                        baseColor: Appearance.colors.colOnLayer0
                     }
                     StyledText {
                         text: Translation.tr("Secondary")
-                        color: Appearance.colors.colOnLayer0
+                        adaptiveGlass: true
+                        baseColor: Appearance.colors.colOnLayer0
                     }
                     Item { Layout.fillWidth: true }
                     CustomColorSelectionArray {

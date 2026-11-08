@@ -17,6 +17,8 @@ Item {
     property real bottomLeftRadius: cardRadius
     property color tint: "transparent"
     property bool glassEnabled: true
+    property bool trackGeometry: true
+    property Item nativeClip: null
     property bool fullscreenSurface: false
     property real tintStrength: 0
     property real frost: 0
@@ -31,7 +33,7 @@ Item {
         && WM.compositor === "hyprland" && !GlobalStates.screenLocked && !fullscreenSurface
         && !!win && (floating || popup || win.WlrLayershell.layer >= WlrLayer.Top)
     readonly property bool nativeGlass: windowBackdrop && GlassCompositor.active
-        && (floating ? win.title === "illogical-impulse Settings"
+        && (floating ? GlassCompositor.windowFrostedAvailable && win.title === "illogical-impulse Settings"
             : !popup && GlassCompositor.namespaces.includes(win.WlrLayershell.namespace))
     // ponytail: rotated layer outputs retain standard glass until card geometry also carries output transforms.
     readonly property bool enhancedNative: nativeGlass && GlassCompositor.enhancedActive
@@ -84,25 +86,43 @@ Item {
     }
 
     function nativeRegion() {
-        if (!enhancedNative || !tracking || floating || width <= 0 || height <= 0 || !win?.screen) return null
-        const rect = mapToItem(win.contentItem, Qt.rect(0, 0, width, height))
+        if (!enhancedNative || !tracking || width <= 0 || height <= 0 || !win?.screen) return null
+        if (floating && (!GlassCompositor.windowFrostedAvailable || frost <= 0)) return null
+        const full = mapToItem(win.contentItem, Qt.rect(0, 0, width, height))
+        let rect = full
+        if (nativeClip) {
+            const clip = nativeClip.mapToItem(win.contentItem, Qt.rect(0, 0, nativeClip.width, nativeClip.height))
+            const x = Math.max(rect.x, clip.x), y = Math.max(rect.y, clip.y)
+            rect = Qt.rect(x, y, Math.min(rect.x + rect.width, clip.x + clip.width) - x,
+                Math.min(rect.y + rect.height, clip.y + clip.height) - y)
+        }
         if (rect.width <= 0 || rect.height <= 0) return null
         let opacity = root.opacity
         for (let item = parent; item; item = item.parent) opacity *= item.opacity
         if (opacity <= 0.001) return null
-        const scale = Math.min(rect.width / width, rect.height / height)
+        const scale = Math.min(full.width / width, full.height / height)
         const radius = value => Math.max(0, Math.min(value * scale, rect.width / 2, rect.height / 2))
         const values = [rect.x, rect.y, rect.width, rect.height,
-                radius(topLeftRadius), radius(topRightRadius), radius(bottomRightRadius), radius(bottomLeftRadius),
+                // ponytail: clipped rows use visible-box optics; exact cut edges need native clip planes.
+                rect.x > full.x || rect.y > full.y ? 0 : radius(topLeftRadius),
+                rect.x + rect.width < full.x + full.width || rect.y > full.y ? 0 : radius(topRightRadius),
+                rect.x + rect.width < full.x + full.width || rect.y + rect.height < full.y + full.height ? 0 : radius(bottomRightRadius),
+                rect.x > full.x || rect.y + rect.height < full.y + full.height ? 0 : radius(bottomLeftRadius),
                 flareLeft * scale, flareRight * scale, hangLeft * scale, hangRight * scale, edge, opacity]
         if (GlassCompositor.frostedAvailable) values.push(Math.max(0, Math.min(32, frost)) * scale)
-        return { win, name: win.WlrLayershell.namespace, monitor: win.screen.name,
-            values: values.map(value => Math.round(value * 1000) / 1000) }
+        const rounded = values.map(value => Math.round(value * 1000) / 1000)
+        if (rounded[2] <= 0 || rounded[3] <= 0) return null
+        // Rounded radii must still fit a thin visible slice during scrolling.
+        const maxRadius = Math.floor(Math.min(rounded[2], rounded[3]) * 500) / 1000
+        for (let i = 4; i < 8; i++) rounded[i] = Math.min(rounded[i], maxRadius)
+        return { win, name: floating ? "quickshell:dashboard" : win.WlrLayershell.namespace, monitor: win.screen.name,
+            values: rounded }
     }
     readonly property string nativeShape: JSON.stringify([topLeftRadius, topRightRadius, bottomRightRadius,
         bottomLeftRadius, flareLeft, flareRight, hangLeft, hangRight, edge, root.opacity, frost])
     onNativeShapeChanged: GlassCompositor.queueRegions()
     onEnhancedNativeChanged: GlassCompositor.queueRegions()
+    onNativeClipChanged: GlassCompositor.queueRegions()
 
     function windowVisible(client, workspace, special, processId) {
         return !!client && client.mapped && !client.hidden && client.pid !== processId
@@ -202,13 +222,13 @@ Item {
 
     function kick() {
         GlassCompositor.queueRegions()
-        if (!tracking) return
+        if (!tracking || !trackGeometry) return
         refresh()
         if (win && !floating && !fullscreenSurface && !nativeGlass) GlassLayers.refresh()
     }
 
     readonly property var ancestorGeometry: {
-        if (!tracking) return []
+        if (!tracking || !trackGeometry) return []
         const sig = []
         for (let it = root; it; it = it.parent) {
             sig.push(it.x, it.y, it.width, it.height, it.scale, it.opacity)
@@ -219,7 +239,7 @@ Item {
         return sig
     }
 
-    onAncestorGeometryChanged: { kick(); Qt.callLater(root.refresh) }
+    onAncestorGeometryChanged: { kick(); if (trackGeometry) Qt.callLater(root.refresh) }
     onTrackingChanged: kick()
     onParentChanged: kick()
     onXChanged: kick()

@@ -51,7 +51,8 @@ RowLayout {
         StyledText {
             Layout.fillWidth: true
             text: root.text
-            color: root.colLabel
+            adaptiveGlass: true
+            baseColor: root.colLabel
             opacity: root.enabled ? 1 : 0.4
         }
         StyledText {
@@ -59,7 +60,8 @@ RowLayout {
             visible: root.description.length > 0
             text: root.description
             font.pixelSize: Appearance.font.pixelSize.smaller
-            color: Appearance.colors.colSubtext
+            adaptiveGlass: true
+            baseColor: Appearance.colors.colSubtext
             wrapMode: Text.Wrap
             opacity: root.enabled ? 1 : 0.4
         }

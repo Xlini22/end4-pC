@@ -37,7 +37,8 @@ RowLayout {
             id: labelWidget
             Layout.preferredWidth: root.textWidth
             text: root.text
-            color: Appearance.colors.colOnSecondaryContainer
+            adaptiveGlass: true
+            baseColor: Appearance.colors.colOnSecondaryContainer
         }
     }
     StyledSlider {

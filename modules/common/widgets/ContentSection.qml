@@ -104,7 +104,8 @@ ColumnLayout {
                 text: root.title
                 font.pixelSize: Appearance.font.pixelSize.larger
                 font.weight: Font.Medium
-                color: Qt.tint(Appearance.colors.colOnSecondaryContainer, Qt.rgba(Appearance.colors.colPrimary.r, Appearance.colors.colPrimary.g, Appearance.colors.colPrimary.b, root.flashTint))
+                adaptiveGlass: true
+                baseColor: Qt.tint(Appearance.colors.colOnSecondaryContainer, Qt.rgba(Appearance.colors.colPrimary.r, Appearance.colors.colPrimary.g, Appearance.colors.colPrimary.b, root.flashTint))
 
                 TitleScanLine {
                     anchors.left: parent.left
@@ -122,7 +123,8 @@ ColumnLayout {
                 Layout.leftMargin: 2
                 text: root.hintIcon
                 iconSize: Appearance.font.pixelSize.larger
-                color: Appearance.colors.colSubtext
+                adaptiveGlass: true
+                baseColor: Appearance.colors.colSubtext
                 opacity: hintArea.containsMouse ? 1 : 0.55
 
                 Behavior on opacity {
@@ -149,7 +151,8 @@ ColumnLayout {
                 visible: root.collapsible
                 text: root.collapsed ? "expand_more" : ""
                 iconSize: Appearance.font.pixelSize.larger
-                color: Appearance.colors.colOnSecondaryContainer
+                adaptiveGlass: true
+                baseColor: Appearance.colors.colOnSecondaryContainer
                 opacity: 0.7
             }
         }

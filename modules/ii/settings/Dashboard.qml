@@ -17,10 +17,12 @@ Scope {
         sourceComponent: FloatingWindow {
             id: window
             title: "illogical-impulse Settings"
-            color: GlassCompositor.active ? "transparent" : Appearance.colors.colUiBackground
+            surfaceFormat.opaque: false // Glassy can become available after the window is created.
+            color: GlassCompositor.active && GlassCompositor.windowFrostedAvailable ? "transparent" : Appearance.colors.colUiBackground
 
             WindowGlass {
                 anchors.fill: parent
+                glassEnabled: GlassCompositor.windowFrostedAvailable
                 tint: Appearance.colors.colUiBackground
             }
 

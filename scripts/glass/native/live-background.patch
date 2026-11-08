@@ -26,47 +26,129 @@ index ef3b5f0..2cd011a 100644
 +
 +-include $(OBJ:.o=.d)
 diff --git a/src/GlassDecoration.cpp b/src/GlassDecoration.cpp
-index 72652dd..956b05e 100644
+index 72652dd..9bdaee9 100644
 --- a/src/GlassDecoration.cpp
 +++ b/src/GlassDecoration.cpp
-@@ -164,7 +164,7 @@ void CGlassDecoration::renderPass(PHLMONITOR monitor, const float& alpha) {
+@@ -17,6 +17,18 @@ CGlassDecoration::CGlassDecoration(PHLWINDOW window)
+     : IHyprWindowDecoration(window), m_window(window) {
+ }
+ 
++CGlassDecoration::~CGlassDecoration() {
++    GLint readFB = 0, drawFB = 0;
++    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFB);
++    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFB);
++    m_sampleFramebuffer.reset();
++    m_blurTempFramebuffer.reset();
++    m_frostFramebuffer.reset();
++    m_frostTempFramebuffer.reset();
++    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFB);
++    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFB);
++}
++
+ bool CGlassDecoration::resolveEnabled() const {
+     const auto& config = g_pGlobalState->config;
+     const bool globalEnabled = config.enabled && **config.enabled;
+@@ -164,7 +176,51 @@ void CGlassDecoration::renderPass(PHLMONITOR monitor, const float& alpha) {
      int blurIterations   = std::clamp(static_cast<int>(resolvePresetInt(ctx, &SPresetValues::blurIterations, &SOverridableConfig::blurIterations)), 1, 5);
      int viewportWidth    = static_cast<int>(g_pHyprRenderer->m_renderData.pMonitor->m_transformedSize.x);
      int viewportHeight   = static_cast<int>(g_pHyprRenderer->m_renderData.pMonitor->m_transformedSize.y);
 -    GlassRenderer::blurBackground(m_sampleFramebuffer, blurRadius, blurIterations, dynamic_cast<Render::GL::CGLFramebuffer*>(source.get())->getFBID(), viewportWidth, viewportHeight);
 +    GlassRenderer::blurBackground(m_sampleFramebuffer, m_blurTempFramebuffer, blurRadius, blurIterations, dynamic_cast<Render::GL::CGLFramebuffer*>(source.get())->getFBID(), viewportWidth, viewportHeight);
++
++    const auto client = g_pGlobalState->glassClients.find(window->getPID());
++    const bool enhanced = client != g_pGlobalState->glassClients.end() && client->second.enhanced;
++    const SGlassSurface* surface = nullptr;
++    if (enhanced && window->m_title == "illogical-impulse Settings" && monitor->m_transform == WL_OUTPUT_TRANSFORM_NORMAL) {
++        for (const auto& candidate : client->second.surfaces) {
++            if (candidate.name != "quickshell:dashboard" || candidate.monitor != monitor->m_name ||
++                std::abs(candidate.width - window->m_realSize->goal().x) > 2 ||
++                std::abs(candidate.height - window->m_realSize->goal().y) > 2) continue;
++            surface = &candidate;
++            break;
++        }
++    }
++    GlassRenderer::SMaskInfo material{}; // No surface texture: Qt still draws the foreground normally.
++    if (surface) {
++        material.enhanced = true;
++        const float sx = transformBox.w / surface->width, sy = transformBox.h / surface->height;
++        float frost = 0;
++        for (auto region : surface->regions) {
++            region.rect = {region.rect[0] * sx, region.rect[1] * sy, region.rect[2] * sx, region.rect[3] * sy};
++            region.frost *= std::min(sx, sy);
++            for (float& r : region.radii) r *= std::min(sx, sy);
++            for (float& f : region.features) f *= std::min(sx, sy);
++            if (region.opacity > 0) frost = std::max(frost, region.frost);
++            material.regions.push_back(region);
++        }
++        if (frost > 0) {
++            // ponytail: visible Dashboard cards share one strongest blur; independent strengths need per-material buffers.
++            const int sourceW = m_sampleFramebuffer->m_size.x, sourceH = m_sampleFramebuffer->m_size.y;
++            const float support = 3 * frost / downscale;
++            const int factor = support >= 12 ? 2 : 1;
++            const int w = (sourceW + factor - 1) / factor, h = (sourceH + factor - 1) / factor;
++            if (!m_frostFramebuffer) m_frostFramebuffer = g_pHyprRenderer->createFB("hyprglass-window-frost");
++            if (m_frostFramebuffer->m_size != Vector2D(w, h) && !m_frostFramebuffer->alloc(w, h, m_sampleFramebuffer->m_drmFormat)) return;
++            g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, false);
++            glBindFramebuffer(GL_READ_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_sampleFramebuffer.get())->getFBID());
++            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_frostFramebuffer.get())->getFBID());
++            glBlitFramebuffer(0, 0, sourceW, sourceH, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_LINEAR);
++            GlassRenderer::blurBackground(m_frostFramebuffer, m_frostTempFramebuffer,
++                support * std::min(float(w) / sourceW, float(h) / sourceH), 1,
++                dynamic_cast<Render::GL::CGLFramebuffer*>(source.get())->getFBID(), viewportWidth, viewportHeight, nullptr, 64);
++            material.frostTextureId = m_frostFramebuffer->getTexture()->m_texID;
++        }
++    }
  
      float monitorScale  = monitor->m_scale;
      float cornerRadius  = window->rounding() * monitorScale;
-@@ -172,7 +172,9 @@ void CGlassDecoration::renderPass(PHLMONITOR monitor, const float& alpha) {
+@@ -172,7 +228,7 @@ void CGlassDecoration::renderPass(PHLMONITOR monitor, const float& alpha) {
  
      GlassRenderer::applyGlassEffect(m_sampleFramebuffer, source,
                                       windowBox, transformBox, alpha,
 -                                     cornerRadius, roundingPower, m_samplePaddingRatio, ctx);
-+                                     cornerRadius, roundingPower, m_samplePaddingRatio, ctx, nullptr,
-+                                     g_pGlobalState->glassClients.contains(window->getPID()) &&
-+                                     g_pGlobalState->glassClients.at(window->getPID()).enhanced);
++                                     cornerRadius, roundingPower, m_samplePaddingRatio, ctx, surface ? &material : nullptr, enhanced);
  }
  
  eDecorationType CGlassDecoration::getDecorationType() {
 diff --git a/src/GlassDecoration.hpp b/src/GlassDecoration.hpp
-index 4ea0441..b474837 100644
+index 4ea0441..0b44755 100644
 --- a/src/GlassDecoration.hpp
 +++ b/src/GlassDecoration.hpp
-@@ -30,6 +30,8 @@ class CGlassDecoration : public IHyprWindowDecoration {
+@@ -10,7 +10,7 @@
+ class CGlassDecoration : public IHyprWindowDecoration {
+   public:
+     explicit CGlassDecoration(PHLWINDOW window);
+-    ~CGlassDecoration() override = default;
++    ~CGlassDecoration() override;
+ 
+     [[nodiscard]] SDecorationPositioningInfo getPositioningInfo() override;
+     void                                     onPositioningReply(const SDecorationPositioningReply& reply) override;
+@@ -30,6 +30,9 @@ class CGlassDecoration : public IHyprWindowDecoration {
    private:
      PHLWINDOWREF m_window;
      SP<Render::IFramebuffer> m_sampleFramebuffer;
 +    // ponytail: one scratch buffer per surface avoids reallocating between differently sized surfaces.
 +    SP<Render::IFramebuffer> m_blurTempFramebuffer;
++    SP<Render::IFramebuffer> m_frostFramebuffer, m_frostTempFramebuffer;
      Vector2D     m_samplePaddingRatio;
  
      // Track last rendered position/size to detect actual changes and seed damage
 diff --git a/src/GlassLayerSurface.cpp b/src/GlassLayerSurface.cpp
-index 10add31..bbc394e 100644
+index 10add31..2abf7f1 100644
 --- a/src/GlassLayerSurface.cpp
 +++ b/src/GlassLayerSurface.cpp
-@@ -23,6 +23,18 @@ CGlassLayerSurface::CGlassLayerSurface(PHLLS layerSurface)
+@@ -6,6 +6,10 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <iomanip>
++#include <sstream>
++#include <hyprutils/utils/ScopeGuard.hpp>
++#include <drm_fourcc.h>
+ #include <hyprland/src/desktop/Workspace.hpp>
+ #include <GLES3/gl32.h>
+ #include <hyprland/src/render/OpenGL.hpp>
+@@ -23,6 +27,21 @@ CGlassLayerSurface::CGlassLayerSurface(PHLLS layerSurface)
  }
  
  CGlassLayerSurface::~CGlassLayerSurface() {
@@ -75,6 +157,9 @@ index 10add31..bbc394e 100644
 +    GLint readFB = 0, drawFB = 0;
 +    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFB);
 +    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFB);
++    if (m_contrastFence) glDeleteSync(m_contrastFence);
++    if (m_contrastBuffer) glDeleteBuffers(1, &m_contrastBuffer);
++    m_contrastFramebuffer.reset();
 +    m_surfaceTempFramebuffer.reset();
 +    m_sampleFramebuffer.reset();
 +    m_frostFramebuffer.reset();
@@ -85,10 +170,108 @@ index 10add31..bbc394e 100644
      // Damage the area where glass was last drawn so the compositor
      // re-renders it without the glass effect (prevents ghost artifacts).
      if (g_pHyprRenderer && m_lastSize.x > 0 && m_lastSize.y > 0 &&
-@@ -35,6 +47,30 @@ CGlassLayerSurface::~CGlassLayerSurface() {
+@@ -35,6 +54,128 @@ CGlassLayerSurface::~CGlassLayerSurface() {
      }
  }
  
++std::string CGlassLayerSurface::contrastSample() {
++    const auto layer = m_layerSurface.lock();
++    if (!layer || layer->m_fadingOut || layer->m_namespace != "quickshell:settings" || !enhanced()) return "null";
++    const auto now = std::chrono::steady_clock::now();
++    // One wakeup on subscription; polling an idle panel must not force continuous redraws.
++    if (now - m_contrastRequested > std::chrono::seconds(2) || m_contrastFence)
++        g_pHyprRenderer->damageBox(CBox{layer->m_realPosition->value(), layer->m_realSize->value()});
++    m_contrastRequested = now;
++    if (m_contrastReady.time_since_epoch().count() == 0 || m_contrastFailed) return "null";
++    const auto& monitor = layer->m_monitor->m_name;
++    if (std::ranges::any_of(monitor, [](unsigned char c) { return c < 32; })) return "null";
++    std::ostringstream output;
++    output << "{\"name\":\"quickshell:settings\",\"monitor\":" << std::quoted(monitor)
++        << ",\"width\":" << layer->m_realSize->value().x << ",\"height\":" << layer->m_realSize->value().y << ",\"rect\":[";
++    for (size_t i = 0; i < m_contrastBox.size(); ++i) output << (i ? "," : "") << m_contrastBox[i];
++    output << "],\"columns\":32,\"rows\":24,\"luma\":[";
++    for (size_t i = 0; i < m_contrastLuma.size(); ++i) output << (i ? "," : "") << int(m_contrastLuma[i]);
++    output << "]}";
++    return output.str();
++}
++
++void CGlassLayerSurface::sampleContrast(const SP<Render::IFramebuffer>& source, CBox box, const SGlassSurface& surface) {
++    using namespace std::chrono;
++    const auto now = steady_clock::now();
++    if (m_contrastFailed || now - m_contrastRequested > seconds(2) ||
++        (!m_contrastFence && now - m_contrastStarted < milliseconds(250))) return;
++    GLint readFB = 0, drawFB = 0, buffer = 0, alignment = 0, rowLength = 0, skipRows = 0, skipPixels = 0;
++    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &readFB);
++    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFB);
++    glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &buffer);
++    glGetIntegerv(GL_PACK_ALIGNMENT, &alignment);
++    glGetIntegerv(GL_PACK_ROW_LENGTH, &rowLength);
++    glGetIntegerv(GL_PACK_SKIP_ROWS, &skipRows);
++    glGetIntegerv(GL_PACK_SKIP_PIXELS, &skipPixels);
++    const auto restore = Hyprutils::Utils::CScopeGuard([&] {
++        glBindFramebuffer(GL_READ_FRAMEBUFFER, readFB);
++        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFB);
++        glBindBuffer(GL_PIXEL_PACK_BUFFER, buffer);
++        glPixelStorei(GL_PACK_ALIGNMENT, alignment);
++        glPixelStorei(GL_PACK_ROW_LENGTH, rowLength);
++        glPixelStorei(GL_PACK_SKIP_ROWS, skipRows);
++        glPixelStorei(GL_PACK_SKIP_PIXELS, skipPixels);
++    });
++    if (m_contrastFence) {
++        // Never wait on the GPU; a late sample keeps the previous text colours.
++        const auto state = glClientWaitSync(m_contrastFence, 0, 0);
++        if (state == GL_TIMEOUT_EXPIRED) return;
++        if (state == GL_WAIT_FAILED) { m_contrastFailed = true; return; }
++        glBindBuffer(GL_PIXEL_PACK_BUFFER, m_contrastBuffer);
++        const auto* pixels = static_cast<const unsigned char*>(glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, 32 * 24 * 4, GL_MAP_READ_BIT));
++        if (!pixels) { m_contrastFailed = true; return; }
++        const auto linear = [](unsigned char c) { const float v = c / 255.0f; return v <= .04045f ? v / 12.92f : std::pow((v + .055f) / 1.055f, 2.4f); };
++        for (size_t i = 0; i < m_contrastLuma.size(); ++i)
++            m_contrastLuma[i] = std::clamp(std::lround(255 * (.2126f * linear(pixels[i * 4]) + .7152f * linear(pixels[i * 4 + 1]) + .0722f * linear(pixels[i * 4 + 2]))), 0l, 255l);
++        const bool valid = glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
++        glDeleteSync(m_contrastFence); m_contrastFence = nullptr;
++        if (!valid) { m_contrastFailed = true; return; }
++        m_contrastBox = m_contrastPendingBox;
++        m_contrastReady = now;
++        return;
++    }
++    if (now - m_contrastStarted < milliseconds(250)) return;
++    const auto bounds = glassBounds(surface);
++    if (!bounds) return;
++    const auto [x, y, w, h] = *bounds;
++    const double sx = box.w / surface.width, sy = box.h / surface.height;
++    CBox sample{box.x + x * sx, box.y + y * sy, w * sx, h * sy};
++    sample = sample.intersection(CBox{0, 0, source->m_size.x, source->m_size.y});
++    sample.round();
++    if (sample.w <= 0 || sample.h <= 0) return;
++    m_contrastPendingBox = {float((sample.x - box.x) / sx), float((sample.y - box.y) / sy), float(sample.w / sx), float(sample.h / sy)};
++    if (!m_contrastFramebuffer) m_contrastFramebuffer = g_pHyprRenderer->createFB("hyprglass-contrast");
++    if (m_contrastFramebuffer->m_size != Vector2D(32, 24) && !m_contrastFramebuffer->alloc(32, 24, DRM_FORMAT_ABGR8888)) {
++        m_contrastFailed = true; return;
++    }
++    if (!m_contrastBuffer) {
++        glGenBuffers(1, &m_contrastBuffer);
++        glBindBuffer(GL_PIXEL_PACK_BUFFER, m_contrastBuffer);
++        glBufferData(GL_PIXEL_PACK_BUFFER, 32 * 24 * 4, nullptr, GL_STREAM_READ);
++    }
++    g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, false);
++    glBindFramebuffer(GL_READ_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(source.get())->getFBID());
++    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_contrastFramebuffer.get())->getFBID());
++    glBlitFramebuffer(sample.x, sample.y, sample.x + sample.w, sample.y + sample.h, 0, 0, 32, 24, GL_COLOR_BUFFER_BIT, GL_LINEAR);
++    glBindFramebuffer(GL_READ_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_contrastFramebuffer.get())->getFBID());
++    glBindBuffer(GL_PIXEL_PACK_BUFFER, m_contrastBuffer);
++    glPixelStorei(GL_PACK_ALIGNMENT, 1); glPixelStorei(GL_PACK_ROW_LENGTH, 0);
++    glPixelStorei(GL_PACK_SKIP_ROWS, 0); glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
++    glReadPixels(0, 0, 32, 24, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
++    m_contrastFence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
++    if (!m_contrastFence) { m_contrastFailed = true; return; }
++    glFlush();
++    m_contrastStarted = now;
++    // Complete the asynchronous read on a later frame, including on a static desktop.
++    if (const auto layer = m_layerSurface.lock())
++        g_pHyprRenderer->damageBox(CBox{layer->m_realPosition->value(), layer->m_realSize->value()});
++}
++
 +bool CGlassLayerSurface::enhanced() const {
 +    const auto layer = m_layerSurface.lock();
 +    if (!layer || !layer->m_monitor || layer->m_monitor->m_transform != WL_OUTPUT_TRANSFORM_NORMAL) return false;
@@ -116,22 +299,11 @@ index 10add31..bbc394e 100644
  bool CGlassLayerSurface::resolveThemeIsDark() const {
      try {
          const auto& config = g_pGlobalState->config;
-@@ -132,45 +168,155 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha) {
+@@ -132,45 +273,157 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha) {
          return;
  
      CBox transformBox = transformedLayerBox(*layerBox, monitor);
-+    const bool partial = enhanced() && monitor->m_transform == WL_OUTPUT_TRANSFORM_NORMAL;
-+    auto interest = *layerBox;
-+    if (partial && (layerSurface->m_namespace == "quickshell:settings" || layerSurface->m_namespace == "quickshell:sidebarLeft")) {
-+        if (const auto* surface = enhancedSurface()) if (const auto bounds = glassBounds(*surface)) {
-+            const double sx = interest.w / surface->width, sy = interest.h / surface->height;
-+            interest = CBox{interest.x + (*bounds)[0] * sx, interest.y + (*bounds)[1] * sy, (*bounds)[2] * sx, (*bounds)[3] * sy};
-+            interest.expand(2);
-+        }
-+    }
-+    auto damage = g_pHyprRenderer->m_renderData.damage.copy().intersect(interest);
-+    if (partial && damage.empty()) return;
- 
+-
 -    // Decide whether we need to re-sample and re-blur the background.
 -    // When only the layer surface content changed (e.g. waybar clock tick)
 -    // but no window moved behind us, we reuse the cached blurred background.
@@ -151,7 +323,21 @@ index 10add31..bbc394e 100644
 -        if (!m_hasCachedSample)
 -            return;
 -    } else if (backgroundChanged) {
++    const bool partial = enhanced() && monitor->m_transform == WL_OUTPUT_TRANSFORM_NORMAL;
++    auto interest = *layerBox;
++    if (partial && (layerSurface->m_namespace == "quickshell:settings" || layerSurface->m_namespace == "quickshell:sidebarLeft")) {
++        if (const auto* surface = enhancedSurface()) if (const auto bounds = glassBounds(*surface)) {
++            const double sx = interest.w / surface->width, sy = interest.h / surface->height;
++            interest = CBox{interest.x + (*bounds)[0] * sx, interest.y + (*bounds)[1] * sy, (*bounds)[2] * sx, (*bounds)[3] * sy};
++            interest.expand(2);
++        }
++    }
++    auto damage = g_pHyprRenderer->m_renderData.damage.copy().intersect(interest);
++    if (partial && damage.empty()) return;
++
 +    if (layerSurface->m_fadingOut && !m_hasCachedSample) return;
++    if (!layerSurface->m_fadingOut && layerSurface->m_namespace == "quickshell:settings")
++        if (const auto* surface = enhancedSurface()) sampleContrast(source, transformBox, *surface);
 +    if (!layerSurface->m_fadingOut) {
 +        m_lastEnhanced = enhanced();
 +        if (const auto* surface = enhancedSurface()) m_lastSurface = *surface;
@@ -297,7 +483,7 @@ index 10add31..bbc394e 100644
  
      // Redirect surface rendering to a temp FBO cleared to transparent.
      // The original renderLayer (called between pre/post elements) will render
-@@ -207,6 +353,7 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha) {
+@@ -207,6 +460,7 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha) {
  }
  
  void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
@@ -305,7 +491,7 @@ index 10add31..bbc394e 100644
      // Restore the original currentFB before compositing
      if (m_savedCurrentFB) {
          g_pHyprRenderer->m_renderData.currentFB = m_savedCurrentFB;
-@@ -254,16 +401,32 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
+@@ -254,16 +508,32 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
      // The temp FBO stores the layer after Hyprland applies fade alpha. Keep
      // mask_threshold relative to the layer's content alpha, otherwise fade-out
      // makes the mask fall below threshold early and the glass blinks off.
@@ -339,11 +525,36 @@ index 10add31..bbc394e 100644
      // in a single pass: glass behind, surface on top, using the temp FBO alpha.
      GlassRenderer::applyGlassEffect(m_sampleFramebuffer, target,
 diff --git a/src/GlassLayerSurface.hpp b/src/GlassLayerSurface.hpp
-index 26fc97c..540e62e 100644
+index 26fc97c..82ae0d2 100644
 --- a/src/GlassLayerSurface.hpp
 +++ b/src/GlassLayerSurface.hpp
-@@ -24,9 +24,18 @@ class CGlassLayerSurface {
+@@ -2,6 +2,8 @@
+ 
+ #include "GlassRenderer.hpp"
+ #include "PluginConfig.hpp"
++#include <GLES3/gl32.h>
++#include <chrono>
+ 
+ #include <hyprland/src/desktop/view/LayerSurface.hpp>
+ #include <hyprland/src/render/Framebuffer.hpp>
+@@ -18,15 +20,34 @@ class CGlassLayerSurface {
+     void compositeAndRestore(PHLMONITOR monitor, float alpha);
+ 
+     void damageIfMoved();
++    std::string contrastSample();
+ 
+     [[nodiscard]] PHLLS getLayerSurface() const;
+ 
    private:
++    // ponytail: a 32x24 grid at 4 Hz approximates local brightness; per-glyph tracking needs a compositor text mask.
++    void sampleContrast(const SP<Render::IFramebuffer>& source, CBox box, const SGlassSurface& surface);
++    SP<Render::IFramebuffer> m_contrastFramebuffer;
++    GLuint m_contrastBuffer = 0;
++    GLsync m_contrastFence = nullptr;
++    std::chrono::steady_clock::time_point m_contrastRequested{}, m_contrastStarted{}, m_contrastReady{};
++    std::array<float, 4> m_contrastPendingBox{}, m_contrastBox{};
++    std::array<unsigned char, 32 * 24> m_contrastLuma{};
++    bool m_contrastFailed = false;
      PHLLSREF     m_layerSurface;
      SP<Render::IFramebuffer> m_sampleFramebuffer;
 +    SP<Render::IFramebuffer> m_frostFramebuffer;
@@ -361,7 +572,7 @@ index 26fc97c..540e62e 100644
  
      // Track last position/size to detect movement and expand damage
      Vector2D     m_lastPosition;
-@@ -39,6 +48,8 @@ class CGlassLayerSurface {
+@@ -39,6 +60,8 @@ class CGlassLayerSurface {
      // Saved currentFB pointer, restored in compositeAndRestore
      SP<Render::IFramebuffer> m_savedCurrentFB;
  
@@ -370,6 +581,90 @@ index 26fc97c..540e62e 100644
      [[nodiscard]] bool        resolveThemeIsDark() const;
      [[nodiscard]] std::string resolvePresetName() const;
  };
+diff --git a/src/GlassRegions.hpp b/src/GlassRegions.hpp
+new file mode 100644
+index 0000000..07d787a
+--- /dev/null
++++ b/src/GlassRegions.hpp
+@@ -0,0 +1,78 @@
++#pragma once
++
++#include <array>
++#include <algorithm>
++#include <cmath>
++#include <optional>
++#include <sstream>
++#include <string>
++#include <vector>
++
++inline constexpr int MAX_GLASS_REGIONS = 32;
++struct SGlassRegion {
++    std::array<float, 4> rect{}, radii{}, features{};
++    float edge = 0, opacity = 1, frost = 0;
++};
++struct SGlassSurface {
++    std::string name, monitor;
++    float width = 0, height = 0;
++    std::vector<SGlassRegion> regions;
++};
++struct SGlassClient {
++    int pid = 0;
++    bool enhanced = false;
++    std::vector<SGlassSurface> surfaces;
++};
++
++inline std::optional<std::array<float, 4>> glassBounds(const SGlassSurface& surface, bool frostedOnly = false) {
++    float left = surface.width, top = surface.height, right = 0, bottom = 0;
++    for (const auto& region : surface.regions) {
++        if (region.opacity <= 0 || (frostedOnly && region.frost <= 0)) continue;
++        left = std::min(left, region.rect[0]);
++        top = std::min(top, region.rect[1]);
++        right = std::max(right, region.rect[0] + region.rect[2]);
++        bottom = std::max(bottom, region.rect[1] + region.rect[3]);
++    }
++    left = std::clamp(left, 0.0f, surface.width);
++    top = std::clamp(top, 0.0f, surface.height);
++    right = std::clamp(right, 0.0f, surface.width);
++    bottom = std::clamp(bottom, 0.0f, surface.height);
++    if (right <= left || bottom <= top) return std::nullopt;
++    return std::array<float, 4>{left, top, right - left, bottom - top};
++}
++
++// Parse into a temporary: a malformed IPC message must never replace the last valid geometry.
++inline bool parseGlassRegions(const std::string& request, SGlassClient& result) {
++    if (request.size() > 32768) return false;
++    std::istringstream input(request);
++    std::string command, extra;
++    int enabled = 0, count = 0;
++    SGlassClient client;
++    if (!(input >> command >> client.pid >> enabled >> count) || command != "end4glass" || client.pid <= 0 ||
++        (enabled < 0 || enabled > 2) || count < 0 || count > 32) return false;
++    client.enhanced = enabled;
++    for (int i = 0; i < count; ++i) {
++        SGlassSurface surface;
++        int regions = 0;
++        if (!(input >> surface.name >> surface.monitor >> surface.width >> surface.height >> regions) ||
++            surface.name.size() > 128 || !surface.name.starts_with("quickshell:") || surface.monitor.size() > 128 ||
++            !std::isfinite(surface.width) || !std::isfinite(surface.height) || surface.width <= 0 || surface.height <= 0 ||
++            surface.width > 32768 || surface.height > 32768 || regions < 0 || regions > MAX_GLASS_REGIONS) return false;
++        for (int j = 0; j < regions; ++j) {
++            SGlassRegion region;
++            for (auto* values : {&region.rect, &region.radii, &region.features})
++                for (float& value : *values)
++                    if (!(input >> value) || !std::isfinite(value) || std::abs(value) > 65536) return false;
++            if (!(input >> region.edge >> region.opacity) || !std::isfinite(region.edge) || region.edge < 0 || region.edge > 3 || !std::isfinite(region.opacity) || region.opacity < 0 || region.opacity > 1 ||
++                region.rect[2] <= 0 || region.rect[3] <= 0) return false;
++            if (enabled == 2 && (!(input >> region.frost) || !std::isfinite(region.frost) || region.frost < 0 || region.frost > 32)) return false;
++            for (float r : region.radii) if (r < 0 || r > std::min(region.rect[2], region.rect[3]) * .5f) return false;
++            for (float feature : region.features) if (feature < 0 || feature > 32768) return false;
++            surface.regions.push_back(region);
++        }
++        client.surfaces.push_back(std::move(surface));
++    }
++    if (input >> extra) return false;
++    result = std::move(client);
++    return true;
++}
 diff --git a/src/GlassRenderer.cpp b/src/GlassRenderer.cpp
 index 6b779e4..09fa48c 100644
 --- a/src/GlassRenderer.cpp
@@ -615,7 +910,7 @@ index fed3abd..3086d11 100644
  
  } // namespace GlassRenderer
 diff --git a/src/Globals.hpp b/src/Globals.hpp
-index 9c490c8..9101e61 100644
+index 9c490c8..8901de8 100644
 --- a/src/Globals.hpp
 +++ b/src/Globals.hpp
 @@ -1,6 +1,7 @@
@@ -630,7 +925,7 @@ index 9c490c8..9101e61 100644
  class CGlassDecoration;
  
  struct SGlobalState {
-+    SP<SHyprCtlCommand> regionCommand;
++    SP<SHyprCtlCommand> regionCommand, contrastCommand;
 +    uint64_t regionUpdates = 0;
 +    std::unordered_map<int, SGlassClient> glassClients;
 +    std::vector<CHyprSignalListener> listeners;
@@ -652,7 +947,7 @@ index 9c490c8..9101e61 100644
  inline constexpr std::string_view PLUGIN_DESCRIPTION = "Apple-style Liquid Glass effect";
  inline constexpr std::string_view PLUGIN_AUTHOR      = "Hyprnux";
 -inline constexpr std::string_view PLUGIN_VERSION     = "1.0.0";
-+inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r16";
++inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r18";
 diff --git a/src/PluginConfig.cpp b/src/PluginConfig.cpp
 index 206978a..4bd135a 100644
 --- a/src/PluginConfig.cpp
@@ -748,7 +1043,7 @@ index 64e70af..1fe8bd0 100644
  
  class CShaderManager {
 diff --git a/src/Shaders.hpp b/src/Shaders.hpp
-index 32fa9c5..f013e4e 100644
+index 32fa9c5..0451f62 100644
 --- a/src/Shaders.hpp
 +++ b/src/Shaders.hpp
 @@ -30,9 +30,12 @@ precision highp float;
@@ -1056,7 +1351,7 @@ index 32fa9c5..f013e4e 100644
          float spec = topBias * edgeProximity * edgeProximity * specularStrength * 0.08;
          color += vec3(1.0, 0.99, 0.97) * spec;
      }
-@@ -253,17 +364,76 @@ void main() {
+@@ -253,17 +364,78 @@ void main() {
      // INNER SHADOW (bottom rim)
      // ========================================
      {
@@ -1121,6 +1416,8 @@ index 32fa9c5..f013e4e 100644
 +        }
 +        carrier = 1.0 - transmission;
 +        if (!covered) glass = shadeGlass(uv, cornerSdf, -1, cornerSdf);
++        // Floating cards fade over the window's clear glass, including their antialiased edges.
++        else if (!hasMask && glass.a < 0.999) glass += (1.0 - glass.a) * shadeGlass(uv, cornerSdf, -1, cornerSdf);
 +    } else glass = shadeGlass(uv, cornerSdf, -1, cornerSdf);
 +    float glassA = glass.a * glassOpacity * cornerAlpha;
 +    vec3 color = glass.a > 0.001 ? glass.rgb / glass.a : vec3(0.0);
@@ -1135,7 +1432,7 @@ index 32fa9c5..f013e4e 100644
          float surfA = surfacePixel.a;
          vec3 surfRGB = surfA > 0.001 ? surfacePixel.rgb / surfA : vec3(0.0);
  
-@@ -290,6 +460,7 @@ precision highp float;
+@@ -290,6 +462,7 @@ precision highp float;
  uniform sampler2D tex;
  uniform vec2 direction; // (1.0/width, 0.0) for horizontal, (0.0, 1.0/height) for vertical
  uniform float blurRadius; // kernel radius in pixels
@@ -1143,7 +1440,7 @@ index 32fa9c5..f013e4e 100644
  
  in vec2 v_texcoord;
  layout(location = 0) out vec4 fragColor;
-@@ -299,7 +470,7 @@ void main() {
+@@ -299,7 +472,7 @@ void main() {
      float sigma = max(blurRadius / 3.0, 0.001);
      float invSigma2 = -0.5 / (sigma * sigma);
  
@@ -1153,7 +1450,7 @@ index 32fa9c5..f013e4e 100644
      // Center tap
      float w0 = 1.0;
 diff --git a/src/main.cpp b/src/main.cpp
-index c256daa..ea41be0 100644
+index c256daa..169fe68 100644
 --- a/src/main.cpp
 +++ b/src/main.cpp
 @@ -8,6 +8,8 @@
@@ -1246,7 +1543,7 @@ index c256daa..ea41be0 100644
          float alpha = layerSurface->m_alpha->value();
          if (alpha < 0.001f) {
              ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
-@@ -211,42 +227,71 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
+@@ -211,42 +227,90 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
  
      g_pGlobalState = std::make_unique<SGlobalState>();
  
@@ -1303,6 +1600,19 @@ index c256daa..ea41be0 100644
 +    }));
 +
 +
++    g_pGlobalState->contrastCommand = HyprlandAPI::registerHyprCtlCommand(PHANDLE, {"end4contrast", false,
++        [](eHyprCtlOutputFormat, std::string request) -> std::string {
++            if (request != "end4contrast") return "error: invalid contrast request";
++            std::string samples = "[";
++            for (const auto& [ptr, state] : g_pGlobalState->layerSurfaces) {
++                const auto layer = state->getLayerSurface();
++                if (!layer || layer->getPID() != g_pHyprCtl->m_currentRequestParams.pid) continue;
++                const auto sample = state->contrastSample();
++                if (sample != "null") { if (samples.size() > 1) samples += ","; samples += sample; }
++            }
++            return samples + "]\n";
++        }});
++
 +    g_pGlobalState->regionCommand = HyprlandAPI::registerHyprCtlCommand(PHANDLE, {"end4glass", false,
 +        [](eHyprCtlOutputFormat, std::string request) -> std::string {
 +            if (request == "end4glass") {
@@ -1328,104 +1638,28 @@ index c256daa..ea41be0 100644
 +                if (auto layer = state->getLayerSurface(); layer && !layer->m_fadingOut && layer->getPID() == pid)
 +                    g_pHyprRenderer->damageBox(CBox{layer->m_realPosition->value(), layer->m_realSize->value()});
 +            }
++            for (const auto& decoration : g_pGlobalState->decorations) {
++                if (const auto state = decoration.lock()) {
++                    const auto window = state->getOwner();
++                    if (window && window->getPID() == pid && window->m_title == "illogical-impulse Settings") state->damageEntire();
++                }
++            }
 +            ++g_pGlobalState->regionUpdates;
 +            return "ok\n";
 +        }});
  
      registerConfig(PHANDLE);
      initConfigPointers(PHANDLE, g_pGlobalState->config);
-@@ -299,6 +344,10 @@ APICALL EXPORT void PLUGIN_EXIT() {
+@@ -299,6 +363,12 @@ APICALL EXPORT void PLUGIN_EXIT() {
      if (!g_pGlobalState)
          return;
  
 +    if (g_pGlobalState->regionCommand)
 +        HyprlandAPI::unregisterHyprCtlCommand(PHANDLE, g_pGlobalState->regionCommand);
++    if (g_pGlobalState->contrastCommand)
++        HyprlandAPI::unregisterHyprCtlCommand(PHANDLE, g_pGlobalState->contrastCommand);
 +    g_pGlobalState->listeners.clear();
 +
      g_pHyprRenderer->m_renderPass.removeAllOfType("CGlassPassElement");
      g_pHyprRenderer->m_renderPass.removeAllOfType("CGlassLayerPassElement");
      g_pHyprRenderer->m_renderPass.removeAllOfType("CGlassLayerCompositeElement");
-diff --git a/src/GlassRegions.hpp b/src/GlassRegions.hpp
-new file mode 100644
-index 0000000..07d787a
---- /dev/null
-+++ b/src/GlassRegions.hpp
-@@ -0,0 +1,78 @@
-+#pragma once
-+
-+#include <array>
-+#include <algorithm>
-+#include <cmath>
-+#include <optional>
-+#include <sstream>
-+#include <string>
-+#include <vector>
-+
-+inline constexpr int MAX_GLASS_REGIONS = 32;
-+struct SGlassRegion {
-+    std::array<float, 4> rect{}, radii{}, features{};
-+    float edge = 0, opacity = 1, frost = 0;
-+};
-+struct SGlassSurface {
-+    std::string name, monitor;
-+    float width = 0, height = 0;
-+    std::vector<SGlassRegion> regions;
-+};
-+struct SGlassClient {
-+    int pid = 0;
-+    bool enhanced = false;
-+    std::vector<SGlassSurface> surfaces;
-+};
-+
-+inline std::optional<std::array<float, 4>> glassBounds(const SGlassSurface& surface, bool frostedOnly = false) {
-+    float left = surface.width, top = surface.height, right = 0, bottom = 0;
-+    for (const auto& region : surface.regions) {
-+        if (region.opacity <= 0 || (frostedOnly && region.frost <= 0)) continue;
-+        left = std::min(left, region.rect[0]);
-+        top = std::min(top, region.rect[1]);
-+        right = std::max(right, region.rect[0] + region.rect[2]);
-+        bottom = std::max(bottom, region.rect[1] + region.rect[3]);
-+    }
-+    left = std::clamp(left, 0.0f, surface.width);
-+    top = std::clamp(top, 0.0f, surface.height);
-+    right = std::clamp(right, 0.0f, surface.width);
-+    bottom = std::clamp(bottom, 0.0f, surface.height);
-+    if (right <= left || bottom <= top) return std::nullopt;
-+    return std::array<float, 4>{left, top, right - left, bottom - top};
-+}
-+
-+// Parse into a temporary: a malformed IPC message must never replace the last valid geometry.
-+inline bool parseGlassRegions(const std::string& request, SGlassClient& result) {
-+    if (request.size() > 32768) return false;
-+    std::istringstream input(request);
-+    std::string command, extra;
-+    int enabled = 0, count = 0;
-+    SGlassClient client;
-+    if (!(input >> command >> client.pid >> enabled >> count) || command != "end4glass" || client.pid <= 0 ||
-+        (enabled < 0 || enabled > 2) || count < 0 || count > 32) return false;
-+    client.enhanced = enabled;
-+    for (int i = 0; i < count; ++i) {
-+        SGlassSurface surface;
-+        int regions = 0;
-+        if (!(input >> surface.name >> surface.monitor >> surface.width >> surface.height >> regions) ||
-+            surface.name.size() > 128 || !surface.name.starts_with("quickshell:") || surface.monitor.size() > 128 ||
-+            !std::isfinite(surface.width) || !std::isfinite(surface.height) || surface.width <= 0 || surface.height <= 0 ||
-+            surface.width > 32768 || surface.height > 32768 || regions < 0 || regions > MAX_GLASS_REGIONS) return false;
-+        for (int j = 0; j < regions; ++j) {
-+            SGlassRegion region;
-+            for (auto* values : {&region.rect, &region.radii, &region.features})
-+                for (float& value : *values)
-+                    if (!(input >> value) || !std::isfinite(value) || std::abs(value) > 65536) return false;
-+            if (!(input >> region.edge >> region.opacity) || !std::isfinite(region.edge) || region.edge < 0 || region.edge > 3 || !std::isfinite(region.opacity) || region.opacity < 0 || region.opacity > 1 ||
-+                region.rect[2] <= 0 || region.rect[3] <= 0) return false;
-+            if (enabled == 2 && (!(input >> region.frost) || !std::isfinite(region.frost) || region.frost < 0 || region.frost > 32)) return false;
-+            for (float r : region.radii) if (r < 0 || r > std::min(region.rect[2], region.rect[3]) * .5f) return false;
-+            for (float feature : region.features) if (feature < 0 || feature > 32768) return false;
-+            surface.regions.push_back(region);
-+        }
-+        client.surfaces.push_back(std::move(surface));
-+    }
-+    if (input >> extra) return false;
-+    result = std::move(client);
-+    return true;
-+}

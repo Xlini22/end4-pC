@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-VERSION = 'end4-live-0.6.4-r16'
+VERSION = 'end4-live-0.6.4-r18'
 
 
 def query(*args):
@@ -19,9 +19,10 @@ def status(ensure=False):
     plugin = next((p for p in plugins if p.get('name') == 'hyprglass'), None)
     if plugin:
         # The previous build may remain mapped until the current session exits.
-        if plugin.get('version') not in (VERSION, 'end4-live-0.6.4-r15', 'end4-live-0.6.4-r14', 'end4-live-0.6.4-r13', 'end4-live-0.6.4-r12', 'end4-live-0.6.4-r11', 'end4-live-0.6.4-r10', 'end4-live-0.6.4-r9', 'end4-live-0.6.4-r8', 'end4-live-0.6.4-r7', 'end4-live-0.6.4-r6', 'end4-live-0.6.4-r5', 'end4-live-0.6.4-r4', 'end4-live-0.6.4-r3', 'end4-live-0.6.4-r2'):
+        if plugin.get('version') not in (VERSION, 'end4-live-0.6.4-r17', 'end4-live-0.6.4-r16', 'end4-live-0.6.4-r15', 'end4-live-0.6.4-r14', 'end4-live-0.6.4-r13', 'end4-live-0.6.4-r12', 'end4-live-0.6.4-r11', 'end4-live-0.6.4-r10', 'end4-live-0.6.4-r9', 'end4-live-0.6.4-r8', 'end4-live-0.6.4-r7', 'end4-live-0.6.4-r6', 'end4-live-0.6.4-r5', 'end4-live-0.6.4-r4', 'end4-live-0.6.4-r3', 'end4-live-0.6.4-r2'):
             return {'available': False, 'reason': 'A different HyprGlass build is loaded'}
-        return {'available': True, 'frosted': plugin.get('version') in (VERSION, 'end4-live-0.6.4-r15', 'end4-live-0.6.4-r14', 'end4-live-0.6.4-r13', 'end4-live-0.6.4-r12', 'end4-live-0.6.4-r10'), 'enhanced': plugin.get('version') in (VERSION, 'end4-live-0.6.4-r15', 'end4-live-0.6.4-r14', 'end4-live-0.6.4-r13', 'end4-live-0.6.4-r12', 'end4-live-0.6.4-r11', 'end4-live-0.6.4-r10', 'end4-live-0.6.4-r9', 'end4-live-0.6.4-r8', 'end4-live-0.6.4-r7', 'end4-live-0.6.4-r6', 'end4-live-0.6.4-r5', 'end4-live-0.6.4-r4'), 'reason': '', 'lua': query('eval', 'return true') == 'ok'}
+        # Dashboard glass is quarantined after a hard system freeze while scrolling; short benchmarks did not establish stability.
+        return {'available': True, 'windowFrosted': False, 'contrast': plugin.get('version') in (VERSION, 'end4-live-0.6.4-r17'), 'frosted': plugin.get('version') in (VERSION, 'end4-live-0.6.4-r17', 'end4-live-0.6.4-r16', 'end4-live-0.6.4-r15', 'end4-live-0.6.4-r14', 'end4-live-0.6.4-r13', 'end4-live-0.6.4-r12', 'end4-live-0.6.4-r10'), 'enhanced': plugin.get('version') in (VERSION, 'end4-live-0.6.4-r17', 'end4-live-0.6.4-r16', 'end4-live-0.6.4-r15', 'end4-live-0.6.4-r14', 'end4-live-0.6.4-r13', 'end4-live-0.6.4-r12', 'end4-live-0.6.4-r11', 'end4-live-0.6.4-r10', 'end4-live-0.6.4-r9', 'end4-live-0.6.4-r8', 'end4-live-0.6.4-r7', 'end4-live-0.6.4-r6', 'end4-live-0.6.4-r5', 'end4-live-0.6.4-r4'), 'reason': '', 'lua': query('eval', 'return true') == 'ok'}
     directory = Path(os.environ.get('XDG_DATA_HOME', str(Path.home() / '.local/share'))) / 'end4-pC/native-glass'
     binary, manifest = directory / 'hyprglass.so', directory / 'manifest.json'
     if not ensure or not binary.is_file() or not manifest.is_file():

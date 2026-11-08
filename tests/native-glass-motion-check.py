@@ -34,7 +34,7 @@ ShellRoot {
     property bool blackProbe: false
     IpcHandler {
         target: "glass-check"
-        function useNative(value: bool): void { Config.options.background.widgets.glass.trueGlassy = value }
+        function useSource(value: string): void { Config.options.background.widgets.glass.source = value }
         function useEnhanced(value: bool): void { Config.options.background.widgets.glass.enhanced = value }
         function moveCard(): void { secondCard.x += 12 }
         function scaleCard(): void { cardScale.xScale = 0.85; cardScale.yScale = 0.85 }
@@ -248,7 +248,8 @@ if sys.argv[1] == '--plugin':
         nested_env['XDG_' + key + '_HOME'] = str(path)
     directory = base / 'config/illogical-impulse'
     directory.mkdir()
-    (directory / 'config.json').write_text(json.dumps({'background': {'widgets': {'glass': {'enable': True, 'source': 'windows', 'haze': 4}}}}))
+    # Legacy false must not disable the always-live windows source.
+    (directory / 'config.json').write_text(json.dumps({'background': {'widgets': {'glass': {'enable': True, 'source': 'windows', 'haze': 4, 'trueGlassy': False}}}}))
     (shell / 'shell.qml').write_text(FIXTURE)
     nested_env.pop('QS_DISABLE_COMPOSITOR_GLASS', None)
     nested_env['QT_QPA_PLATFORM'] = 'wayland'
@@ -343,12 +344,12 @@ if sys.argv[1] == '--plugin':
         time.sleep(0.1)
     time.sleep(0.3)
     assert json.loads(ipc('state'))['writes'] == before['writes'], 'Unchanged clients rewrote compositor settings'
-    ipc('useNative', 'false')
+    ipc('useSource', 'wallpaper')
     time.sleep(0.7)
     fallback = json.loads(ipc('state'))
-    assert not fallback['native'] and fallback['windows'] and fallback['captures'] > 0, fallback
+    assert not fallback['native'] and not fallback['windows'] and fallback['captures'] == 0, fallback
     assert json.loads(control('getoption', 'plugin:hyprglass:layers:enabled', '-j'))['int'] == 0
-    ipc('useNative', 'true')
+    ipc('useSource', 'windows')
     time.sleep(0.7)
     resumed = json.loads(ipc('state'))
     assert resumed['native'] and resumed['captures'] == 0, resumed
@@ -513,4 +514,4 @@ if sys.argv[1] == '--plugin':
     assert control('dispatch', 'exit') == 'ok'
     result = processes[0].wait(timeout=10)
     assert result == 0, (result, (base / 'hyprland.log').read_text()[-10000:])
-print('True Glassy toggle, unchanged-setting suppression, live pixels, workspaces and compositor lifecycle passed')
+print('Legacy false ignored, source switching, unchanged-setting suppression, live pixels, workspaces and compositor lifecycle passed')

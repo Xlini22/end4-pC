@@ -106,7 +106,8 @@ TabButton {
                 fill: toggled ? 1 : 0
                 font.weight: (toggled || root.hovered) ? Font.DemiBold : Font.Normal
                 text: buttonIcon
-                color: toggled ? Appearance.m3colors.m3onSecondaryContainer : Appearance.colors.colOnLayer1
+                adaptiveGlass: !root.toggled
+                baseColor: toggled ? Appearance.m3colors.m3onSecondaryContainer : Appearance.colors.colOnLayer1
 
                 Behavior on color {
                     animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
@@ -144,7 +145,8 @@ TabButton {
             }
             text: buttonText
             font.pixelSize: 14
-            color: Appearance.colors.colOnLayer1
+            adaptiveGlass: !root.toggled
+            baseColor: Appearance.colors.colOnLayer1
         }
     }
 

@@ -10,6 +10,8 @@ acquire = source[source.index('void blurBackground('):].split('    // Fullscreen
 layer = (Path(sys.argv[1]) / 'src/GlassLayerSurface.cpp').read_text()
 # Run the production resource release against Hyprland's framebuffer-0 release behavior.
 release = layer[layer.index('CGlassLayerSurface::~CGlassLayerSurface() {'):].split('    // Damage the area', 1)[0] + '}\n'
+decoration = (Path(sys.argv[1]) / 'src/GlassDecoration.cpp').read_text()
+release_window = decoration[decoration.index('CGlassDecoration::~CGlassDecoration() {'):].split('\nbool CGlassDecoration::resolveEnabled()', 1)[0]
 harness = r'''
 #include <cassert>
 #include <memory>
@@ -19,6 +21,9 @@ using GLint = int;
 constexpr int GL_READ_FRAMEBUFFER_BINDING = 1, GL_DRAW_FRAMEBUFFER_BINDING = 2;
 constexpr int GL_READ_FRAMEBUFFER = 3, GL_DRAW_FRAMEBUFFER = 4;
 int readBinding = 0, drawBinding = 0;
+int deletedFences = 0, deletedBuffers = 0;
+void glDeleteSync(int) { ++deletedFences; }
+void glDeleteBuffers(int count, GLuint*) { deletedBuffers += count; }
 void glGetIntegerv(int target, int* value) { *value = target == GL_READ_FRAMEBUFFER_BINDING ? readBinding : drawBinding; }
 void glBindFramebuffer(int target, int value) { (target == GL_READ_FRAMEBUFFER ? readBinding : drawBinding) = value; }
 struct CBox {};
@@ -52,7 +57,19 @@ struct CGlassLayerSurface {
     SP<Render::IFramebuffer> m_frostFramebuffer = std::make_shared<Render::IFramebuffer>();
     SP<Render::IFramebuffer> m_blurTempFramebuffer = std::make_shared<Render::IFramebuffer>();
     SP<Render::IFramebuffer> m_frostTempFramebuffer = std::make_shared<Render::IFramebuffer>();
+    SP<Render::IFramebuffer> m_contrastFramebuffer = std::make_shared<Render::IFramebuffer>();
+    int m_contrastFence = 1;
+    GLuint m_contrastBuffer = 1;
     ~CGlassLayerSurface();
+};
+'''
+harness += r'''
+struct CGlassDecoration {
+    SP<Render::IFramebuffer> m_sampleFramebuffer = std::make_shared<Render::IFramebuffer>();
+    SP<Render::IFramebuffer> m_blurTempFramebuffer = std::make_shared<Render::IFramebuffer>();
+    SP<Render::IFramebuffer> m_frostFramebuffer = std::make_shared<Render::IFramebuffer>();
+    SP<Render::IFramebuffer> m_frostTempFramebuffer = std::make_shared<Render::IFramebuffer>();
+    ~CGlassDecoration();
 };
 '''
 harness += 'void blurBackground(SP<Render::IFramebuffer>, SP<Render::IFramebuffer>&, float, int, GLuint, int, int, const CBox* = nullptr, int = 8);\n'
@@ -63,7 +80,10 @@ int main() {
     std::weak_ptr<Render::IFramebuffer> closed;
     { CGlassLayerSurface layer; closed = layer.m_sampleFramebuffer; }
     assert(closed.expired());
+    assert(deletedFences == 1 && deletedBuffers == 1);
     assert(readBinding == 17 && drawBinding == 19); // Closing glass must not redirect the next desktop frame to framebuffer 0.
+    { CGlassDecoration window; closed = window.m_frostFramebuffer; }
+    assert(closed.expired() && readBinding == 17 && drawBinding == 19);
     SGlassSurface panel{"quickshell:settings", "eDP-1", 1920, 1080};
     SGlassRegion region; region.rect = {470, 180, 980, 720};
     panel.regions.push_back(region);
@@ -131,7 +151,7 @@ int main() {
 '''
 with tempfile.TemporaryDirectory(prefix='glass-buffer-', dir='/tmp') as directory:
     path = Path(directory)
-    (path / 'check.cpp').write_text(harness + acquire + release + checks)
+    (path / 'check.cpp').write_text(harness + acquire + release + release_window + checks)
     subprocess.run(['c++', '-std=c++23', str(path / 'check.cpp'), '-o', str(path / 'check')], check=True)
     subprocess.run([str(path / 'check')], check=True)
 print('PASS: two surfaces, 120 frames, two initial allocations; resize, close framebuffer restoration and geometry validation checked.')

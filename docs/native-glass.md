@@ -1,9 +1,36 @@
 # Glassy UI: sfondo live in Hyprland
 
-Con `Glassy UI`, `True Glassy` e `Glass source → Windows underneath` attivi, il backend nativo
+**Stato attuale della Dashboard:** vetro disattivato temporaneamente dopo il
+blocco completo del PC del 7 novembre 2026 durante lo scorrimento di Settings.
+Puntatore immobile per oltre 30 secondi e spegnimento forzato. Il journal dell'avvio
+precedente termina alle 19:28:49 CET, prima del riavvio delle 19:30:42, senza
+timeout/reset GPU, OOM o crash Hyprland/Quickshell registrati nel tratto finale.
+Non ci sono nuovi dump corrispondenti. Questo non identifica la causa e non
+esclude un blocco del kernel/driver senza registrazione persistente.
+
+Il backend r18 resta caricato e invariato; il probe restituisce
+`windowFrosted: false`. La Dashboard usa un fondo pieno e disabilita WindowGlass
+anche sulle tessere, senza avviare catture alternative. Il tag che abilita la
+decorazione nativa non viene assegnato alla finestra e viene rimosso se presente.
+Le animazioni e la correzione dello scroll rimangono. I materiali degli altri
+pannelli conservano il percorso precedente. Questa è una misura di contenimento,
+non una correzione dimostrata della causa del blocco.
+
+La disattivazione è verificata con controlli software e lettura IPC della sessione
+(`windowFrostedAvailable: false`, nessuna cattura alternativa). Non sono state
+eseguite nuove prove GPU dopo questo blocco. Il test nativo della Dashboard è
+escluso dall'esecuzione ordinaria; la riproduzione richiede esplicitamente
+`--reproduce-r18`. Le misure e le verifiche native documentate sotto sono
+storiche e non giustificano riabilitare il materiale o dichiararlo stabile.
+
+Con `Glassy UI` e `Glass source → Windows underneath` attivi, il backend nativo
 campiona il framebuffer del compositor a ogni frame disegnato. Segue quindi
 contenuto animato, spostamenti e transizioni tra workspace, senza ricostruire lo
 sfondo dalle singole finestre esportate a Quickshell.
+
+Il rendering live è sempre attivo per questa sorgente. L'interruttore provvisorio
+`True Glassy` è stato rimosso da entrambe le interfacce delle impostazioni;
+un vecchio valore `trueGlassy: false` salvato nel profilo viene ignorato.
 
 Il backend è una build locale di [HyprGlass v0.6.4](https://github.com/hyprnux/hyprglass/releases/tag/v0.6.4),
 commit `22acd5db6ef73fa34cad2d5ce8b76cf37e9acaa5`, per **Hyprland 0.55.4**.
@@ -22,7 +49,177 @@ controlla la sfocatura; non modifica l'opacità del testo o dell'intera finestra
 Quando il backend è attivo, WindowGlass interrompe le vecchie catture delle
 finestre e il tracciamento delle coordinate delle finestre mobili.
 
+La prima variante del materiale satinato sulle righe delle impostazioni è
+stata ritirata dopo un blocco completo del PC segnalato il 7 novembre 2026,
+con spegnimento forzato. Il benchmark breve aveva mostrato meno carico CPU,
+ma non dimostra stabilità.
+Il journal dell'avvio precedente termina alle 01:45:27 CET senza errori GPU,
+OOM o lockup registrati nei minuti finali; non consente di attribuire il blocco
+a un componente preciso.
+
+Il blocco è avvenuto durante lo scorrimento, con puntatore immobile. L'analisi
+statica individua un'amplificazione da verificare: `queueRegions()` accorpa gli
+aggiornamenti per giro dell'event loop, senza un limite per fotogramma, e ogni
+comando `end4glass` invalida tutte le layer del processo, anche quelle con
+geometria invariata. Questo può aumentare il lavoro durante lo scorrimento;
+non dimostra la causa del blocco. La nuova variante accorpa gli aggiornamenti
+di scorrimento una volta per fotogramma; il comportamento dei danni nel backend
+nativo rimane invariato.
+
+Lo scorrimento delle impostazioni usa il gestore `TouchpadScrollArea` già
+presente nel progetto anche quando l'accelerazione personalizzata è spenta:
+in questo caso segue i pixel del gesto con fattore 1, senza inerzia aggiunta
+da Qt. Con l'accelerazione attiva resta il gestore esistente e mantiene i
+fattori configurati; i due non intercettano contemporaneamente gli eventi.
+La rotellina conserva il percorso nativo. La ricerca interrompe la propria
+animazione quando parte un gesto diretto. Il tentativo di allineamento forzato
+ai pixel è stato rimosso: non risolveva il tremolio segnalato e arrotondava i
+piccoli incrementi del fallback angolare. L'utente ha confermato risolto il
+tremolio sul touchpad; questo non dimostra la risoluzione del blocco del PC.
+La diagnostica temporanea è stata rimossa.
+
+Le righe della finestra Impostazioni classica usano ora lo stesso frost della
+barra laterale quando Enhanced e il backend satinato nativo sono attivi.
+Il contesto dei delegate è vincolato con `ComponentBehavior: Bound`;
+la pagina aggiorna le geometrie una volta per fotogramma e ritaglia le regioni
+al viewport, senza osservatori degli antenati per riga. La sfocatura condivide
+il buffer del backend già usato dalle altre superfici. Nel controllo software con
+backend simulato, 30 righe producono 6 regioni visibili e 80 spostamenti
+accorpano un solo aggiornamento. La singola prova nativa isolata autorizzata
+dall'utente ha verificato 11 righe visibili su 115, un solo aggiornamento per
+la raffica di scorrimento e 24 pixel di controllo dei pulsanti durante gli
+spostamenti della finestra. Questa prova breve non dimostra stabilità prolungata.
+
+```sh
+node tests/glass-backdrop-check.js
+python3 tests/native-settings-check.py --plugin $HOME/.cache/end4-pC/native-glass-staged/hyprglass.so --blur-rules
+```
+
 ## Compilazione e verifica
+
+### Contrasto adattivo delle impostazioni (r17)
+
+Il contrasto adattivo sceglie testo e icone chiari (`#e7edf2`) o scuri (`#1b2229`)
+in base alla luminosità locale dietro le etichette delle impostazioni classiche.
+Il colore si aggiorna ogni 1,25 secondi, un secondo in più rispetto alla prima
+versione. I testi sui controlli
+con sfondo colorato mantengono i colori del tema. La selezione usa il rapporto
+di contrasto e conserva il colore precedente vicino alla soglia quando rimane
+leggibile, per limitare l'oscillazione. Quando entrambi i toni smorzati restano
+sotto il rapporto 4,5:1, conserva l'isteresi invece di alternarli a ogni lettura.
+Ogni etichetta conserva un colore unico.
+
+Il compositor campiona soltanto le impostazioni aperte, su richiesta del loro
+processo, in una griglia di 32×24 punti, al massimo quattro volte al secondo.
+Trasferisce i pixel tramite PBO e legge il risultato soltanto dopo una fence
+segnalata, con attesa zero; a QML invia solo la luminanza. Il polling non avvia
+nuove catture a pannello fermo. Un campione in ritardo mantiene l'ultimo colore;
+un backend assente o non disponibile conserva i colori del tema. Il meccanismo
+segue l'uso dei [PBO e delle fence documentato da Khronos](https://wikis.khronos.org/opengl/Pixel_Buffer_Object).
+
+Compilazione, caricamento QML software, selezione del contrasto e rilascio delle
+risorse superano i controlli software. La prima prova nativa ha individuato
+la cancellazione dei campioni alla normale chiusura del socket IPC: una risposta
+valida ora rimane disponibile dopo la disconnessione. La verifica software
+esercita il socket reale con un server temporaneo e controlla anche il ritorno
+ai colori del tema quando la connessione fallisce.
+
+La seconda prova nativa isolata supera cinque scenari (nero, bianco, divisione
+orizzontale, divisione verticale, ritorno al nero), controllando 38 etichette,
+24 pixel dei pulsanti durante gli spostamenti, clipping delle righe e accorpamento
+degli aggiornamenti di scorrimento. A pannello fermo il polling del contrasto non
+riscrive le geometrie. Non è una prova di stabilità prolungata o di sospensione.
+
+La r17 è stata verificata e installata; la sessione successiva ne ha confermato
+il caricamento. La copia precedente è in
+`~/.cache/end4-pC/native-glass-backup-r16-xl5ta1_8`.
+Il crash del 7 novembre alle 16:28 è invece registrato da Quickshell come
+`Tried to show lockscreen surfaces without active lock`, durante l'attivazione
+del blocco schermo prima della sospensione; il nuovo contrasto era inattivo.
+Questo problema del blocco schermo resta da correggere.
+
+```sh
+node tests/glass-contrast-check.js
+python3 tests/native-settings-check.py --plugin /path/to/r17/hyprglass.so --blur-rules --contrast
+```
+
+### Schede satinate della Dashboard (r18)
+
+Il percorso seguente è attualmente disabilitato dopo il blocco descritto all'inizio
+di questo documento; le verifiche precedenti restano documentate come riferimento.
+
+Il componente comune `DashboardCard` usa lo stesso materiale satinato dei box
+interni della sidebar, con intensità minima 8 e una velatura al 72% che conserva
+il colore della scheda. Copre Home e schede delle impostazioni in stile Dashboard;
+il percorso Media con copertina sfocata mantiene la sua sorgente. Disattivando
+Glassy tornano i colori pieni precedenti.
+
+La Dashboard è una finestra normale, diversa dalle layer delle impostazioni
+classiche. La r18 accetta geometrie locali solo per la finestra delle impostazioni
+del processo Quickshell che le invia, su output non ruotati. Le schede visibili
+condividono un solo buffer di satinatura; quelle fuori dal viewport vengono
+escluse. Restano i limiti di 32 regioni e la gestione esistente delle animazioni.
+Il canale alfa della finestra viene predisposto prima dell'apertura, anche se
+il backend diventa disponibile più tardi, per evitare un fondo nero.
+
+La serializzazione limita i raggi alle dimensioni già arrotondate del rettangolo:
+durante lo scorrimento una striscia sottile non può più produrre un raggio appena
+oltre la metà dell'altezza e far rifiutare l'intero aggiornamento. Le dimensioni
+che arrotondano a zero vengono escluse. Il controllo `glass-backdrop-check.js`
+include questi casi. Il rilascio dei buffer della finestra conserva i binding
+OpenGL di lettura e scrittura, verificati da `native-glass-buffer-check.py`.
+
+La prova nativa isolata verifica 6 schede della Home, 10 delle impostazioni e
+8 dopo lo scorrimento, su 13 schede precaricate. La deviazione della trama di
+sfondo scende da 108,93 nel vetro trasparente a 0,80 nel satinato. A finestra
+ferma non vengono riscritte le geometrie e tre fotogrammi dopo la chiusura
+conservano lo sfondo. Il test applica `no_blur` alla finestra come il desktop
+reale: il blur standard di Hyprland sopra quello nativo nasconderebbe la
+differenza tra i materiali. È una verifica breve, non di stabilità prolungata.
+
+La r18 verificata è installata, nella directory di staging e caricata nella
+sessione principale dopo il logout/login. Backup di binario e manifest precedenti:
+`~/.cache/end4-pC/native-glass-backup-r17-75aqdia0`.
+
+Lo scorrimento della tab Settings usa ora il percorso diretto del touchpad
+anche quando l'accelerazione personalizzata è disattivata, con fattore e
+sensibilità 1. L'animazione di navigazione è separata da `contentY`: l'input
+diretto la interrompe e una ricerca o un cambio gruppo annullano la destinazione
+precedente. I test software verificano piccoli passi, inversioni e posizione
+invariata dopo la fine del gesto.
+
+Le tessere ricreate nel margine di precaricamento mentre si scorre conservano
+l'animazione originale di ingresso, come richiesto dall'utente. L'uscita al cambio
+pagina ferma prima l'ingresso eventualmente ancora in corso, evitando che due
+animazioni scrivano le stesse proprietà. Il test software verifica stato iniziale,
+avanzamento dell'ingresso e completamento dell'uscita.
+
+Il viewport accorpa il tracciamento dello scroll per fotogramma; ogni scheda
+osserva solo la propria animazione e il suo Loader, evitando di ricostruire la
+geometria di tutti gli antenati. La prova nativa controlla anche una raffica di
+80 movimenti consecutivi; attende poi la fine delle animazioni prima di verificare
+geometrie ferme, satinatura e chiusura.
+
+Il primo confronto breve di quattro secondi, che sopprimeva l'ingresso durante
+lo scroll, misurava circa 24,25 contro 12,51 ms di tempo CPU di Quickshell per
+fotogramma e costo GPU simile (5,14 contro 5,20 ms/fotogramma). Questi numeri
+precedono il ripristino delle animazioni durante lo scroll. Le correzioni sono
+solo QML e non richiedono un nuovo logout.
+
+Ripetendo il confronto con gli ingressi ripristinati, il tempo CPU di Quickshell
+misurato passa da 23,93 a 13,62 ms/fotogramma (circa −43%); il tempo GPU è
+5,09 contro 5,28 ms/fotogramma, senza nuove allocazioni di texture. La misura
+breve usa lo stesso plugin r18 e passi sintetici del touchpad in profili isolati;
+non dimostra stabilità prolungata né garantisce gli stessi FPS in ogni scena.
+
+```sh
+node tests/glass-backdrop-check.js
+python3 tests/qml-load-check.py
+# NON eseguire come controllo ordinario: riproduzione del percorso in quarantena.
+# python3 tests/native-dashboard-check.py --plugin /path/to/r18/hyprglass.so --reproduce-r18
+```
+
+### Backend nativo
 
 Richiede gli strumenti di compilazione e gli header della stessa versione del
 compositor in esecuzione. Lo script non installa pacchetti, non modifica la
@@ -59,7 +256,7 @@ install -m644 ~/.cache/end4-pC/native-glass-staged/manifest.json ~/.local/share/
 mv -f ~/.local/share/end4-pC/native-glass/.manifest.json.new ~/.local/share/end4-pC/native-glass/manifest.json
 ```
 
-Con Glassy UI, True Glassy e Windows underneath selezionati, Quickshell verifica
+Con Glassy UI e Windows underneath selezionati, Quickshell verifica
 il backend all’avvio, al cambio di modalità e dopo il ricaricamento di Hyprland. Il loader controlla l'hash del binario e l'ABI del compositor prima
 di caricarlo. Un aggiornamento incompatibile di Hyprland richiede una nuova
 build supportata: il loader rifiuta quella precedente. Un HyprGlass di versione

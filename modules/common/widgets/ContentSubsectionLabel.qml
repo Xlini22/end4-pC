@@ -5,6 +5,7 @@ import qs.modules.common.widgets
 
 StyledText {
     text: "Subsection"
-    color: Appearance.colors.colSubtext
+    adaptiveGlass: true
+    baseColor: Appearance.colors.colSubtext
     Layout.leftMargin: 2
 }

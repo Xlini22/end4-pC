@@ -3,11 +3,13 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell.Widgets
 import qs.modules.common
+import qs.services
 
 /** Scrollable settings page with shared input handling and search highlights. */
 Item {
     id: root
     clip: true
+    readonly property bool settingsGlassViewport: true
 
     property real baseWidth: 600
     property bool forceWidth: false
@@ -26,6 +28,24 @@ Item {
         anchors.fill: parent
         contentHeight: contentColumn.implicitHeight + root.bottomContentPadding
         onTouchpadScrollingChanged: if (touchpadScrolling) _scrollAnim.stop()
+        onContentYChanged: if (root.visible && GlassCompositor.enhancedActive) glassFrame.running = true
+        onContentXChanged: if (root.visible && GlassCompositor.enhancedActive) glassFrame.running = true
+
+        FrameAnimation {
+            id: glassFrame
+            onTriggered: {
+                running = false
+                GlassCompositor.queueRegions()
+            }
+        }
+
+        TouchpadScrollArea {
+            flickable: flickable
+            visible: !Config.options.interactions.scrolling.fasterTouchpadScroll
+            touchpadScrollFactor: 1
+            touchpadSensitivity: 1
+            onScrollingChanged: if (scrolling) _scrollAnim.stop()
+        }
 
         ColumnLayout {
             id: contentColumn

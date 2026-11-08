@@ -42,9 +42,14 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not backend.status()['available']  # probing alone must never load
     assert backend.status(True)['available']
     assert sum(call[:2] == ('plugin', 'load') for call in calls) == 1
-    assert backend.status()['lua'] and backend.status()['enhanced'] and backend.status()['frosted']
+    assert backend.status()['lua'] and backend.status()['enhanced'] and backend.status()['frosted'] and backend.status()['contrast']
+    assert not backend.status()['windowFrosted'], 'Dashboard glass must stay quarantined after the system freeze'
     lua = False
     assert backend.status()['available'] and not backend.status()['lua']
+    loaded[0]['version'] = 'end4-live-0.6.4-r17'
+    assert backend.status()['contrast'] and not backend.status()['windowFrosted']
+    loaded[0]['version'] = 'end4-live-0.6.4-r16'
+    assert backend.status()['frosted'] and backend.status()['enhanced'] and not backend.status()['contrast']
     loaded[0]['version'] = 'end4-live-0.6.4-r15'
     assert backend.status()['frosted'] and backend.status()['enhanced']
     loaded[0]['version'] = 'end4-live-0.6.4-r14'
