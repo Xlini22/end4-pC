@@ -12,6 +12,8 @@ Item {
     property int windowCount: 0
     property bool active: false
     property real iconSize: DockStyle.iconSize
+    readonly property int rasterSize: Math.ceil(root.iconSize * (DockStyle.magnifying ? DockStyle.magnification : 1))
+    readonly property real iconBottom: iconImageLoader.y + iconImageLoader.height
     property bool monochrome: Config.options.dock.monochromeIcons
 
     Loader {
@@ -24,6 +26,8 @@ Item {
         sourceComponent: IconImage {
             source: root.iconSource
             implicitSize: root.iconSize
+            // Rasterize once for the largest zoom; hovering only transforms the cached image.
+            backer.sourceSize: Qt.size(root.rasterSize, root.rasterSize)
         }
     }
 

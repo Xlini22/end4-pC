@@ -18,6 +18,7 @@ DockButton {
     readonly property bool isSeparator: appToplevel.appId === "SEPARATOR"
 
     magnifiable: !root.isSeparator
+    magnifyBaseline: contentItem.y + (contentItem.item ? contentItem.item.y + contentItem.item.iconBottom : 0)
     property var desktopEntry: DesktopEntries.heuristicLookup(appToplevel.appId)
     enabled: !isSeparator
     implicitWidth: isSeparator ? 1 : naturalWidth

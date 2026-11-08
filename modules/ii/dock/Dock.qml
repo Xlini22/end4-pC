@@ -215,6 +215,7 @@ Scope {
                         Rectangle {
                             id: dockVisualBackground
                             WindowGlass {
+                                id: dockGlass
                                 anchors.fill: parent
                                 anchors.leftMargin: dockRoot.vertical ? 0 : -dockRoot.hugFlare
                                 anchors.rightMargin: dockRoot.vertical ? 0 : -dockRoot.hugFlare
@@ -223,17 +224,22 @@ Scope {
                                 flareLeft: dockRoot.hugFlare
                                 flareRight: dockRoot.hugFlare
                                 edge: dockRoot.position === "left" ? 2 : dockRoot.position === "right" ? 3 : 1
-                                glassEnabled: (parent?.color.a ?? 0) > 0
-                                cardRadius: parent?.radius ?? 0
-                                tint: parent?.color ?? 'transparent'
+                                glassEnabled: Config.options.dock.showBackground
+                                cardRadius: dockVisualBackground.radius
+                                topLeftRadius: dockVisualBackground.topLeftRadius
+                                topRightRadius: dockVisualBackground.topRightRadius
+                                bottomLeftRadius: dockVisualBackground.bottomLeftRadius
+                                bottomRightRadius: dockVisualBackground.bottomRightRadius
+                                tint: dockRoot.backgroundColor
+                                frost: Math.max(8, Config.options.background.widgets.glass.haze)
                             }
                             anchors.fill: parent
                             anchors.topMargin: dockRoot.position === "bottom" ? dockRoot.shadowMargin : 0
                             anchors.bottomMargin: dockRoot.position === "bottom" ? dockRoot.gap : 0
-                            anchors.leftMargin: dockRoot.macos ? -DockMagnify.totalExtra / 2 : (dockRoot.position === "left" ? dockRoot.gap : dockRoot.position === "right" ? dockRoot.shadowMargin : 0)
-                            anchors.rightMargin: dockRoot.macos ? -DockMagnify.totalExtra / 2 : (dockRoot.position === "right" ? dockRoot.gap : dockRoot.position === "left" ? dockRoot.shadowMargin : 0)
-                            color: Config.options.dock.showBackground ? dockRoot.backgroundColor : "transparent"
-                            border.width: dockRoot.borderWidth
+                            anchors.leftMargin: dockRoot.macos ? -DockMagnify.leftExtra : (dockRoot.position === "left" ? dockRoot.gap : dockRoot.position === "right" ? dockRoot.shadowMargin : 0)
+                            anchors.rightMargin: dockRoot.macos ? -DockMagnify.rightExtra : (dockRoot.position === "right" ? dockRoot.gap : dockRoot.position === "left" ? dockRoot.shadowMargin : 0)
+                            color: Config.options.dock.showBackground && !dockGlass.live ? dockRoot.backgroundColor : "transparent"
+                            border.width: dockGlass.live ? 0 : dockRoot.borderWidth
                             border.color: Appearance.getColorFromName(Config.options.dock.borderColor)
                             radius: Config.options.dock.radius
                             topLeftRadius: dockRoot.hug && dockRoot.position === "left" ? 0 : radius

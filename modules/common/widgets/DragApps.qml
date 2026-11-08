@@ -156,6 +156,7 @@ Item {
 
                 property var appToplevel: slotItem.appEntry
                 magnifiable: true
+                magnifyBaseline: contentItem.y + contentItem.iconBottom
 
                 innerInset: DockStyle.iconInset
                 outerInset: DockStyle.iconInset

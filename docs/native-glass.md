@@ -56,6 +56,41 @@ con errore; prima di una prova controllare la crescita effettiva del file remoto
 SSH sul PC non è necessario per questo invio verso il Raspberry; l'accesso
 inverso di emergenza richiede una preparazione separata ed è ancora disattivato.
 
+## Dock: magnification e sfondo satinato
+
+Pin, separatori e pulsante della griglia applicazioni partecipano alla stessa
+onda delle icone: ingrandimento dal bordo inferiore e spostamento orizzontale.
+Il bordo inferiore delle immagini e dei simboli resta fermo durante l'ingrandimento:
+lo spazio sotto l'icona non viene ingrandito verso l'alto insieme al pulsante.
+Le icone vengono caricate alla risoluzione richiesta dall'ingrandimento massimo
+configurato, usando il tema esistente (SVG inclusi). La dimensione della texture
+resta fissa durante il movimento del mouse; pin e griglia usano QtRendering per
+mantenere nitidi i simboli. Senza magnification si carica la risoluzione normale.
+La distanza segue la curva di Build UI: ingrandimento lineare entro una fascia
+finita attorno al puntatore e spinta laterale che raggiunge un limite per le icone
+lontane. I valori di riferimento (icone da 40px, fascia 110px, spinta 40px a 2.25x)
+sono proporzionati alla dimensione e all'ingrandimento configurati. Il calcolo usa
+i centri originali, senza sommare le larghezze ingrandite o ricentrare la fila.
+Scala e spostamento seguono direttamente il puntatore, senza molleggio. Lo sfondo
+segue separatamente l'espansione dei due lati, anch'esso senza molle. La transizione
+di ingresso e uscita dell'ingrandimento mantiene la sua interpolazione morbida. I separatori interni alle app registrano solo la linea, senza duplicare il
+pulsante contenitore. In verticale o con magnification spenta tornano scala e
+posizione originali.
+
+Con Glassy lo sfondo della dock usa un solo materiale satinato, frost almeno 8,
+senza riempimento opaco o contorno disegnati sopra. Il materiale conserva gli
+angoli della modalità hug. Spegnendo lo sfondo si ritira anche il vetro; spegnendo
+Glassy tornano riempimento e bordo configurati. La quarantena Dashboard resta attiva.
+
+`python3 tests/dock-magnify-check.py` verifica i componenti reali con una finestra
+nascosta e rendering software: bordo inferiore delle icone fermo da 1.2x a 2.2x,
+registrazione, curva delle distanze ai limiti di influenza, separazione delle icone
+del riferimento, movimento diretto senza molle, immagini ad alta risoluzione
+senza ricaricamenti al movimento del mouse, elementi nascosti, modalità
+verticale/disattivata e configurazione del materiale.
+Il test simula solo l'associazione alla finestra per il calcolo e il movimento diretto,
+poiché la finestra nascosta non crea un backing QWindow. Non è una prova GPU.
+
 Con `Glassy UI` e `Glass source → Windows underneath` attivi, il backend nativo
 campiona il framebuffer del compositor a ogni frame disegnato. Segue quindi
 contenuto animato, spostamenti e transizioni tra workspace, senza ricostruire lo

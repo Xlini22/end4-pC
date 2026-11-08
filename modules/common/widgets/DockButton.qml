@@ -7,6 +7,7 @@ RippleButton {
     id: root
     property real innerInset: 0
     property real outerInset: 0
+    property real magnifyBaseline: height
     property bool magnifiable: false
     property int magnifyId: -1
     readonly property var magnifyValue: root.magnifyId >= 0 ? (DockMagnify.values[root.magnifyId] ?? null) : null
@@ -29,7 +30,11 @@ RippleButton {
     transformOrigin: Item.Bottom
     scale: root.magnifyActive && root.magnifyValue ? root.magnifyValue.scale : 1
     z: root.magnifyActive && root.magnifyValue ? root.magnifyValue.scale : 0
-    transform: Translate { x: root.magnifyActive && root.magnifyValue ? root.magnifyValue.shift : 0 }
+    transform: Translate {
+        x: root.magnifyActive && root.magnifyValue ? root.magnifyValue.shift : 0
+        // Keep the icon's bottom fixed, rather than magnifying the padding below it.
+        y: (root.scale - 1) * (root.height - root.magnifyBaseline)
+    }
 
 
     Component.onCompleted: if (root.magnifiable) root.magnifyId = DockMagnify.register(root)
