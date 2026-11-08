@@ -33,6 +33,39 @@ ShellRoot {
     property var contrastSamples: []
     property int contrastTick: 0
     property real dashboardScrollEnd: -1
+    property Item volumeSlider: null
+    property int previousCalls: 0
+    property int nextCalls: 0
+    QtObject {
+        id: testPlayer
+        property real volume: 0.42
+        property bool isPlaying: false
+        property bool canSeek: false
+        property int playbackState: 0
+        property string trackTitle: "Test track"
+        property string trackArtist: "Test artist"
+        property string trackArtUrl: ""
+        function previous() { root.previousCalls++ }
+        function next() { root.nextCalls++ }
+    }
+    PanelWindow {
+        visible: false
+        implicitWidth: 450; implicitHeight: 900
+        Left.SidebarPlayerControl {
+            id: mediaControls
+            anchors.fill: parent
+            radius: 20
+            player: testPlayer
+        }
+    }
+    function findControl(item, predicate) {
+        if (predicate(item)) return item
+        for (const child of item.children ?? []) {
+            const found = findControl(child, predicate)
+            if (found) return found
+        }
+        return null
+    }
     QtObject { id: regionSocket; property string path: SOCKET_PATH }
     CONTRAST_SOCKET
     CONTRAST_VALIDATION
@@ -60,6 +93,10 @@ ShellRoot {
             const card = recycledCard.item
             if (card.animOpacity !== 0 || Math.abs(card.offsetX - card.travelX) > .001)
                 throw new Error("Animated tiles must also leave when the page changes")
+            root.volumeSlider.moved()
+            if (Math.abs(testPlayer.volume - .73) > .001)
+                throw new Error("Sidebar volume slider must control the selected player")
+            console.log("SIDEBAR MEDIA CONTROLS PASSED")
             console.log("SYNC COMPONENT COMPILE PASSED")
             Qt.quit()
         }
@@ -101,6 +138,19 @@ ShellRoot {
     Timer {
         interval: 200; running: true
         onTriggered: {
+            const previous = findControl(mediaControls, item => item.contentItem?.text === "skip_previous" && item.downAction !== undefined)
+            const play = findControl(mediaControls, item => item.contentItem?.text === "play_arrow" && item.downAction !== undefined)
+            const next = findControl(mediaControls, item => item.contentItem?.text === "skip_next" && item.downAction !== undefined)
+            if (!previous || !play || !next || previous.parent !== play.parent || next.parent !== play.parent)
+                throw new Error("Sidebar must group previous, play and next in the same row")
+            previous.downAction()
+            next.downAction()
+            if (root.previousCalls !== 1 || root.nextCalls !== 1)
+                throw new Error("Sidebar skip controls must target the selected player")
+            root.volumeSlider = findControl(mediaControls, item => item.moved !== undefined && item.highlightColor !== undefined)
+            if (!root.volumeSlider || Math.abs(root.volumeSlider.value - .42) > .001)
+                throw new Error("Sidebar must show the selected player's volume")
+            root.volumeSlider.value = .73
             Config.options.background.widgets.glass.enable = false
             if (dashboardCard.color.a !== 1) throw new Error("Standard Dashboard cards must retain their tint")
             Config.options.background.widgets.glass.enable = true
