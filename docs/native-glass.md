@@ -23,6 +23,39 @@ escluso dall'esecuzione ordinaria; la riproduzione richiede esplicitamente
 `--reproduce-r18`. Le misure e le verifiche native documentate sotto sono
 storiche e non giustificano riabilitare il materiale o dichiararlo stabile.
 
+## Raccolta su Raspberry prima di una riproduzione
+
+`scripts/glass/record-freeze.py` invia i messaggi del kernel e campioni di
+memoria disponibile, swap, pressione CPU/memoria/I/O, carico GPU e memoria
+grafica a un host SSH. Usa solo letture di `/proc` e `/sys`, `journalctl` e SSH;
+non apre finestre, non riabilita Glassy e non modifica servizi o parametri del
+kernel. I campioni arrivano circa una volta al secondo, non sono un benchmark.
+
+Richiede un host SSH già verificato e autenticazione con chiave funzionante.
+Non accetta automaticamente chiavi host nuove e non richiede password nello
+script. Il nome `raspberry` e la variante `raspberry.local` non risultavano
+risolvibili dal PC nella verifica iniziale; usare l'IP comunicato dall'utente.
+
+```sh
+python3 tests/freeze-recorder-check.py
+# Sostituire IP_DEL_RASPBERRY con l'indirizzo effettivo.
+python3 scripts/glass/record-freeze.py xlini@IP_DEL_RASPBERRY --seconds 120
+```
+
+Il ricevitore crea un file nuovo con permessi 0600 in
+`~/.local/state/end4-pC/freeze-*.jsonl` sul Raspberry; il percorso viene mostrato
+quando il file è aperto. Il test software controlla JSON, permessi, messaggi
+kernel, campioni, arresto e fallimento SSH usando endpoint locali, senza rete
+o rendering. La ricezione reale sul Raspberry resta da verificare.
+
+I dati già ricevuti restano sul Raspberry se il PC si blocca, ma gli ultimi
+eventi non ancora trasmessi possono mancare. Il lettore dei messaggi kernel è
+separato dal campionamento: una lettura di stato della GPU bloccata non ferma
+da sola l'invio dei messaggi kernel. Una disconnessione interrompe la raccolta
+con errore; prima di una prova controllare la crescita effettiva del file remoto.
+SSH sul PC non è necessario per questo invio verso il Raspberry; l'accesso
+inverso di emergenza richiede una preparazione separata ed è ancora disattivato.
+
 Con `Glassy UI` e `Glass source → Windows underneath` attivi, il backend nativo
 campiona il framebuffer del compositor a ogni frame disegnato. Segue quindi
 contenuto animato, spostamenti e transizioni tra workspace, senza ricostruire lo
