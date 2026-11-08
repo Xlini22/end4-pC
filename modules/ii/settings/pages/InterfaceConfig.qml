@@ -155,14 +155,6 @@ ContentPage {
                     visible: WM.compositor === "hyprland"
                 }
                 ConfigSwitch {
-                    buttonIcon: "motion_mode"
-                    text: Translation.tr("True Glassy")
-                    checked: Config.options.background.widgets.glass.trueGlassy
-                    enabled: Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.source === "windows"
-                    visible: WM.compositor === "hyprland"
-                    onCheckedChanged: Config.options.background.widgets.glass.trueGlassy = checked
-                }
-                ConfigSwitch {
                     buttonIcon: "auto_awesome"
                     text: Translation.tr("Enhanced")
                     checked: Config.options.background.widgets.glass.enhanced

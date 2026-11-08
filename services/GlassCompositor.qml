@@ -13,7 +13,6 @@ Singleton {
     readonly property bool disabled: Quickshell.env("QS_DISABLE_COMPOSITOR_GLASS") === "1"
     readonly property bool enabled: !disabled && WM.compositor === "hyprland"
         && Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.source === "windows"
-        && Config.options.background.widgets.glass.trueGlassy
         && !GlobalStates.screenLocked
     readonly property var namespaces: ["bar", "verticalBar", "dock", "popup", "popupMorph", "settings",
         "sidebarLeft", "sidebarRight", "wallpaperSelector", "airdrop", "desktopMenu", "dropshelf",

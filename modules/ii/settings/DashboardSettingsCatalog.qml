@@ -33,7 +33,6 @@ QtObject {
 
     readonly property var glassDefaults: ({
         source: "wallpaper",
-        trueGlassy: true,
         enhanced: false,
         tintStrength: 0.3,
         rimWidth: 16,
@@ -179,7 +178,6 @@ QtObject {
         "interface:Glass shine": glassSlider("sheen", 100, 0, 150),
         "interface:Glass source": { type: "select", get: () => Config.options.background.widgets.glass.source, set: v => { Config.options.background.widgets.glass.source = v; }, options: [{ displayName: Translation.tr("Wallpaper"), icon: "wallpaper", value: "wallpaper" }, { displayName: Translation.tr("Windows underneath"), icon: "select_window", value: "windows" }] },
         "interface:Enhanced": { type: "switch", get: () => Config.options.background.widgets.glass.enhanced, set: v => { Config.options.background.widgets.glass.enhanced = v; } },
-        "interface:True Glassy": { type: "switch", get: () => Config.options.background.widgets.glass.trueGlassy, set: v => { Config.options.background.widgets.glass.trueGlassy = v; } },
         "interface:Glass reset": { type: "action", run: () => resetGlass() },
         "interface:Glassy UI": { type: "switch", get: () => Config.options.background.widgets.glass.enable, set: v => { Config.options.background.widgets.glass.enable = v; } },
         "desktop:Text enable": { type: "switch", get: () => Config.options.background.widgets.customText.enable, set: v => { Config.options.background.widgets.customText.enable = v; } },
@@ -348,7 +346,6 @@ QtObject {
         {
             page: Translation.tr("Interface"), title: Translation.tr("Glass"), icon: "water_drop", when: "glass", cards: [
                 { type: "select", w: 4, key: "interface:Glass source", title: Translation.tr("Glass source"), icon: "layers", when: "glasshyprland", kw: "glass glassy source wallpaper windows underneath backdrop" },
-                { type: "toggle", key: "interface:True Glassy", title: Translation.tr("True Glassy"), icon: "motion_mode", when: "glasshyprland", kw: "glass true live native performance capture snapshot" },
                 { type: "toggle", key: "interface:Enhanced", title: Translation.tr("Enhanced"), icon: "auto_awesome", when: "glass", kw: "glass enhanced refraction transparent frosted" },
                 { type: "slider", key: "interface:Glass intensity", title: Translation.tr("Glass intensity (%)"), icon: "blur_on", percent: false, kw: "glass glassy intensity blur contrast" },
                 { type: "select", w: 4, key: "interface:Glass tint", title: Translation.tr("Glass tint"), icon: "colorize", kw: "glass glassy tint color transparent primary black" },
