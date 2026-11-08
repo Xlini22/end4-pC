@@ -91,6 +91,10 @@ verticale/disattivata e configurazione del materiale.
 Il test simula solo l'associazione alla finestra per il calcolo e il movimento diretto,
 poiché la finestra nascosta non crea un backing QWindow. Non è una prova GPU.
 
+`node tests/dock-hover-check.js` riproduce il passaggio rapido app aperta → chiusa
+→ aperta, includendo eventi di uscita ricevuti dopo l'ingresso nella nuova icona.
+Solo il pulsante che possiede l'hover corrente può azzerarlo alla propria uscita.
+
 Con `Glassy UI` e `Glass source → Windows underneath` attivi, il backend nativo
 campiona il framebuffer del compositor a ogni frame disegnato. Segue quindi
 contenuto animato, spostamenti e transizioni tra workspace, senza ricostruire lo

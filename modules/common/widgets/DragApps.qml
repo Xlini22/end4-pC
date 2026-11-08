@@ -168,7 +168,7 @@ Item {
                     if (hovered) {
                         root.lastHoveredButton = dockBtn
                         root.buttonHovered = true
-                    } else {
+                    } else if (root.lastHoveredButton === dockBtn) {
                         root.buttonHovered = false
                     }
                 }
@@ -384,6 +384,7 @@ Item {
                 : DockStyle.position === "right" ? (Edges.Bottom | Edges.Left)
                 : (Edges.Top | Edges.Right)
             edges: Edges.Top | Edges.Left
+            rect.y: DockStyle.vertical ? 0 : 16
             rect.x: DockStyle.position === "left"
                 ? DockStyle.zone + Appearance.sizes.hyprlandGapsOut - Appearance.sizes.elevationMargin
                 : DockStyle.position === "right"
