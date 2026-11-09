@@ -62,7 +62,7 @@ Scope {
             readonly property bool macos: DockStyle.magnifying
             readonly property bool hug: Config.options.dock.style === "hug"
             readonly property string position: modelData.position
-            readonly property bool glassHug: hug && Config.options.dock.showBackground && Config.options.background.widgets.glass.enable
+            readonly property bool glassHug: hug && Config.options.dock.showBackground && (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.dock.enable)
             readonly property real hugFlare: glassHug ? Appearance.rounding.screenRounding : 0
             readonly property bool vertical: position !== "bottom"
             readonly property real gap: Appearance.sizes.hyprlandGapsOut

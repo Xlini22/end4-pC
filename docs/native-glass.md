@@ -1140,3 +1140,55 @@ la sessione continua a usare r19. Backup della r19:
 `/home/xlini/.cache/end4-pC/native-glass-backup-r19-ks54x8_o`.
 Passano i controlli del profilo ottico, dei buffer, del loader e il caricamento
 QML con rendering software.
+
+
+## Pagina Glassy e profili per elemento: revisione r21
+
+In Impostazioni → Interfaccia → Trasparenza, la riga **Glassy UI** apre una
+pagina dedicata. La Dashboard offre lo stesso collegamento. In alto restano
+attivazione generale, sorgente e Enhanced; sotto ci sono Bar, Dock, Sidebar,
+Impostazioni, Lockscreen e Terminale. Ogni scheda salva attivazione, fascia
+deformata, rifrazione, sfocatura interna e riflessi, con ripristino separato.
+Le regolazioni ottiche richiedono Enhanced. Gli slider applicano il valore al
+rilascio; la tastiera applica ogni passo. Non viene aggiunta alcuna cattura.
+
+I predefiniti della barra sono 24%, 200%, 1 px e 50%. Gli altri pannelli
+mantengono fascia 7%, rifrazione 135% e riflessi 50%; la sfocatura regola i
+box satinati senza sfocare ulteriormente il contenitore trasparente esterno.
+La lockscreen usa solo lo sfondo e conserva inizialmente il blur globale.
+Gli interruttori ripristinano anche i riempimenti normali dei componenti.
+La Dashboard conserva la quarantena `windowFrostedAvailable: false`.
+
+Il terminale è disattivato per default. Su Hyprland, con sorgente Windows
+underneath ed Enhanced attivo, il profilo si applica tramite tag proprietario
+a Kitty, Foot, Alacritty, WezTerm e Konsole. I testi sono composti
+dall'applicazione dopo il vetro. Occorre uno sfondo del terminale trasparente
+(l'opacità dell'applicazione non viene cambiata). Il tag `hyprglass_disabled`
+continua ad avere precedenza.
+
+La build r21 aggiunge l'IPC `end4profiles`: aggiorna un insieme temporaneo
+validato, con sei chiavi ammesse, valori finiti e limiti, verifica il PID della
+connessione e conserva i profili separati per processo QS. Un messaggio
+malformato non modifica l'ultimo insieme valido. La geometria `end4glass`
+rimane compatibile con le build precedenti. Il loader distingue la capability
+`profiles`: in attesa del nuovo login la UI salva i valori e mostra un avviso;
+non invia comandi sconosciuti al plugin caricato.
+
+Controlli senza GPU/compositor di prova:
+
+```sh
+python3 tests/glass-profiles-check.py /percorso/sorgenti-patchati
+python3 tests/topbar-glass-check.py /percorso/sorgenti-patchati
+python3 tests/native-glass-buffer-check.py /percorso/sorgenti-patchati
+python3 tests/native-glass-loader-check.py
+python3 tests/qml-load-check.py
+```
+
+Il controllo QML istanzia la pagina, passa sulle sei schede, verifica
+predefiniti, interruttori, isolamento di un cursore, ripristino e ritorno.
+La build nativa si installa per il prossimo logout/login, conservando
+NODELETE e sostituendo atomicamente i file: non viene ricaricata a caldo.
+
+Installazione r21 completata con verifica ABI/hash. La sessione resta sulla
+r20; backup della versione precedente:
+`/home/xlini/.cache/end4-pC/native-glass-backup-r20-_shv_q36`.

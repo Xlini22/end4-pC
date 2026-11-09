@@ -27,7 +27,10 @@ Item {
     property real hangLeft: 0
     property real hangRight: 0
     property int edge: 0
-    readonly property bool live: glassEnabled && (Config.options?.background?.widgets?.glass?.enable ?? false)
+    readonly property string profileKey: GlassProfiles.keyFor(fullscreenSurface || popup ? "" : floating ? "quickshell:settings" : win?.WlrLayershell.namespace ?? "", fullscreenSurface)
+    readonly property var opticalProfile: GlassProfiles.profile(profileKey)
+    readonly property real materialFrost: opticalProfile && frost > 0 ? opticalProfile.blur : frost
+    readonly property bool live: (opticalProfile?.enable ?? true) && glassEnabled && (Config.options?.background?.widgets?.glass?.enable ?? false)
     readonly property bool tracking: live && visible && (win?.visible ?? true)
     readonly property bool windowBackdrop: live && Config.options.background.widgets.glass.source === "windows"
         && WM.compositor === "hyprland" && !GlobalStates.screenLocked && !fullscreenSurface
@@ -109,7 +112,7 @@ Item {
                 rect.x + rect.width < full.x + full.width || rect.y + rect.height < full.y + full.height ? 0 : radius(bottomRightRadius),
                 rect.x > full.x || rect.y + rect.height < full.y + full.height ? 0 : radius(bottomLeftRadius),
                 flareLeft * scale, flareRight * scale, hangLeft * scale, hangRight * scale, edge, opacity]
-        if (GlassCompositor.frostedAvailable) values.push(Math.max(0, Math.min(32, frost)) * scale)
+        if (GlassCompositor.frostedAvailable) values.push(Math.max(0, Math.min(32, materialFrost)) * scale)
         const rounded = values.map(value => Math.round(value * 1000) / 1000)
         if (rounded[2] <= 0 || rounded[3] <= 0) return null
         // Rounded radii must still fit a thin visible slice during scrolling.
@@ -119,7 +122,7 @@ Item {
             values: rounded }
     }
     readonly property string nativeShape: JSON.stringify([topLeftRadius, topRightRadius, bottomRightRadius,
-        bottomLeftRadius, flareLeft, flareRight, hangLeft, hangRight, edge, root.opacity, frost])
+        bottomLeftRadius, flareLeft, flareRight, hangLeft, hangRight, edge, root.opacity, materialFrost])
     onNativeShapeChanged: GlassCompositor.queueRegions()
     onEnhancedNativeChanged: GlassCompositor.queueRegions()
     onNativeClipChanged: GlassCompositor.queueRegions()
@@ -341,6 +344,7 @@ Item {
                 anchors.fill: parent
                 blurSource: backdrop
                 clearMaterial: root.clearMaterial
+                opticalProfile: root.opticalProfile
                 topBarOptics: root.clearMaterial && root.win?.WlrLayershell.namespace === "quickshell:bar" && !Config.options.bar.bottom
                 frost: root.frost
                 hideSource: true

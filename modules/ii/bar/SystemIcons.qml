@@ -19,7 +19,7 @@ Item {
     property bool isDi: GlobalStates.dynamicIslandEnabled && (Config.options.bar.dynamicIsland.leftWidgets.includes("systemIcons")
         || Config.options.bar.dynamicIsland.rightWidgets.includes("systemIcons"))
 
-    readonly property color iconColor: root.contentColorOverridden ? root.contentColor : (root.isDi ? Appearance.colors.colOnLayer1 : (root.isMaterial ? (Config.options.background.widgets.glass.enable ? Appearance.colors.colOnLayer0 : Appearance.colors.colOnPrimary) : Appearance.colors.colOnLayer1))
+    readonly property color iconColor: root.contentColorOverridden ? root.contentColor : (root.isDi ? Appearance.colors.colOnLayer1 : (root.isMaterial ? ((Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.bar.enable) ? Appearance.colors.colOnLayer0 : Appearance.colors.colOnPrimary) : Appearance.colors.colOnLayer1))
 
     implicitWidth: root.vertical ? 32 : flow.implicitWidth + (root.isMaterial ? 12 : 4)
     implicitHeight: root.vertical ? flow.implicitHeight + 4 : 32

@@ -21,6 +21,7 @@ Item {
     function goToTarget(target) {
         const idx = root.pages.findIndex(p => p.id === target.page);
         if (idx < 0) return;
+        GlobalStates.settingsSubpage = "";
         root.currentPage = idx;
         root.showingProfile = false;
         if (!target.label) return;
@@ -160,7 +161,7 @@ Item {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.showingProfile = !root.showingProfile
+                            onClicked: { GlobalStates.settingsSubpage = ""; root.showingProfile = !root.showingProfile }
                         }
                     }
 
@@ -216,6 +217,7 @@ Item {
                                 required property var modelData
                                 toggled: root.currentPage === index && !root.showingProfile
                                 onPressed: {
+                                    GlobalStates.settingsSubpage = ""
                                     root.currentPage = index
                                     root.showingProfile = false
                                 }
@@ -253,7 +255,7 @@ Item {
 
                             anchors.fill: parent
 
-                            property bool isActive: root.currentPage === index && !root.showingProfile
+                            property bool isActive: root.currentPage === index && !root.showingProfile && GlobalStates.settingsSubpage === ""
                             opacity: isActive ? 1 : 0
                             enabled: isActive
                             visible: isActive
@@ -283,13 +285,20 @@ Item {
                     }
 
                     Loader {
+                        anchors.fill: parent
+                        active: GlobalStates.settingsSubpage === "glassy"
+                        sourceComponent: GlassyConfig {}
+                        onLoaded: GlobalStates.currentPageInstance = item
+                    }
+
+                    Loader {
                         id: profileLoader
                         active: Config.ready && (root.showingProfile || item !== null)
                         asynchronous: true
                         anchors.fill: parent
                         source: Qt.resolvedUrl("pages/Profile.qml")
 
-                        property bool isActive: root.showingProfile
+                        property bool isActive: root.showingProfile && GlobalStates.settingsSubpage === ""
                         opacity: isActive ? 1 : 0
                         enabled: isActive
                         visible: isActive

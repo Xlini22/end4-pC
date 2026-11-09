@@ -280,13 +280,13 @@ Item {
                 Layout.minimumWidth: 160
                 implicitHeight: 44
                 radius: 22
-                color: Config.options.background.widgets.glass.enable ? "transparent" : Appearance.colors.colLayer1
+                color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.settings.enable) ? "transparent" : Appearance.colors.colLayer1
                 border.width: saveInput.activeFocus ? 2 : 0
-                border.color: Config.options.background.widgets.glass.enable ? "transparent" : Appearance.colors.colPrimary
+                border.color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.settings.enable) ? "transparent" : Appearance.colors.colPrimary
 
                 WindowGlass {
                     anchors.fill: parent
-                    glassEnabled: Config.options.background.widgets.glass.enable
+                    glassEnabled: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.settings.enable)
                     cardRadius: parent.radius
                 }
 

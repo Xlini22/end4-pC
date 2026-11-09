@@ -342,6 +342,50 @@ Singleton {
                         property real haze: 3
                         property real vividness: 1.3
                         property real sheen: 0.55
+                        property JsonObject elements: JsonObject {
+                            property JsonObject bar: JsonObject {
+                                property bool enable: true
+                                property real rim: 24
+                                property real refraction: 200
+                                property real blur: 1
+                                property real reflections: 50
+                            }
+                            property JsonObject dock: JsonObject {
+                                property bool enable: true
+                                property real rim: 7
+                                property real refraction: 135
+                                property real blur: Math.max(8, root.options.background.widgets.glass.haze)
+                                property real reflections: 50
+                            }
+                            property JsonObject sidebar: JsonObject {
+                                property bool enable: true
+                                property real rim: 7
+                                property real refraction: 135
+                                property real blur: Math.max(8, root.options.background.widgets.glass.haze)
+                                property real reflections: 50
+                            }
+                            property JsonObject settings: JsonObject {
+                                property bool enable: true
+                                property real rim: 7
+                                property real refraction: 135
+                                property real blur: Math.max(8, root.options.background.widgets.glass.haze)
+                                property real reflections: 50
+                            }
+                            property JsonObject lockscreen: JsonObject {
+                                property bool enable: true
+                                property real rim: 7
+                                property real refraction: 135
+                                property real blur: root.options.background.widgets.glass.haze
+                                property real reflections: 50
+                            }
+                            property JsonObject terminal: JsonObject {
+                                property bool enable: false
+                                property real rim: 7
+                                property real refraction: 135
+                                property real blur: 3
+                                property real reflections: 50
+                            }
+                        }
                     }
                     property bool shadow: true
                     property list<string> menuHidden: []

@@ -176,7 +176,7 @@ Item {
                             ? Appearance.colors.colUiBackground
                             : root.resolvedGroupColor)
 
-        color: Config.options.background.widgets.glass.enable && fill.a > 0 ? "transparent" : fill
+        color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.bar.enable) && fill.a > 0 ? "transparent" : fill
 
         border.width: root.morphEdge !== "" ? 0 : root.style?.borderWidth ?? (root.paintBackground && root.isSegmented && !root.isMaterial ? 1 : 0)
         border.color: root.resolveColorName(root.style?.borderColor) ?? Appearance.colors.colLayer0Border

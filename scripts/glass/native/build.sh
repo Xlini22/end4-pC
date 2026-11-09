@@ -10,6 +10,7 @@ test "$(git -C "$task_build/source" rev-parse HEAD)" = 22acd5db6ef73fa34cad2d5ce
 git -C "$task_build/source" apply "$task_script_dir/live-background.patch"
 python3 "$task_script_dir/../../../tests/native-glass-buffer-check.py" "$task_build/source"
 python3 "$task_script_dir/../../../tests/topbar-glass-check.py" "$task_build/source"
+python3 "$task_script_dir/../../../tests/glass-profiles-check.py" "$task_build/source"
 make -C "$task_build/source" -j1
 mkdir -p -- "$task_output"
 strip --strip-unneeded -o "$task_output/hyprglass.so" "$task_build/source/hyprglass.so"

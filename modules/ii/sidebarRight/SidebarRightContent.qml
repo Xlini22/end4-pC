@@ -439,7 +439,7 @@ Item {
             Rectangle {
                 anchors.fill: parent
                 radius: Appearance.rounding.normal
-                color: Config.options.background.widgets.glass.enable ? Appearance.colors.colLayer1 : "transparent"
+                color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) ? Appearance.colors.colLayer1 : "transparent"
 
                 WindowGlass {
                     anchors.fill: parent

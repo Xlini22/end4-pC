@@ -63,7 +63,7 @@ Item {
         anchors.rightMargin: 4
         anchors.topMargin: -1
         anchors.bottomMargin: 4
-        color: Config.options.background.widgets.glass.enable ? "transparent" : ColorUtils.transparentize(artDominantColor, 0.9)
+        color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) ? "transparent" : ColorUtils.transparentize(artDominantColor, 0.9)
         radius: Appearance.rounding.normal
         clip: true
 
@@ -83,7 +83,7 @@ Item {
             source: blurArtSource
             radius: 80
             opacity: 0.5
-            visible: !Config.options.background.widgets.glass.enable && root.blurredBackground && root.displayedArtFilePath !== ""
+            visible: !(Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) && root.blurredBackground && root.displayedArtFilePath !== ""
 
             layer.enabled: blurArt.visible
             layer.effect: OpacityMask {

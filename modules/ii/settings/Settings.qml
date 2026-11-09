@@ -110,6 +110,7 @@ Scope {
             }
 
             Keys.onTabPressed: (event) => {
+            if (GlobalStates.settingsSubpage !== "") { event.accepted = false; return; }
             if (settingsContent.status !== Loader.Ready) return;
             const content = settingsContent.item;
             if (!content) return;
@@ -120,6 +121,7 @@ Scope {
         }
 
         Keys.onBacktabPressed: (event) => {
+            if (GlobalStates.settingsSubpage !== "") { event.accepted = false; return; }
             if (settingsContent.status !== Loader.Ready) return;
             const content = settingsContent.item;
             if (!content) return;
@@ -131,7 +133,8 @@ Scope {
 
         Keys.onPressed: (event) => {
             if (event.key === Qt.Key_Escape) {
-                panelWindow.hide();
+                if (GlobalStates.settingsSubpage !== "") GlobalStates.settingsSubpage = "";
+                else panelWindow.hide();
                 event.accepted = true;
                 return;
             }

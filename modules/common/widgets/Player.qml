@@ -155,7 +155,7 @@ Item {
             verticalCenter: root.growFrom === "center" ? parent.verticalCenter : undefined
         }
         height: root.cardHeight
-        color: Config.options.background.widgets.glass.enable
+        color: (Config.options.background.widgets.glass.enable && GlassProfiles.enabledForItem(root))
             ? "transparent" : ColorUtils.applyAlpha(blendedColors.colLayer0, 1)
         radius: root.radius
 
@@ -177,7 +177,7 @@ Item {
 
         Image {
             id: blurredArt
-            visible: !Config.options.background.widgets.glass.enable
+            visible: !(Config.options.background.widgets.glass.enable && GlassProfiles.enabledForItem(root))
             anchors.fill: parent
             source: root.displayedArtFilePath
             sourceSize.width: root.width - root.cardMargin * 2

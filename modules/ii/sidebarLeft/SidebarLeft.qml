@@ -97,7 +97,7 @@ Scope { // Scope
         id: unloadTimer
         interval: 3000
         // ponytail: cache one Glassy sidebar, including visited pages; evict individual pages if memory grows.
-        onTriggered: if (!Config.options.background.widgets.glass.enable) root.unload()
+        onTriggered: if (!(Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable)) root.unload()
     }
 
     Connections {
@@ -172,7 +172,7 @@ Scope { // Scope
 
             exclusionMode: ExclusionMode.Normal
             exclusiveZone: root.pin ? sidebarWidth : 0
-            implicitWidth: (Config.options.background.widgets.glass.enable && !animatedEntrance && !widthBehavior.animation?.running
+            implicitWidth: ((Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) && !animatedEntrance && !widthBehavior.animation?.running
                 ? Math.max(sidebarWidth, sidebarLeftBackground.width + Appearance.sizes.hyprlandGapsOut + Appearance.sizes.elevationMargin)
                 : Appearance.sizes.sidebarWidthExtended) + Appearance.sizes.elevationMargin
             WlrLayershell.namespace: "quickshell:sidebarLeft"
@@ -252,7 +252,7 @@ Scope { // Scope
             StyledRectangularShadow {
                 target: sidebarLeftBackground
                 radius: sidebarLeftBackground.radius
-                visible: !Config.options.background.widgets.glass.enable
+                visible: !(Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable)
             }
             WindowGlass {
                 anchors.fill: sidebarLeftBackground
@@ -269,8 +269,8 @@ Scope { // Scope
                     ? parent.width - Appearance.sizes.elevationMargin : panelWindow.sidebarWidth)
                     - Appearance.sizes.hyprlandGapsOut - Appearance.sizes.elevationMargin
                 height: parent.height - Appearance.sizes.hyprlandGapsOut * 2
-                color: Config.options.background.widgets.glass.enable ? "transparent" : Appearance.colors.colUiBackground
-                border.width: Config.options.background.widgets.glass.enable ? 0 : 1
+                color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) ? "transparent" : Appearance.colors.colUiBackground
+                border.width: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) ? 0 : 1
                 border.color: ColorUtils.transparentize(Appearance.colors.colLayer0Border, 0.8) 
                 radius: Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 1
 
@@ -347,7 +347,7 @@ Scope { // Scope
             Rectangle {
                 id: detachedSidebarBackground
                 anchors.fill: parent
-                color: Config.options.background.widgets.glass.enable ? "transparent" : Appearance.colors.colUiBackground
+                color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) ? "transparent" : Appearance.colors.colUiBackground
 
                 Keys.onPressed: (event) => {
                     if (event.modifiers === Qt.ControlModifier) {

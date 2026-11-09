@@ -14,7 +14,7 @@ uniforms = '\n'.join(line for line in renderer.splitlines() if re.match(
 assert len(uniforms.splitlines()) == 4
 scope = re.search(r'    const bool topBarOptics = [^\n]+', renderer)[0]
 blur = re.search(r'        float blurRadius\s+= ([^;]+);', layer)[1]
-assert 'topBarOptics ? 64 : 8' in layer
+assert 'topBarOptics) ? 64 : 8' in layer
 assert 'm_lastTopBarOptics = calibratedTopBar();' in layer
 harness = r'''
 #include <cassert>
@@ -22,6 +22,7 @@ harness = r'''
 #include <memory>
 #include <string>
 #include <array>
+#include <optional>
 constexpr unsigned ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP = 1;
 constexpr unsigned ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM = 2;
 struct Resource { struct { unsigned anchor = 1; } m_current; };
@@ -42,12 +43,14 @@ struct SPresetValues { float refractionStrength, edgeThickness, fresnelStrength,
 struct SOverridableConfig { float refractionStrength, edgeThickness, fresnelStrength, specularStrength; };
 float resolvePresetFloat(int, float SPresetValues::*, float SOverridableConfig::*) { return .123f; }
 struct { int refractionStrength=0, edgeThickness=1, fresnelStrength=2, specularStrength=3; } uniforms;
-struct Mask { bool topBarOptics; };
+struct SGlassOptics { float rim, refraction, blur, reflections; };
+struct Mask { bool topBarOptics; std::optional<SGlassOptics> optics; };
 std::array<float,4> values;
 void glUniform1f(int location, float value) { values[location] = value; }
 void params(bool enhanced, const Mask* mask) {
     const int resolveContext=0;
 SCOPE
+    const auto optics = enhanced && mask ? mask->optics : std::nullopt;
 UNIFORMS
 }
 float radius(bool topBarOptics, float scale) {
@@ -77,6 +80,9 @@ int main() {
     for (const Mask* mask : {&other, static_cast<Mask*>(nullptr)}) {
         params(true,mask);same(values[0],1.35);same(values[1],.07);same(values[2],.35);same(values[3],.5);
     }
+    Mask custom{false,SGlassOptics{.12f,.75f,4,.2f}};
+    params(true,&custom);same(values[0],.75);same(values[1],.12);same(values[2],.14);same(values[3],.2);
+    params(false,&custom);for(float value:values)same(value,.123);
     params(false,&top);for(float value:values)same(value,.123);
     for(float scale : {1.f,1.25f,2.f}) {same(radius(true,scale)/3,scale);same(radius(false,scale),5.4);}
 }

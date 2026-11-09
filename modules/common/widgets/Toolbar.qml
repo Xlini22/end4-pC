@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import qs.modules.common
+import qs.services
 import qs.modules.common.widgets
 
 /**
@@ -13,7 +14,7 @@ Item {
     property bool enableShadow: true
     property bool glass: false
     property bool glassFullscreen: false
-    readonly property bool glassOn: glass && Config.options.background.widgets.glass.enable
+    readonly property bool glassOn: toolbarGlass.live
     property bool outerShadow: false
     property real padding: 8
     property color colBackground: Appearance.m3colors.m3surfaceContainer
@@ -55,6 +56,7 @@ Item {
         radius: height / 2
 
         WindowGlass {
+            id: toolbarGlass
             anchors.fill: parent
             glassEnabled: root.glass
             fullscreenSurface: root.glassFullscreen
