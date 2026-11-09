@@ -50,6 +50,13 @@ Variants {
             && Config?.options.background.hideWhenFullscreen
 
         property HyprlandMonitor monitor: Hyprland.monitorFor(modelData)
+        readonly property int dimSpecialWorkspace: monitor?.lastIpcObject?.specialWorkspace?.id ?? 0
+        readonly property bool desktopDimmed: Config.options.bar.dimDesktopWhenWindowsOpen
+            && WM.compositor === "hyprland" && !GlobalStates.screenLocked && !GlobalStates.startupLockPending
+            && !!monitor && HyprlandData.windowList.some(win => win.mapped && !win.hidden
+                && win.monitor === monitor.id && win.size?.[0] > 0 && win.size?.[1] > 0
+                && (win.pinned || win.workspace?.id === monitor.activeWorkspace?.id
+                    || (dimSpecialWorkspace !== 0 && win.workspace?.id === dimSpecialWorkspace)))
 
         // Workspace range and image geometry follow the original ii parallax.
         property list<var> relevantWindows: HyprlandData.windowList.filter(win => win.monitor == monitor?.id && win.workspace.id >= 0).sort((a, b) => a.workspace.id - b.workspace.id)
@@ -511,6 +518,17 @@ Variants {
                 active: Collage.enabled && !Config.options.background.widgetsLocked && !GlobalStates.screenLocked && !!collageLoader.item
                 sourceComponent: MultipleWallsEditor {
                     collage: collageLoader.item
+                }
+            }
+
+            Rectangle {
+                id: desktopDimmer
+                anchors.fill: parent
+                color: "black"
+                opacity: bgRoot.desktopDimmed ? Math.max(0, Math.min(100, Config.options.bar.desktopDimPercent)) / 100 : 0
+                Accessible.ignored: true
+                Behavior on opacity {
+                    NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
                 }
             }
 

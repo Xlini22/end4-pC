@@ -20,6 +20,7 @@ import qs.modules.common
 import qs.services
 import qs.panelFamilies as Families
 import qs.modules.ii.bar as Bar
+import qs.modules.ii.background as Background
 import qs.modules.ii.settings as Settings
 import qs.modules.ii.settings.pages as Pages
 import qs.modules.ii.sidebarLeft as Left
@@ -145,6 +146,8 @@ ShellRoot {
         }
     }
     Component { Families.IllogicalImpulseFamily {} }
+    Component { Background.Background {} }
+    Component { Pages.BarConfig {} }
     Component { Bar.BarContent {} }
     Component { Bar.DynamicIsland {} }
     Component { Bar.Omdrop {} }

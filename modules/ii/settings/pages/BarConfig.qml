@@ -319,6 +319,24 @@ ContentPage {
                     }
                 }
                 ConfigSwitch {
+                    buttonIcon: "brightness_4"
+                    text: Translation.tr("Dim desktop when windows are open")
+                    enabled: WM.compositor === "hyprland"
+                    checked: Config.options.bar.dimDesktopWhenWindowsOpen
+                    onCheckedChanged: Config.options.bar.dimDesktopWhenWindowsOpen = checked
+                }
+                ConfigSlider {
+                    property bool groupedListCollapsed: !Config.options.bar.dimDesktopWhenWindowsOpen
+                    visible: !groupedListCollapsed
+                    enabled: WM.compositor === "hyprland"
+                    buttonIcon: "brightness_6"
+                    text: Translation.tr("Dimming: %1%").arg(Math.round(value))
+                    from: 0; to: 100; stepSize: 1
+                    stopIndicatorValues: [50]
+                    value: Config.options.bar.desktopDimPercent
+                    onMoved: Config.options.bar.desktopDimPercent = Math.round(value)
+                }
+                ConfigSwitch {
                     buttonIcon: "expand"
                     enabled: Config.options.bar.showFrame
                     text: Translation.tr("Overlap windows when center-only")
