@@ -343,21 +343,7 @@ QtObject {
                 { type: "slider", key: "interface:Transparency/Content", title: Translation.tr("Content"), icon: "opacity" }
             ]
         },
-        {
-            page: Translation.tr("Interface"), title: Translation.tr("Glass"), icon: "water_drop", when: "glass", cards: [
-                { type: "select", w: 4, key: "interface:Glass source", title: Translation.tr("Glass source"), icon: "layers", when: "glasshyprland", kw: "glass glassy source wallpaper windows underneath backdrop" },
-                { type: "toggle", key: "interface:Enhanced", title: Translation.tr("Enhanced"), icon: "auto_awesome", when: "glass", kw: "glass enhanced refraction transparent frosted" },
-                { type: "slider", key: "interface:Glass intensity", title: Translation.tr("Glass intensity (%)"), icon: "blur_on", percent: false, kw: "glass glassy intensity blur contrast" },
-                { type: "select", w: 4, key: "interface:Glass tint", title: Translation.tr("Glass tint"), icon: "colorize", kw: "glass glassy tint color transparent primary black" },
-                { type: "slider", key: "interface:Glass tint strength", title: Translation.tr("Tint strength (%)"), icon: "colorize", percent: false },
-                { type: "slider", key: "interface:Glass bezel", title: Translation.tr("Edge width (px)"), icon: "crop_free", percent: false },
-                { type: "slider", key: "interface:Glass refraction", title: Translation.tr("Refraction"), icon: "lens_blur", percent: false },
-                { type: "slider", key: "interface:Glass dispersion", title: Translation.tr("Color split (%)"), icon: "gradient", percent: false },
-                { type: "slider", key: "interface:Glass vividness", title: Translation.tr("Vividness (%)"), icon: "palette", percent: false },
-                { type: "slider", key: "interface:Glass shine", title: Translation.tr("Edge shine (%)"), icon: "flare", percent: false },
-                { type: "reset", key: "interface:Glass reset", title: Translation.tr("Reset glass"), icon: "restart_alt" }
-            ]
-        },
+
         {
             page: Translation.tr("Interface"), title: Translation.tr("Left Sidebar"), icon: "splitscreen_left", cards: [
                 { type: "toggle", key: "interface:Left Sidebar/Enable", title: Translation.tr("Media player"), icon: "music_note" },

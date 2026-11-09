@@ -18,7 +18,9 @@ BarWidgetSwitcherArea {
         && Config.options.bar.dynamicIsland.animationStyle === "staged"
     property real valueReveal: !Config.options.bar.resources.showValue ? 0
         : stagedExpansion ? islandRevealProgress : (!islandMode || islandExpanded ? 1 : 0)
+    readonly property bool popupInteractionReady: !(valueAnimation.animation?.running ?? false)
     Behavior on valueReveal {
+        id: valueAnimation
         enabled: root.islandMode && !root.stagedExpansion
         NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
     }

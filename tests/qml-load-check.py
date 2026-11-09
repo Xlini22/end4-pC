@@ -33,6 +33,7 @@ ShellRoot {
     property var contrastSamples: []
     property int contrastTick: 0
     property real dashboardScrollEnd: -1
+    property Item glassKnob: null
     property Item volumeSlider: null
     property int previousCalls: 0
     property int nextCalls: 0
@@ -57,6 +58,42 @@ ShellRoot {
             radius: 20
             player: testPlayer
         }
+    }
+    PanelWindow {
+        visible: false
+        implicitWidth: 780; implicitHeight: 680
+        Pages.GlassyConfig { id: glassySettings; anchors.fill: parent }
+        Widgets.WindowGlass { id: lockedGlass; fullscreenSurface: true; width: 100; height: 40 }
+    }
+    function checkGlassy() {
+        Config.options.background.widgets.glass.enable = true
+        if (GlassProfiles.keys.join(",") !== "bar,dock,sidebar,settings,lockscreen,terminal") throw new Error("Missing Glassy tabs")
+        for (let i=0; i<GlassProfiles.keys.length; ++i) {
+            const key = GlassProfiles.keys[i]
+            glassySettings.selectedTab = i
+            if (glassySettings.profile !== GlassProfiles.profile(key)) throw new Error("Wrong profile after tab navigation")
+            const expected = GlassProfiles.defaults(key)
+            for (const field of Object.keys(expected)) if (glassySettings.profile[field] !== expected[field]) throw new Error("Unexpected default: " + key + ":" + field)
+        }
+        Config.options.background.widgets.glass.elements.lockscreen.enable = false
+        if (lockedGlass.live) throw new Error("Lockscreen Glassy toggle ignored")
+        Config.options.background.widgets.glass.elements.lockscreen.enable = true
+        if (!lockedGlass.live) throw new Error("Lockscreen Glassy toggle did not restore material")
+        const namespaces = ["quickshell:bar", "quickshell:dock", "quickshell:sidebarLeft", "quickshell:settings"]
+        for (const namespace of namespaces) {
+            const key = GlassProfiles.keyFor(namespace), p = GlassProfiles.profile(key)
+            p.enable=false
+            if (GlassProfiles.enabledFor(namespace)) throw new Error("Target toggle ignored: " + key)
+            p.enable=true
+        }
+        if (!GlassProfiles.enabledFor("quickshell:popup")) throw new Error("Unrelated popup changed")
+        glassySettings.selectedTab = 0
+        root.glassKnob = findControl(glassySettings, item => item.objectName === "glass-refraction")
+        if (!root.glassKnob) throw new Error("Glassy controls did not instantiate")
+        root.glassKnob.value = 175
+        GlobalStates.settingsSubpage = "glassy"
+        findControl(glassySettings, item => item.objectName === "glassy-back").clicked()
+        if (GlobalStates.settingsSubpage !== "") throw new Error("Back navigation did not return to settings")
     }
     function findControl(item, predicate) {
         if (predicate(item)) return item
@@ -90,6 +127,12 @@ ShellRoot {
         id: animationCheck
         interval: 400
         onTriggered: {
+            root.glassKnob.moved()
+            if (Math.abs(GlassProfiles.profile("bar").refraction-175)>.01 || GlassProfiles.profile("dock").refraction!==135)
+                throw new Error("Glassy controls must update only the selected element")
+            GlassProfiles.reset("bar")
+            if (GlassProfiles.profile("bar").refraction!==200) throw new Error("Glassy reset failed")
+            console.log("GLASSY PAGE CONTROLS PASSED")
             const card = recycledCard.item
             if (card.animOpacity !== 0 || Math.abs(card.offsetX - card.travelX) > .001)
                 throw new Error("Animated tiles must also leave when the page changes")
@@ -151,6 +194,7 @@ ShellRoot {
             if (!root.volumeSlider || Math.abs(root.volumeSlider.value - .42) > .001)
                 throw new Error("Sidebar must show the selected player's volume")
             root.volumeSlider.value = .73
+            checkGlassy()
             Config.options.background.widgets.glass.enable = false
             if (dashboardCard.color.a !== 1) throw new Error("Standard Dashboard cards must retain their tint")
             Config.options.background.widgets.glass.enable = true
@@ -271,4 +315,6 @@ with tempfile.TemporaryDirectory(prefix='qml-load-check-') as directory:
     output = result.stdout + result.stderr
     assert result.returncode == 0 and 'SYNC COMPONENT COMPILE PASSED' in output, output
     assert 'Failed to load configuration' not in output, output
+    assert 'GLASSY PAGE CONTROLS PASSED' in output, output
+    assert not re.search(r'(ReferenceError|TypeError|Binding loop|Unable to assign)', output), output
     print('Panel family, direct scrolling and contrast IPC retention/error fallback passed without GPU rendering')

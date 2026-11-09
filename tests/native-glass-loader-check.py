@@ -43,9 +43,18 @@ with tempfile.TemporaryDirectory() as temporary:
     assert backend.status(True)['available']
     assert sum(call[:2] == ('plugin', 'load') for call in calls) == 1
     assert backend.status()['lua'] and backend.status()['enhanced'] and backend.status()['frosted'] and backend.status()['contrast']
+    assert backend.status()['profiles'] and backend.status()['topBarOptics']
     assert not backend.status()['windowFrosted'], 'Dashboard glass must stay quarantined after the system freeze'
     lua = False
     assert backend.status()['available'] and not backend.status()['lua']
+    loaded[0]['version'] = 'end4-live-0.6.4-r20'
+    assert backend.status()['topBarOptics'] and not backend.status()['profiles']
+    loaded[0]['version'] = 'end4-live-0.6.4-r19'
+    assert backend.status()['available'] and backend.status()['topBarOptics']
+    assert backend.status()['contrast'] and backend.status()['frosted'] and backend.status()['enhanced']
+    assert not backend.status()['windowFrosted']
+    loaded[0]['version'] = 'end4-live-0.6.4-r18'
+    assert backend.status()['contrast'] and not backend.status()['topBarOptics']
     loaded[0]['version'] = 'end4-live-0.6.4-r17'
     assert backend.status()['contrast'] and not backend.status()['windowFrosted']
     loaded[0]['version'] = 'end4-live-0.6.4-r16'

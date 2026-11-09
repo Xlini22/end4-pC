@@ -43,7 +43,7 @@ Item {
 
                 WindowGlass {
                     id: rowGlass
-                    readonly property bool satinRow: !!groupedList.glassViewport && GlassCompositor.enhancedActive
+                    readonly property bool satinRow: Config.options.background.widgets.glass.elements.settings.enable && !!groupedList.glassViewport && GlassCompositor.enhancedActive
                         && GlassCompositor.frostedAvailable && rowGlass.win?.WlrLayershell.namespace === "quickshell:settings"
                     anchors.fill: parent
                     glassEnabled: (groupedList?.glass ?? false) || rowGlass.satinRow

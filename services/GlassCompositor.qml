@@ -23,10 +23,11 @@ Singleton {
     property bool enhancedAvailable: false
     property bool frostedAvailable: false
     property bool windowFrostedAvailable: false
+    property bool profilesAvailable: false
     property bool contrastAvailable: false
     property var contrastSamples: []
     property int contrastTick: 0
-    readonly property bool contrastActive: enhancedActive && contrastAvailable && GlobalStates.settingsOpen
+    readonly property bool contrastActive: enhancedActive && contrastAvailable && Config.options.background.widgets.glass.elements.settings.enable && GlobalStates.settingsOpen
         && Config.options.settings.style !== "dashboard"
 
     function foreground(item, base, previous) {
@@ -195,6 +196,35 @@ Singleton {
         }
     }
 
+    property string profilesSent: ""
+    property string profilesApplied: ""
+    property bool profilesBusy: false
+    function sendProfiles() {
+        if (!profilesAvailable || profilesBusy) return
+        const values = ["end4profiles", Quickshell.processId, enhancedActive ? 1 : 0, GlassProfiles.keys.length]
+        for (const key of GlassProfiles.keys) values.push(key, GlassProfiles.profile(key).enable ? 1 : 0, ...GlassProfiles.optics(key))
+        const command = values.join(" ")
+        if (command === profilesApplied) return
+        profilesSent = command
+        profilesBusy = true
+        profilesSocket.connected = true
+    }
+    Socket {
+        id: profilesSocket
+        path: regionSocket.path
+        onConnectionStateChanged: {
+            if (connected) { write("/" + root.profilesSent); flush() }
+            else { root.profilesBusy = false; if (root.profilesApplied === root.profilesSent) Qt.callLater(root.sendProfiles) }
+        }
+        onError: { root.profilesBusy = false; console.warn("[GlassCompositor] Profile socket error", error) }
+        parser: SplitParser {
+            onRead: data => {
+                if (data.trim() === "ok") root.profilesApplied = root.profilesSent
+                else console.warn("[GlassCompositor] Profiles rejected:", data.trim())
+            }
+        }
+    }
+
     function probe() {
         if (disabled || WM.compositor !== "hyprland" || detector.running) return
         detector.command = ["python3", Quickshell.shellPath("scripts/glass/native/backend.py")].concat(enabled ? ["--ensure"] : [])
@@ -207,7 +237,7 @@ Singleton {
         const commands = [
             "keyword plugin:hyprglass:enabled 0",
             "keyword plugin:hyprglass:layers:enabled " + (active ? 1 : 0),
-            "keyword plugin:hyprglass:layers:namespaces " + namespaces.join(","),
+            "keyword plugin:hyprglass:layers:namespaces " + namespaces.filter(name => GlassProfiles.enabledFor(name)).join(","),
             "keyword plugin:hyprglass:layers:namespace_mask_thresholds " + namespaces.map(name => name + "=0.03").join(","),
             "keyword plugin:hyprglass:default_theme " + (Appearance.m3colors.darkmode ? "dark" : "light"),
             "keyword plugin:hyprglass:brightness 1",
@@ -228,17 +258,23 @@ Singleton {
         const channel = value => Math.round(Math.max(0, Math.min(1, value)) * 255).toString(16).padStart(2, "0")
         commands.push("keyword plugin:hyprglass:tint_color 0x" + channel(tint.r) + channel(tint.g) + channel(tint.b) + channel(glass.tint === "transparent" ? 0 : glass.tintStrength))
         commands.push("keyword plugin:hyprglass:edge_thickness " + Math.max(0, Math.min(0.15, glass.rimWidth / 400)))
+        const owner = "hyprglass_owner_" + Quickshell.processId
+        const tagCommand = (tag, address) => root.lua
+            ? "eval hl.dispatch(hl.dsp.window.tag({tag=" + JSON.stringify(tag) + ",window=" + JSON.stringify("address:" + address) + "}))"
+            : "dispatch tagwindow " + tag + " address:" + address
         for (const client of HyprlandData.windowList) {
+            const terminal = ["kitty", "foot", "footclient", "alacritty", "org.wezfurlong.wezterm", "wezterm", "org.kde.konsole", "konsole"].includes((client.class ?? "").toLowerCase())
+            for (const tag of client.tags ?? [])
+                if (tag.startsWith("hyprglass_owner_") && tag !== owner) commands.push(tagCommand("-" + tag, client.address))
+            const owned = client.tags?.includes(owner) ?? false
+            const terminalWanted = active && enhancedActive && profilesAvailable && glass.elements.terminal.enable && terminal
+            if (owned !== terminalWanted) commands.push(tagCommand((terminalWanted ? "+" : "-") + owner, client.address))
             if (client.pid !== Quickshell.processId) continue
             const tagged = client.tags?.includes("hyprglass_enabled") ?? false
-            const wanted = active && windowFrostedAvailable && client.title === "illogical-impulse Settings"
-            if (tagged !== wanted) {
-                const tag = (wanted ? "+" : "-") + "hyprglass_enabled"
-                commands.push(root.lua
-                    ? "eval hl.dispatch(hl.dsp.window.tag({tag=" + JSON.stringify(tag) + ",window=" + JSON.stringify("address:" + client.address) + "}))"
-                    : "dispatch tagwindow " + tag + " address:" + client.address)
-            }
+            const wanted = active && glass.elements.settings.enable && windowFrostedAvailable && client.title === "illogical-impulse Settings"
+            if (tagged !== wanted) commands.push(tagCommand((wanted ? "+" : "-") + "hyprglass_enabled", client.address))
         }
+        sendProfiles()
         let batch = commands
         if (root.lua) {
             const values = commands.filter(command => command.startsWith("keyword ")).map(command => {
@@ -259,6 +295,7 @@ Singleton {
     }
 
     readonly property string settings: JSON.stringify([
+        GlassProfiles.signature, Config.options.background.widgets.glass.enhanced, root.profilesAvailable,
         Config.options.background.widgets.glass.haze, Config.options.background.widgets.glass.pull,
         Config.options.background.widgets.glass.split, Config.options.background.widgets.glass.sheen,
         Config.options.background.widgets.glass.vividness, Appearance.m3colors.darkmode,
@@ -280,7 +317,7 @@ Singleton {
                 requested: root.enabled, locked: GlobalStates.screenLocked,
                 enhanced: root.enhancedActive, enhancedRequested: Config.options.background.widgets.glass.enhanced,
                 enhancedAvailable: root.enhancedAvailable, frostedAvailable: root.frostedAvailable,
-                windowFrostedAvailable: root.windowFrostedAvailable, contrastAvailable: root.contrastAvailable, regionWrites: root.regionWrites })
+                profilesAvailable: root.profilesAvailable, windowFrostedAvailable: root.windowFrostedAvailable, contrastAvailable: root.contrastAvailable, regionWrites: root.regionWrites })
         }
     }
 
@@ -291,6 +328,7 @@ Singleton {
         function onRawEvent(event) {
             if (event.name !== "configreloaded") return
             root.appliedCommand = ""
+            root.profilesApplied = ""
             root.regionsApplied = ""
             root.regionsRejected = ""
             root.queueRegions()
@@ -313,6 +351,7 @@ Singleton {
                     root.enhancedAvailable = result.enhanced ?? false
                     root.frostedAvailable = result.frosted ?? false
                     root.windowFrostedAvailable = result.windowFrosted ?? false
+                    root.profilesAvailable = result.profiles ?? false
                     root.contrastAvailable = result.contrast ?? false
                     root.reason = result.reason
                     if (root.available) applyTimer.restart()

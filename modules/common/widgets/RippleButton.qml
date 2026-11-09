@@ -3,6 +3,7 @@ import qs.modules.common.widgets
 import qs.modules.common.functions
 import Qt5Compat.GraphicalEffects
 import QtQuick
+import qs.services
 import QtQuick.Controls
 
 /**
@@ -26,7 +27,7 @@ Button {
     property bool altLongPressed: false
     property bool border: false
     property bool glass: false
-    readonly property bool glassActive: glass && !toggled && (Config.options?.background.widgets.glass.enable ?? false)
+    readonly property bool glassActive: glass && !toggled && (Config.options?.background.widgets.glass.enable ?? false) && GlassProfiles.enabledForItem(root)
     property real borderWidth: 1
     property color colBorder: Config.options.background.widgets.glass.enable
         ? ColorUtils.transparentize(Appearance?.colors.colOutlineVariant ?? "#79747E", 0.55)

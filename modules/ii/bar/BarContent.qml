@@ -17,6 +17,7 @@ Item {
     // Extra layer-shell area above a top Material bar. Bar.qml sets this so
     // the island hover target can cover the gap up to the screen edge.
     property real islandTopInset: 0
+    property bool popupInteractionReady: true
     readonly property bool isMaterial: Config.options.bar.cornerStyle === 3 || Config.options.bar.cornerStyle === 4
     readonly property real centerPillX: centerPill.x
     readonly property real centerPillWidth: centerPill.width
@@ -43,9 +44,9 @@ Item {
     readonly property bool isSplitHug: Config.options.bar.cornerStyle === 6
     readonly property bool hasTabs: root.isMaterialHug || root.isSplitHug
     readonly property bool useTabWrapper: root.isMaterial || root.isSplitHug
-    readonly property bool glassTabs: root.hasTabs && Config.options.background.widgets.glass.enable
+    readonly property bool glassTabs: root.hasTabs && (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.bar.enable)
     readonly property real tabFlare: root.glassTabs ? Appearance.rounding.screenRounding : 0
-    readonly property bool glassHug: Config.options.bar.cornerStyle === 0 && Config.options.background.widgets.glass.enable && Config.options.bar.showBackground
+    readonly property bool glassHug: Config.options.bar.cornerStyle === 0 && (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.bar.enable) && Config.options.bar.showBackground
     readonly property real hugFlare: root.glassHug && !root.centerOnly ? Appearance.rounding.screenRounding : 0
     readonly property real pillFlare: root.glassHug && root.centerOnly ? Appearance.rounding.screenRounding : 0
     readonly property real splitGroupSpacing: Config.options.bar.borderless === "transparent" ? -7 : Config.options.bar.borderless === "segmented" ? -1 : 2
@@ -120,7 +121,7 @@ Item {
                 ? Appearance.getColorFromName(Config.options.bar.frameColor)
                 : Appearance.colors.colUiBackground)
             : "transparent"
-        color: Config.options.background.widgets.glass.enable && fill.a > 0 ? "transparent" : fill
+        color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.bar.enable) && fill.a > 0 ? "transparent" : fill
         radius: Config.options.bar.cornerStyle === 1 ? Appearance.rounding.windowRounding : 0
         border.width: (!centerOnly && Config.options.bar.cornerStyle === 1) ? 1 : 0
         border.color: Config.options.bar.cornerStyle === 1 && !Config.options.bar.showBackground ? "transparent" : ColorUtils.transparentize(Appearance.colors.colLayer0Border, 0.8)
@@ -207,7 +208,7 @@ Item {
         property color fill: root.useTabWrapper ? "transparent" : Config.options.bar.followFrameColor
             ? Appearance.getColorFromName(Config.options.bar.frameColor)
             : Appearance.colors.colUiBackground
-        color: Config.options.background.widgets.glass.enable && fill.a > 0 ? "transparent" : fill
+        color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.bar.enable) && fill.a > 0 ? "transparent" : fill
         radius: Config.options.bar.cornerStyle === 1 || root.useTabWrapper ? Appearance.rounding.windowRounding : 0
         border.width: Config.options.bar.cornerStyle === 1 ? 1 : 0
         border.color: Appearance.colors.colLayer0Border
@@ -291,7 +292,7 @@ Item {
                 height: root.hasTabs ? parent.height : leftMaterialRow.implicitHeight
                 radius: root.hasTabs ? 0 : Appearance.rounding.full
                 property color fill: root.materialPillBgColor
-                color: Config.options.background.widgets.glass.enable && fill.a > 0 ? "transparent" : fill
+                color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.bar.enable) && fill.a > 0 ? "transparent" : fill
 
                 topLeftRadius: root.hasTabs ? 0 : radius
                 bottomLeftRadius: root.hasTabs ? 0 : radius
@@ -444,7 +445,7 @@ Item {
                 height: root.hasTabs ? parent.height : centerMaterialRow.implicitHeight
                 radius: root.hasTabs ? 0 : Appearance.rounding.full
                 property color fill: root.materialPillBgColor
-                color: Config.options.background.widgets.glass.enable && fill.a > 0 ? "transparent" : fill
+                color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.bar.enable) && fill.a > 0 ? "transparent" : fill
 
                 topLeftRadius: (root.hasTabs && Config.options.bar.bottom) ? Appearance.rounding.screenRounding : (root.hasTabs ? 0 : radius)
                 topRightRadius: (root.hasTabs && Config.options.bar.bottom) ? Appearance.rounding.screenRounding : (root.hasTabs ? 0 : radius)
@@ -644,7 +645,7 @@ Item {
                 height: root.hasTabs ? parent.height : rightMaterialRow.implicitHeight
                 radius: root.hasTabs ? 0 : Appearance.rounding.full
                 property color fill: root.materialPillBgColor
-                color: Config.options.background.widgets.glass.enable && fill.a > 0 ? "transparent" : fill
+                color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.bar.enable) && fill.a > 0 ? "transparent" : fill
 
                 topRightRadius: root.hasTabs ? 0 : radius
                 bottomRightRadius: root.hasTabs ? 0 : radius

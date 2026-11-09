@@ -1,4 +1,5 @@
 import QtQuick
+import qs.services
 import QtQuick.Shapes
 import Qt5Compat.GraphicalEffects
 import qs.modules.common
@@ -16,7 +17,7 @@ Item {
     property int implicitSize: 25
     property color color: "#000000"
     property bool glass: false
-    readonly property bool glassOn: glass && color.a > 0 && Config.options.background.widgets.glass.enable
+    readonly property bool glassOn: glass && color.a > 0 && Config.options.background.widgets.glass.enable && GlassProfiles.enabledForItem(root)
 
     implicitWidth: implicitSize
     implicitHeight: implicitSize

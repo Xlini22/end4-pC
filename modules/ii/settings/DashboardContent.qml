@@ -6,6 +6,7 @@ import Quickshell.Widgets
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.ii.settings.pages
 import qs.modules.common.widgets
 
 Item {
@@ -100,6 +101,10 @@ Item {
     property bool editingText: false
 
     Keys.onPressed: event => {
+        if (GlobalStates.settingsSubpage !== "") {
+            if (event.key === Qt.Key_Escape) { GlobalStates.settingsSubpage = ""; event.accepted = true }
+            return
+        }
         if (editingText) {
             event.accepted = true;
             return;
@@ -290,7 +295,14 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
     }
 
+    Loader {
+        anchors.fill: parent
+        active: GlobalStates.settingsSubpage === "glassy"
+        sourceComponent: GlassyConfig {}
+    }
+
     ColumnLayout {
+        visible: GlobalStates.settingsSubpage === ""
         anchors.fill: parent
         anchors.margins: 16
         spacing: 12
@@ -386,14 +398,14 @@ Item {
                     implicitHeight: 44
                     implicitWidth: root.searchOpen ? Math.max(120, Math.min(220, (headerBar.width - navToolbar.width) / 2 - 12 - 108)) : 44
                     radius: height / 2
-                    color: Config.options.background.widgets.glass.enable && !ui.media ? "transparent" : ui.surface
+                    color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.settings.enable) && !ui.media ? "transparent" : ui.surface
                     border.width: searchInput.activeFocus ? 2 : 0
-                    border.color: Config.options.background.widgets.glass.enable && !ui.media ? "transparent" : ui.accent
+                    border.color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.settings.enable) && !ui.media ? "transparent" : ui.accent
                     clip: true
 
                     WindowGlass {
                         anchors.fill: parent
-                        glassEnabled: Config.options.background.widgets.glass.enable && !ui.media
+                        glassEnabled: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.settings.enable) && !ui.media
                         cardRadius: searchPill.radius
                     }
 

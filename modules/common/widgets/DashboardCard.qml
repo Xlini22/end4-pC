@@ -23,7 +23,7 @@ Rectangle {
     property real offsetX: travelX
     property real offsetY: travelY
 
-    readonly property bool glassDimmed: Config.options.background.widgets.glass.enable && Qt.colorEqual(tint, Appearance.colors.colLayer1)
+    readonly property bool glassDimmed: Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.settings.enable && Qt.colorEqual(tint, Appearance.colors.colLayer1)
     readonly property Item glassViewport: {
         for (let item = parent; item; item = item.parent)
             if (item.clip === true) return item

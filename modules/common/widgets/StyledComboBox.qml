@@ -13,7 +13,7 @@ ComboBox {
     property string buttonIcon: ""
     property real buttonRadius: height / 2
     property bool glass: false
-    readonly property bool glassActive: glass && (Config.options?.background.widgets.glass.enable ?? false)
+    readonly property bool glassActive: glass && (Config.options?.background.widgets.glass.enable ?? false) && GlassProfiles.enabledForItem(root)
     property color colBackground: Appearance.colors.colSecondaryContainer
     property color colBackgroundHover: Appearance.colors.colSecondaryContainerHover
     property color colBackgroundActive: Appearance.colors.colSecondaryContainerActive

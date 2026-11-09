@@ -24,13 +24,23 @@ LazyLoader {
     readonly property bool targetHovered: !!(root.hoverTarget && root.hoverTarget.containsMouse)
     property bool shouldShow: root.popupEnabled && root.targetHovered && Config.options.bar.tooltips.enable && !GlobalStates.barStyleEditorOpen
         && (!Config.options.bar.tooltips.clickToShow || ((root.hoverTarget.pressedButtons ?? Qt.LeftButton) & Qt.LeftButton))
+    readonly property bool barInteractionReady: {
+        for (let item = root.hoverTarget; item; item = item.parent)
+            if (item.popupInteractionReady === false) return false
+        return true
+    }
+    readonly property bool canOpen: root.shouldShow && root.barInteractionReady
+    // Keep an open popup stable through later track/layout changes; gate each new hover.
+    property bool canShow: false
+    onCanOpenChanged: if (root.canOpen) root.canShow = true
+    onShouldShowChanged: if (!root.shouldShow) root.canShow = false
     property bool closing: false
     property bool popupCreated: false
     // ponytail: retain one window per opened popup so effects never move between windows.
     // If many popup types are added, move their content into window-owned Components before unloading.
     active: root.popupCreated
-    onShouldShowChanged: {
-        if (root.shouldShow) root.popupCreated = true
+    onCanShowChanged: {
+        if (root.canShow) root.popupCreated = true
         else if (root.item) root.closing = true
     }
 
@@ -90,7 +100,7 @@ LazyLoader {
 
     component: PanelWindow {
         id: popupWindow
-        visible: root.shouldShow || root.closing
+        visible: root.canShow || root.closing
         onVisibleChanged: if (!visible) root.popupHovered = false
 
         // Bring contentItem reference into this scope
@@ -205,19 +215,19 @@ LazyLoader {
             target: root.group
             property: "morphEdge"
             value: ({ top: "bottom", bottom: "top", left: "right", right: "left" })[root.barEdge]
-            when: root.morph && root.group !== null && root.shouldShow
+            when: root.morph && root.group !== null && root.canShow
         }
         Binding {
             target: root.group
             property: "morphStartFlat"
             value: popupWindow.startCovered
-            when: root.morph && root.group !== null && root.shouldShow
+            when: root.morph && root.group !== null && root.canShow
         }
         Binding {
             target: root.group
             property: "morphEndFlat"
             value: popupWindow.endCovered
-            when: root.morph && root.group !== null && root.shouldShow
+            when: root.morph && root.group !== null && root.canShow
         }
 
         mask: Region {
@@ -264,8 +274,8 @@ LazyLoader {
 
         Connections {
             target: root
-            function onShouldShowChanged() {
-                if (root.shouldShow) {
+            function onCanShowChanged() {
+                if (root.canShow) {
                     closeAnim.stop();
                     openAnim.restart();
                 } else {

@@ -182,7 +182,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             radius: Appearance.rounding.normal
-            color: Config.options.background.widgets.glass.enable ? "transparent" : Appearance.colors.colLayer1
+            color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) ? "transparent" : Appearance.colors.colLayer1
 
             WindowGlass {
                 anchors.fill: parent

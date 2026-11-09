@@ -2,6 +2,7 @@ import qs.modules.common
 import qs.modules.common.widgets
 import qs.modules.common.functions
 import QtQuick
+import qs.services
 import QtQuick.Controls
 import QtQuick.Layouts
 
@@ -37,7 +38,7 @@ Button {
     implicitHeight: (root.down && bounce) ? clickedHeight : baseHeight
 
     property bool glass: false
-    readonly property bool glassActive: glass && !toggled && (Config.options?.background.widgets.glass.enable ?? false)
+    readonly property bool glassActive: glass && !toggled && (Config.options?.background.widgets.glass.enable ?? false) && GlassProfiles.enabledForItem(root)
     property color colBackground: ColorUtils.transparentize(colBackgroundHover, 1) || "transparent"
     property color colBackgroundHover: Appearance?.colors.colLayer1Hover ?? "#E5DFED"
     property color colBackgroundActive: Appearance?.colors.colLayer1Active ?? "#D6CEE2"

@@ -34,6 +34,7 @@ Singleton {
     property bool superReleaseMightTrigger: true
     property bool wallpaperSelectorOpen: false
     property bool workspaceShowNumbers: false
+    property string settingsSubpage: ""
     property var settingsTarget: null
 
     function openSettingsAt(pageId, label, section, subsection) {
