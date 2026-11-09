@@ -17,8 +17,10 @@ BarWidgetSwitcher {
         && Config.options.bar.dynamicIsland.animationStyle === "staged"
     property bool showDate: islandMode ? islandExpanded : Config.options.time.showDate
     property real dateReveal: stagedExpansion ? islandRevealProgress : (showDate ? 1 : 0)
+    readonly property bool popupInteractionReady: !(dateAnimation.animation?.running ?? false)
     horizontalExtraPadding: islandMode ? 0 : 12
     Behavior on dateReveal {
+        id: dateAnimation
         enabled: root.islandMode && !root.stagedExpansion
         NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
     }

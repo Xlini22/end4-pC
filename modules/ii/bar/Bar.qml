@@ -184,6 +184,8 @@ Scope {
 
                     BarContent {
                         id: barContent
+                        popupInteractionReady: (!Config.options.bar.autoHide.enable || barRoot.mustShow)
+                            && !(barTopAnimation.animation?.running ?? false) && !(barBottomAnimation.animation?.running ?? false)
                         islandTopInset: barRoot.islandTopInset
                         
                         implicitHeight: Appearance.sizes.barHeight
@@ -197,9 +199,11 @@ Scope {
                             rightMargin: (Config.options.interactions.deadPixelWorkaround.enable && barRoot.anchors.right) * -1
                         }
                         Behavior on anchors.topMargin {
+                            id: barTopAnimation
                             animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                         }
                         Behavior on anchors.bottomMargin {
+                            id: barBottomAnimation
                             animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                         }
 

@@ -252,6 +252,10 @@ Item {
     property bool mediaPopupKeepsBarExpanded: false
     readonly property bool expanded: root.barHovered || islandHover.hovered || root.mediaPopupKeepsBarExpanded
     property bool componentInteractionReady: false
+    readonly property bool popupInteractionReady: root.componentInteractionReady
+        && !(primaryWidthAnimation.animation?.running ?? false)
+        && leftWidgets.popupInteractionReady && rightWidgets.popupInteractionReady
+        && (centerLoader.item?.popupInteractionReady ?? true)
 
     onExpandedChanged: {
         if (expanded) {
@@ -276,6 +280,7 @@ Item {
     property real primaryWidth: root.sessionExclusive ? root.emptyWidth
         : (root.pillProvider?.width ?? root.emptyWidth)
     Behavior on primaryWidth {
+        id: primaryWidthAnimation
         NumberAnimation { duration: 350; easing.type: Easing.OutCubic }
     }
     readonly property real leftContentWidth: leftWidgets.implicitWidth
@@ -333,6 +338,7 @@ Item {
             id: mediaSideRoot
             readonly property bool containsMouse: mediaSideHover.hovered
             readonly property bool stagedExpansion: Config.options.bar.dynamicIsland.animationStyle === "staged"
+            readonly property bool popupInteractionReady: !(mediaWidthAnimation.animation?.running ?? false)
             property real islandRevealProgress: root.mediaTrackInfoVisible ? 1 : 0
             implicitWidth: !root.hasMedia ? 0 : stagedExpansion
                 ? root.mediaCollapsedWidth + (root.mediaExpandedWidth - root.mediaCollapsedWidth) * islandRevealProgress
@@ -341,6 +347,7 @@ Item {
             visible: root.hasMedia
 
             Behavior on implicitWidth {
+                id: mediaWidthAnimation
                 enabled: !mediaSideRoot.stagedExpansion
                 NumberAnimation {
                     duration: 350
@@ -461,6 +468,9 @@ Item {
                 || (displayMode === "dynamicHover" && sideWidgetHover.hovered)
         property real layoutProgress: expansionRequested ? 1 : 0
         property real revealProgress: expansionRequested ? 1 : 0
+        readonly property bool popupInteractionReady: !(layoutAnimation.animation?.running ?? false)
+            && !(revealAnimation.animation?.running ?? false) && !(slotWidthAnimation.animation?.running ?? false)
+            && (regularLoader.item?.popupInteractionReady ?? true) && (mediaLoader.item?.popupInteractionReady ?? true)
         Behavior on layoutProgress {
             id: layoutAnimation
             enabled: sideDelegate.stagedExpansion
@@ -507,6 +517,7 @@ Item {
         clip: ["visualizer", "activity"].includes(modelData)
 
         Behavior on implicitWidth {
+            id: slotWidthAnimation
             enabled: sideDelegate.modelData !== "activity" && !sideDelegate.stagedExpansion
                 && (sideDelegate.modelData === "visualizer"
                     || Config.options.bar.dynamicIsland.animationStyle === "staged")
@@ -601,6 +612,8 @@ Item {
         readonly property real rightGroupWidth: rightGroup.implicitWidth
         readonly property bool hasLeftGroup: leftGroupWidth > 0.5
         readonly property bool hasRightGroup: rightGroupWidth > 0.5
+        readonly property bool popupInteractionReady: leftGroup.children.every(item => item.popupInteractionReady !== false)
+            && rightGroup.children.every(item => item.popupInteractionReady !== false)
 
         implicitWidth: leftGroupWidth + rightGroupWidth
             + (hasLeftGroup && hasRightGroup ? root.widgetSpacing : 0)

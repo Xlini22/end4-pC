@@ -227,19 +227,31 @@ Item {
         if (win && !floating && !fullscreenSurface && !nativeGlass) GlassLayers.refresh()
     }
 
+    // ponytail: transform lists have no change signal; runtime insertions need an explicit rescan.
+    property var ancestorTransforms: []
+    function syncAncestorTransforms() {
+        const transforms = []
+        if (tracking && trackGeometry)
+            for (let item = root; item; item = item.parent)
+                for (const transform of item.transform ?? []) transforms.push(transform)
+        if (transforms.length !== ancestorTransforms.length
+            || transforms.some((transform, index) => transform !== ancestorTransforms[index]))
+            ancestorTransforms = transforms
+    }
+
     readonly property var ancestorGeometry: {
         if (!tracking || !trackGeometry) return []
         const sig = []
-        for (let it = root; it; it = it.parent) {
+        for (let it = root; it; it = it.parent)
             sig.push(it.x, it.y, it.width, it.height, it.scale, it.opacity)
-            for (const transform of it.transform ?? [])
-                sig.push(transform.x, transform.y, transform.xScale, transform.yScale,
-                    transform.origin?.x, transform.origin?.y)
-        }
+        // The transform list has no change signal; observe its objects after reparenting.
+        for (const transform of root.ancestorTransforms)
+            sig.push(transform.x, transform.y, transform.xScale, transform.yScale,
+                transform.origin?.x, transform.origin?.y)
         return sig
     }
 
-    onAncestorGeometryChanged: { kick(); if (trackGeometry) Qt.callLater(root.refresh) }
+    onAncestorGeometryChanged: { Qt.callLater(root.syncAncestorTransforms); kick(); if (trackGeometry) Qt.callLater(root.refresh) }
     onTrackingChanged: kick()
     onParentChanged: kick()
     onXChanged: kick()
@@ -249,6 +261,7 @@ Item {
     onVisibleChanged: kick()
     Component.onCompleted: {
         GlassCompositor.registerGlass(root)
+        syncAncestorTransforms()
         syncClaim()
         kick()
     }

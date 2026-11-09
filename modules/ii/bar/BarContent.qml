@@ -17,6 +17,7 @@ Item {
     // Extra layer-shell area above a top Material bar. Bar.qml sets this so
     // the island hover target can cover the gap up to the screen edge.
     property real islandTopInset: 0
+    property bool popupInteractionReady: true
     readonly property bool isMaterial: Config.options.bar.cornerStyle === 3 || Config.options.bar.cornerStyle === 4
     readonly property real centerPillX: centerPill.x
     readonly property real centerPillWidth: centerPill.width
