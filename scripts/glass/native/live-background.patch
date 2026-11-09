@@ -134,10 +134,10 @@ index 4ea0441..0b44755 100644
  
      // Track last rendered position/size to detect actual changes and seed damage
 diff --git a/src/GlassLayerSurface.cpp b/src/GlassLayerSurface.cpp
-index 10add31..2abf7f1 100644
+index 10add31..9c5bac3 100644
 --- a/src/GlassLayerSurface.cpp
 +++ b/src/GlassLayerSurface.cpp
-@@ -6,6 +6,10 @@
+@@ -6,7 +6,12 @@
  
  #include <algorithm>
  #include <cmath>
@@ -146,9 +146,11 @@ index 10add31..2abf7f1 100644
 +#include <hyprutils/utils/ScopeGuard.hpp>
 +#include <drm_fourcc.h>
  #include <hyprland/src/desktop/Workspace.hpp>
++#include <hyprland/src/protocols/LayerShell.hpp>
  #include <GLES3/gl32.h>
  #include <hyprland/src/render/OpenGL.hpp>
-@@ -23,6 +27,21 @@ CGlassLayerSurface::CGlassLayerSurface(PHLLS layerSurface)
+ #include <hyprland/src/render/Renderer.hpp>
+@@ -23,6 +28,21 @@ CGlassLayerSurface::CGlassLayerSurface(PHLLS layerSurface)
  }
  
  CGlassLayerSurface::~CGlassLayerSurface() {
@@ -170,7 +172,7 @@ index 10add31..2abf7f1 100644
      // Damage the area where glass was last drawn so the compositor
      // re-renders it without the glass effect (prevents ghost artifacts).
      if (g_pHyprRenderer && m_lastSize.x > 0 && m_lastSize.y > 0 &&
-@@ -35,6 +54,128 @@ CGlassLayerSurface::~CGlassLayerSurface() {
+@@ -35,6 +55,137 @@ CGlassLayerSurface::~CGlassLayerSurface() {
      }
  }
  
@@ -280,6 +282,15 @@ index 10add31..2abf7f1 100644
 +    return it != g_pGlobalState->glassClients.end() && it->second.enhanced;
 +}
 +
++bool CGlassLayerSurface::calibratedTopBar() const {
++    const auto layer = m_layerSurface.lock();
++    if (!layer || layer->m_namespace != "quickshell:bar") return false;
++    if (layer->m_fadingOut) return m_lastTopBarOptics;
++    const auto resource = layer->m_layerSurface.lock();
++    return enhanced() && resource && (resource->m_current.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP)
++        && !(resource->m_current.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM);
++}
++
 +const SGlassSurface* CGlassLayerSurface::enhancedSurface() const {
 +    const auto layer = m_layerSurface.lock();
 +    if (!layer || !enhanced()) return nullptr;
@@ -299,7 +310,7 @@ index 10add31..2abf7f1 100644
  bool CGlassLayerSurface::resolveThemeIsDark() const {
      try {
          const auto& config = g_pGlobalState->config;
-@@ -132,45 +273,157 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha) {
+@@ -132,45 +283,160 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha) {
          return;
  
      CBox transformBox = transformedLayerBox(*layerBox, monitor);
@@ -340,6 +351,7 @@ index 10add31..2abf7f1 100644
 +        if (const auto* surface = enhancedSurface()) sampleContrast(source, transformBox, *surface);
 +    if (!layerSurface->m_fadingOut) {
 +        m_lastEnhanced = enhanced();
++        m_lastTopBarOptics = calibratedTopBar();
 +        if (const auto* surface = enhancedSurface()) m_lastSurface = *surface;
 +    }
 +    // Snapshot capture bypasses this pipeline; normal close frames sample the live desktop safely.
@@ -356,8 +368,12 @@ index 10add31..2abf7f1 100644
  
 -        GlassRenderer::sampleBackground(m_sampleFramebuffer, source, transformBox, m_samplePaddingRatio, downscale);
 -
-         float blurRadius     = blurStrength * 12.0f / downscale;
-         int blurIterations   = std::clamp(static_cast<int>(resolvePresetInt(ctx, &SPresetValues::blurIterations, &SOverridableConfig::blurIterations)), 1, 5);
+-        float blurRadius     = blurStrength * 12.0f / downscale;
+-        int blurIterations   = std::clamp(static_cast<int>(resolvePresetInt(ctx, &SPresetValues::blurIterations, &SOverridableConfig::blurIterations)), 1, 5);
++        // CSS blur(1px) uses sigma 1; the native Gaussian radius spans three sigma.
++        const bool topBarOptics = calibratedTopBar();
++        float blurRadius     = topBarOptics ? 3.0f * monitor->m_scale : blurStrength * 12.0f / downscale;
++        int blurIterations   = topBarOptics ? 1 : std::clamp(static_cast<int>(resolvePresetInt(ctx, &SPresetValues::blurIterations, &SOverridableConfig::blurIterations)), 1, 5);
          int viewportWidth    = static_cast<int>(g_pHyprRenderer->m_renderData.pMonitor->m_transformedSize.x);
          int viewportHeight   = static_cast<int>(g_pHyprRenderer->m_renderData.pMonitor->m_transformedSize.y);
 -        GlassRenderer::blurBackground(m_sampleFramebuffer, blurRadius, blurIterations, dynamic_cast<Render::GL::CGLFramebuffer*>(source.get())->getFBID(), viewportWidth, viewportHeight);
@@ -424,7 +440,7 @@ index 10add31..2abf7f1 100644
 +            blurClip->expand(std::ceil(halo));
 +            *blurClip = blurClip->intersection(CBox{0, 0, m_sampleFramebuffer->m_size.x, m_sampleFramebuffer->m_size.y});
 +        }
-+        GlassRenderer::blurBackground(m_sampleFramebuffer, m_blurTempFramebuffer, blurRadius, blurIterations, dynamic_cast<Render::GL::CGLFramebuffer*>(source.get())->getFBID(), viewportWidth, viewportHeight, blurClip ? &*blurClip : nullptr);
++        GlassRenderer::blurBackground(m_sampleFramebuffer, m_blurTempFramebuffer, blurRadius, blurIterations, dynamic_cast<Render::GL::CGLFramebuffer*>(source.get())->getFBID(), viewportWidth, viewportHeight, blurClip ? &*blurClip : nullptr, topBarOptics ? 64 : 8);
 +
 +        if (const auto* surface = enhancedSurface()) {
 +            if (const auto bounds = glassBounds(*surface, true)) {
@@ -483,7 +499,7 @@ index 10add31..2abf7f1 100644
  
      // Redirect surface rendering to a temp FBO cleared to transparent.
      // The original renderLayer (called between pre/post elements) will render
-@@ -207,6 +460,7 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha) {
+@@ -207,6 +473,7 @@ void CGlassLayerSurface::sampleAndRedirect(PHLMONITOR monitor, float alpha) {
  }
  
  void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
@@ -491,7 +507,7 @@ index 10add31..2abf7f1 100644
      // Restore the original currentFB before compositing
      if (m_savedCurrentFB) {
          g_pHyprRenderer->m_renderData.currentFB = m_savedCurrentFB;
-@@ -254,16 +508,32 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
+@@ -254,16 +521,33 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
      // The temp FBO stores the layer after Hyprland applies fade alpha. Keep
      // mask_threshold relative to the layer's content alpha, otherwise fade-out
      // makes the mask fall below threshold early and the glass blinks off.
@@ -506,6 +522,7 @@ index 10add31..2abf7f1 100644
          .uvScale           = {transformBox.w / monitorWidth, transformBox.h / monitorHeight},
          .alphaThreshold    = maskThreshold,
 +        .enhanced = enhanced(),
++        .topBarOptics = calibratedTopBar(),
 +        .sampleUVOffset = m_sampleUVOffset,
 +        .sampleUVScale = m_sampleUVScale,
      };
@@ -525,7 +542,7 @@ index 10add31..2abf7f1 100644
      // in a single pass: glass behind, surface on top, using the temp FBO alpha.
      GlassRenderer::applyGlassEffect(m_sampleFramebuffer, target,
 diff --git a/src/GlassLayerSurface.hpp b/src/GlassLayerSurface.hpp
-index 26fc97c..82ae0d2 100644
+index 26fc97c..7e6b452 100644
 --- a/src/GlassLayerSurface.hpp
 +++ b/src/GlassLayerSurface.hpp
 @@ -2,6 +2,8 @@
@@ -537,7 +554,7 @@ index 26fc97c..82ae0d2 100644
  
  #include <hyprland/src/desktop/view/LayerSurface.hpp>
  #include <hyprland/src/render/Framebuffer.hpp>
-@@ -18,15 +20,34 @@ class CGlassLayerSurface {
+@@ -18,15 +20,35 @@ class CGlassLayerSurface {
      void compositeAndRestore(PHLMONITOR monitor, float alpha);
  
      void damageIfMoved();
@@ -568,15 +585,17 @@ index 26fc97c..82ae0d2 100644
      bool         m_hasCachedSample = false;
 +    // Qt withdraws its regions on unmap; a closing snapshot still needs the last mapped geometry.
 +    bool         m_lastEnhanced = false;
++    bool         m_lastTopBarOptics = false;
 +    std::optional<SGlassSurface> m_lastSurface;
  
      // Track last position/size to detect movement and expand damage
      Vector2D     m_lastPosition;
-@@ -39,6 +60,8 @@ class CGlassLayerSurface {
+@@ -39,6 +61,9 @@ class CGlassLayerSurface {
      // Saved currentFB pointer, restored in compositeAndRestore
      SP<Render::IFramebuffer> m_savedCurrentFB;
  
 +    [[nodiscard]] bool enhanced() const;
++    [[nodiscard]] bool calibratedTopBar() const;
 +    [[nodiscard]] const SGlassSurface* enhancedSurface() const;
      [[nodiscard]] bool        resolveThemeIsDark() const;
      [[nodiscard]] std::string resolvePresetName() const;
@@ -666,7 +685,7 @@ index 0000000..07d787a
 +    return true;
 +}
 diff --git a/src/GlassRenderer.cpp b/src/GlassRenderer.cpp
-index 6b779e4..09fa48c 100644
+index 6b779e4..315c356 100644
 --- a/src/GlassRenderer.cpp
 +++ b/src/GlassRenderer.cpp
 @@ -29,7 +29,7 @@ static void uploadThemeUniforms(const SResolveContext& ctx) {
@@ -748,7 +767,7 @@ index 6b779e4..09fa48c 100644
      // Restore caller's GL state without querying (avoids pipeline stalls)
      glBindFramebuffer(GL_FRAMEBUFFER, callerFramebufferID);
      glBindVertexArray(0);
-@@ -150,10 +156,11 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
+@@ -150,10 +156,12 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
                         CBox& rawBox, CBox& transformedBox,
                         float alpha, float cornerRadius, float roundingPower,
                         const Vector2D& paddingRatio, const SResolveContext& resolveContext,
@@ -758,10 +777,11 @@ index 6b779e4..09fa48c 100644
          return;
  
 +    const bool enhanced = enhancedWindow || (mask && mask->enhanced);
++    const bool topBarOptics = enhanced && mask && mask->topBarOptics;
      auto& shaderManager  = g_pGlobalState->shaderManager;
      const auto& uniforms = shaderManager.glassUniforms;
  
-@@ -168,6 +175,9 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
+@@ -168,6 +176,9 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
      glBindFramebuffer(GL_FRAMEBUFFER, fbId(targetFramebuffer));
      glActiveTexture(GL_TEXTURE0);
      texture->bind();
@@ -771,7 +791,7 @@ index 6b779e4..09fa48c 100644
  
      // Layers only: bind the temp FBO texture (rendered surface) on texture unit 1.
      // The shader samples it to mask glass to visible content and composite surface on top.
-@@ -182,32 +192,65 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
+@@ -182,32 +193,65 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
  
      shader->setUniformMatrix3fv(SHADER_PROJ, 1, GL_FALSE, glMatrix.getMatrix());
      shader->setUniformInt(SHADER_TEX, 0);
@@ -804,14 +824,14 @@ index 6b779e4..09fa48c 100644
 +        glUniform4fv(uniforms.regionFeatures, count, features.data());
 +        glUniform4fv(uniforms.regionEdges, count, edges.data());
 +    }
-+    glUniform1f(uniforms.refractionStrength, enhanced ? 1.35f : resolvePresetFloat(resolveContext, &SPresetValues::refractionStrength, &SOverridableConfig::refractionStrength));
++    glUniform1f(uniforms.refractionStrength, enhanced ? (topBarOptics ? 2.0f : 1.35f) : resolvePresetFloat(resolveContext, &SPresetValues::refractionStrength, &SOverridableConfig::refractionStrength));
 +    glUniform1f(uniforms.chromaticAberration, enhanced ? .1f : resolvePresetFloat(resolveContext, &SPresetValues::chromaticAberration, &SOverridableConfig::chromaticAberration));
 +    glUniform1f(uniforms.fresnelStrength,     enhanced ? .35f : resolvePresetFloat(resolveContext, &SPresetValues::fresnelStrength, &SOverridableConfig::fresnelStrength));
 +    glUniform1f(uniforms.specularStrength,    enhanced ? .5f : resolvePresetFloat(resolveContext, &SPresetValues::specularStrength, &SOverridableConfig::specularStrength));
      glUniform1f(uniforms.glassOpacity,        resolvePresetFloat(resolveContext, &SPresetValues::glassOpacity, &SOverridableConfig::glassOpacity) * alpha);
 -    glUniform1f(uniforms.edgeThickness,       resolvePresetFloat(resolveContext, &SPresetValues::edgeThickness, &SOverridableConfig::edgeThickness));
 -    glUniform1f(uniforms.lensDistortion,      resolvePresetFloat(resolveContext, &SPresetValues::lensDistortion, &SOverridableConfig::lensDistortion));
-+    glUniform1f(uniforms.edgeThickness,       enhanced ? .07f : resolvePresetFloat(resolveContext, &SPresetValues::edgeThickness, &SOverridableConfig::edgeThickness));
++    glUniform1f(uniforms.edgeThickness,       enhanced ? (topBarOptics ? .24f : .07f) : resolvePresetFloat(resolveContext, &SPresetValues::edgeThickness, &SOverridableConfig::edgeThickness));
 +    glUniform1f(uniforms.maxRimWidth, 20.0f * g_pHyprRenderer->m_renderData.pMonitor->m_scale);
 +    glUniform1f(uniforms.lensDistortion,      enhanced ? 0.0f : resolvePresetFloat(resolveContext, &SPresetValues::lensDistortion, &SOverridableConfig::lensDistortion));
  
@@ -844,7 +864,7 @@ index 6b779e4..09fa48c 100644
  
      // Layers only: enable mask and provide UV mapping from the glass quad into
      // the monitor-sized temp FBO. Windows use useMask=0 (no masking).
-@@ -230,8 +273,17 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
+@@ -230,8 +274,17 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
      shader->setUniformFloat(SHADER_ROUNDING_POWER, roundingPower);
  
      glBindVertexArray(shader->getUniformLocation(SHADER_SHADER_VAO));
@@ -865,7 +885,7 @@ index 6b779e4..09fa48c 100644
  }
  
 diff --git a/src/GlassRenderer.hpp b/src/GlassRenderer.hpp
-index fed3abd..3086d11 100644
+index fed3abd..a6e5b0a 100644
 --- a/src/GlassRenderer.hpp
 +++ b/src/GlassRenderer.hpp
 @@ -1,6 +1,7 @@
@@ -876,7 +896,7 @@ index fed3abd..3086d11 100644
  
  #include <GLES3/gl32.h>
  #include <hyprland/src/render/Framebuffer.hpp>
-@@ -24,17 +25,21 @@ inline constexpr float BLUR_DOWNSCALE_THRESHOLD = 0.35f; // min blur_strength fo
+@@ -24,17 +25,22 @@ inline constexpr float BLUR_DOWNSCALE_THRESHOLD = 0.35f; // min blur_strength fo
  // Windows do not use masking, they pass mask=nullptr to applyGlassEffect.
  struct SMaskInfo {
      GLuint   textureId;
@@ -886,6 +906,7 @@ index fed3abd..3086d11 100644
      Vector2D uvScale;
      float    alphaThreshold = 0.001f;
 +    bool enhanced = false;
++    bool topBarOptics = false;
 +    Vector2D sampleUVOffset = {0, 0}, sampleUVScale = {1, 1};
 +    std::vector<SGlassRegion> regions;
  };
@@ -901,7 +922,7 @@ index fed3abd..3086d11 100644
  
  // When mask is non-null (layers only), the shader composites the surface content
  // over the glass effect in a single pass. When mask is null (windows), the shader
-@@ -43,6 +48,6 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
+@@ -43,6 +49,6 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
                         CBox& rawBox, CBox& transformedBox,
                         float alpha, float cornerRadius, float roundingPower,
                         const Vector2D& paddingRatio, const SResolveContext& resolveContext,
@@ -910,7 +931,7 @@ index fed3abd..3086d11 100644
  
  } // namespace GlassRenderer
 diff --git a/src/Globals.hpp b/src/Globals.hpp
-index 9c490c8..8901de8 100644
+index 9c490c8..6be0525 100644
 --- a/src/Globals.hpp
 +++ b/src/Globals.hpp
 @@ -1,6 +1,7 @@
@@ -947,7 +968,7 @@ index 9c490c8..8901de8 100644
  inline constexpr std::string_view PLUGIN_DESCRIPTION = "Apple-style Liquid Glass effect";
  inline constexpr std::string_view PLUGIN_AUTHOR      = "Hyprnux";
 -inline constexpr std::string_view PLUGIN_VERSION     = "1.0.0";
-+inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r18";
++inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r20";
 diff --git a/src/PluginConfig.cpp b/src/PluginConfig.cpp
 index 206978a..4bd135a 100644
 --- a/src/PluginConfig.cpp

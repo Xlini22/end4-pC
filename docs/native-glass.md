@@ -1087,3 +1087,56 @@ espansione della sidebar.
 
 La r16 è installata e nella directory di staging. La sessione principale
 continua a usare r15 fino al prossimo logout/login. Backup: `/home/xlini/.cache/end4-pC/native-glass-backup-r15-20261106-210238`.
+
+
+## Pillole della barra superiore: revisione r19
+
+La taratura scelta nella prova separata viene applicata soltanto al layer
+`quickshell:bar` ancorato in alto, con Enhanced attivo: fascia di rifrazione
+24% del lato corto, rifrazione 200%, blur interno con sigma 3 px logici e
+riflessi 50% (Fresnel 0,35, speculare 0,5, come nel laboratorio).
+Il limite di 20 px della fascia rimane: sulle pillole da 32–40 px non interviene.
+
+Il blur nativo usa un raggio di tre sigma e una singola coppia di passaggi a
+piena risoluzione, scalati con il monitor. Il contenuto della superficie viene
+composto dopo il vetro: testi e icone non sono sfocati. La taratura viene
+conservata anche durante lo snapshot di chiusura. Dock, barra inferiore o
+verticale, popup e pannelli mantengono i parametri precedenti.
+Il fallback QML usa gli stessi valori di fascia/forza/riflessi e haze 3 nel
+proprio campionatore: non è una corrispondenza pixel per pixel del Gaussian nativo.
+
+Controlli senza GPU:
+
+```sh
+python3 tests/topbar-glass-check.py /percorso/sorgenti-patchati
+python3 tests/native-glass-buffer-check.py /percorso/sorgenti-patchati
+python3 tests/native-glass-loader-check.py
+python3 tests/qml-load-check.py
+```
+
+Il laboratorio è stato verificato anche con lo shader della nuova build,
+fascia 24%, rifrazione 200%, blur 3 px, usando Firefox e llvmpipe. Nessuna prova
+ha scaricato/caricato il plugin nella sessione principale. La build r19 deve
+essere caricata al prossimo logout/login; il loader continua ad accettare r18
+nel frattempo. `python3 scripts/glass/native/backend.py` restituisce
+`topBarOptics: true` soltanto quando è effettivamente caricata r19.
+
+
+## Blur interno della barra superiore: revisione r20
+
+La r20 riduce il blur interno da sigma 3 a **1 px logico**, con raggio
+nativo di 3 px scalato con il monitor. Anche il fallback QML passa a haze 1.
+Restano fascia 24%, rifrazione 200% e riflessi 50%, limitati alla barra
+superiore con Enhanced attivo. Gli altri materiali mantengono i propri valori.
+
+Il loader accetta anche r19 durante la transizione e segnala `topBarOptics`
+per entrambe le revisioni. La nuova build si carica al prossimo logout/login,
+senza scaricare il plugin attivo. La riduzione del blur non costituisce una
+correzione dimostrata del crash segnalato: nei log consultati non compare un
+nuovo coredump di Hyprland.
+
+Build r20 compilata e installata atomicamente, con ABI e hash verificati;
+la sessione continua a usare r19. Backup della r19:
+`/home/xlini/.cache/end4-pC/native-glass-backup-r19-ks54x8_o`.
+Passano i controlli del profilo ottico, dei buffer, del loader e il caricamento
+QML con rendering software.

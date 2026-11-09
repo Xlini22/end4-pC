@@ -341,6 +341,7 @@ Item {
                 anchors.fill: parent
                 blurSource: backdrop
                 clearMaterial: root.clearMaterial
+                topBarOptics: root.clearMaterial && root.win?.WlrLayershell.namespace === "quickshell:bar" && !Config.options.bar.bottom
                 frost: root.frost
                 hideSource: true
                 cardRadius: root.cardRadius

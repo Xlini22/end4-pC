@@ -7,6 +7,7 @@ Item {
     property bool hideSource: false
     property bool enhanced: Config.options.background.widgets.glass.enhanced
     property bool clearMaterial: false
+    property bool topBarOptics: false
     property real frost: 0
     property real cardRadius: 30
     property real topLeftRadius: cardRadius
@@ -19,12 +20,12 @@ Item {
     readonly property bool tintOverride: tintChoice !== "transparent"
     readonly property color washColor: tintOverride ? Appearance.getColorFromName(tintChoice) : tint
     readonly property real washOpacity: enhanced ? 0 : tintOverride ? Config.options.background.widgets.glass.tintStrength : tintOpacity
-    readonly property real rimWidth: enhanced ? Math.min(Math.min(width, height) * 0.07, 20) : Config.options.background.widgets.glass.rimWidth
-    readonly property real pull: enhanced ? 1.35 * Math.min(rimWidth * 2.5, 80) : Config.options.background.widgets.glass.pull
+    readonly property real rimWidth: enhanced ? Math.min(Math.min(width, height) * (topBarOptics ? 0.24 : 0.07), 20) : Config.options.background.widgets.glass.rimWidth
+    readonly property real pull: enhanced ? (topBarOptics ? 2.0 : 1.35) * Math.min(rimWidth * 2.5, 80) : Config.options.background.widgets.glass.pull
     readonly property real split: Config.options.background.widgets.glass.split
-    readonly property real haze: enhanced && clearMaterial && frost <= 0 ? 0 : Math.max(frost, Config.options.background.widgets.glass.haze)
+    readonly property real haze: enhanced && topBarOptics ? 1 : enhanced && clearMaterial && frost <= 0 ? 0 : Math.max(frost, Config.options.background.widgets.glass.haze)
     readonly property real vividness: enhanced ? 1 : Config.options.background.widgets.glass.vividness
-    readonly property real sheen: Config.options.background.widgets.glass.sheen
+    readonly property real sheen: enhanced && topBarOptics ? 0.5 : Config.options.background.widgets.glass.sheen
     property real flareLeft: 0
     property real flareRight: 0
     property real hangLeft: 0
