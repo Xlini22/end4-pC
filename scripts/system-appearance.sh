@@ -86,9 +86,11 @@ case "$action" in
             }'
         ;;
     --set-icons)
-        kwriteconfig6 --notify --file kdeglobals --group Icons --key Theme "$1"
+        if [[ "$(kreadconfig6 --file kdeglobals --group Icons --key Theme)" != "$1" ]]; then
+            kwriteconfig6 --notify --file kdeglobals --group Icons --key Theme "$1" || exit $?
+            notify_qt 4 0
+        fi
         gsettings set org.gnome.desktop.interface icon-theme "$1" 2>/dev/null
-        notify_qt 4 0
         ;;
     --set-cursor)
         kwriteconfig6 --notify --file kcminputrc --group Mouse --key cursorTheme "$1"

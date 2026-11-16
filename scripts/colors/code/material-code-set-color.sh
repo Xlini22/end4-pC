@@ -13,11 +13,16 @@ settings_paths=(
     # Add more paths as needed for other forks
 )
 
-new_color=$(cat "$COLOR_FILE_PATH")
+new_color=$(cat "$COLOR_FILE_PATH") || exit 1
+[[ "$new_color" =~ ^#[[:xdigit:]]{6}$ ]] || exit 1
 
 # Loop through each settings file path
 for CODE_SETTINGS_PATH in "${settings_paths[@]}"; do
     if [[ -f "$CODE_SETTINGS_PATH" ]]; then
+        # Rewriting an unchanged setting wakes every editor window and its extensions.
+        if grep -Eq '"material-code.primaryColor"[[:space:]]*:[[:space:]]*"'"${new_color}"'"' "$CODE_SETTINGS_PATH"; then
+            continue
+        fi
         # Try to update the key if it exists
         if grep -q '"material-code.primaryColor"' "$CODE_SETTINGS_PATH"; then
             sed -i -E \

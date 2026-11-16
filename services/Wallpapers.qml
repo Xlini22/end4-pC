@@ -56,6 +56,15 @@ Singleton {
         root.previewPath = "";
     }
 
+    property int automaticConsumers: 0
+    // One scheduler for all monitors, only in a process that actually owns the desktop background.
+    Timer {
+        interval: Math.max(1, Config.options.wallpaperSelector.changeInterval)
+        running: root.automaticConsumers > 0 && Config.ready && Config.options.wallpaperSelector.changeInterval > 0 && Quickshell.screens.length > 0
+        repeat: true
+        onTriggered: if (folderModel.count > 0) root.randomFromCurrentFolder(Appearance.m3colors.darkmode, true)
+    }
+
     // Executions
     Process {
         id: applyProc
@@ -69,10 +78,14 @@ Singleton {
         Quickshell.execDetached(args);
     }
 
-    function apply(path, darkMode = Appearance.m3colors.darkmode) {
-        if (!path || path.length === 0) return;
+    function apply(path, darkMode = Appearance.m3colors.darkmode, background = false) {
+        if (!path || path.length === 0 || (background && applyProc.running)) return;
         root.confirmedPath = path;
-        Quickshell.execDetached([Directories.wallpaperSwitchScriptPath, "--mode", darkMode ? "dark" : "light", "--image", path]);
+        const command = [Directories.wallpaperSwitchScriptPath, "--mode", darkMode ? "dark" : "light", "--image", path];
+        if (background) {
+            applyProc.command = ["nice", "-n", "10", "ionice", "-c", "3", ...command];
+            applyProc.running = true;
+        } else Quickshell.execDetached(command);
         root.changed()
     }
 
@@ -81,7 +94,9 @@ Singleton {
         property string filePath: ""
         property bool darkMode: Appearance.m3colors.darkmode
         property var onFileSelected: null
-        function select(filePath, darkMode = Appearance.m3colors.darkmode, onFileSelected = null) {
+        property bool background: false
+        function select(filePath, darkMode = Appearance.m3colors.darkmode, onFileSelected = null, background = false) {
+            selectProc.background = background
             selectProc.filePath = filePath
             selectProc.darkMode = darkMode
             selectProc.onFileSelected = onFileSelected
@@ -95,23 +110,23 @@ Singleton {
             if (selectProc.onFileSelected) {
                 selectProc.onFileSelected(selectProc.filePath);
             } else {
-                root.apply(selectProc.filePath, selectProc.darkMode);
+                root.apply(selectProc.filePath, selectProc.darkMode, selectProc.background);
             }
         }
     }
 
-    function select(filePath, darkMode = Appearance.m3colors.darkmode, onFileSelected = null) {
-        selectProc.select(filePath, darkMode, onFileSelected);
+    function select(filePath, darkMode = Appearance.m3colors.darkmode, onFileSelected = null, background = false) {
+        selectProc.select(filePath, darkMode, onFileSelected, background);
     }
 
-    function randomFromCurrentFolder(darkMode = Appearance.m3colors.darkmode) {
+    function randomFromCurrentFolder(darkMode = Appearance.m3colors.darkmode, background = false) {
         const count = wallpaperModel.count > 0 ? wallpaperModel.count : folderModel.count;
         if (count === 0) return;
         const randomIndex = Math.floor(Math.random() * count);
         const item = wallpaperModel.count > 0 ? wallpaperModel.get(randomIndex) : null;
         const filePath = item ? item.filePath : folderModel.get(randomIndex, "filePath");
         print("Randomly selected wallpaper:", filePath);
-        if (filePath) root.select(filePath, darkMode);
+        if (filePath) root.select(filePath, darkMode, null, background);
     }
 
     function getRandomWallpaperPath(excludePath = "") {
