@@ -12,7 +12,7 @@ RowLayout {
     required property Item di
     anchors {
         fill: parent
-        leftMargin: root.isMaterial ? 0 : 4
+        leftMargin: diOsdRoot.di.isMaterial ? 0 : 4
         rightMargin: 10
     }
     spacing: 6
@@ -36,8 +36,8 @@ RowLayout {
         wrappedShape: MaterialShape.Shape.Cookie12Sided
         color: Appearance.colors.colPrimary
         colSymbol: Appearance.colors.colOnPrimary
-        text: root.iconForProviderId("osd")
-        iconSize: root.isMaterial ? 20 : 16
+        text: diOsdRoot.di.iconForProviderId("osd")
+        iconSize: diOsdRoot.di.isMaterial ? 20 : 16
         fill: 1
         padding: 4
     }
@@ -64,7 +64,7 @@ RowLayout {
                 default:           return `${Math.round((Audio.sink?.audio?.volume ?? 0) * 100)}`
             }
         }
-        font.pixelSize: root.isMaterial ? Appearance.font.pixelSize.normal : Appearance.font.pixelSize.small
+        font.pixelSize: diOsdRoot.di.isMaterial ? Appearance.font.pixelSize.normal : Appearance.font.pixelSize.small
         font.features: { "tnum": 1 }
         color: Appearance.colors.colOnLayer0
     }

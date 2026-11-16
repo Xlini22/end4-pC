@@ -20,6 +20,8 @@ Singleton {
     property bool osdBrightnessOpen: false
     property bool settingsOpen: false
     property bool osdVolumeOpen: false
+    property string osdVolumePillScreen: ""
+    onOsdVolumeOpenChanged: if (!osdVolumeOpen) osdVolumePillScreen = ""
     property bool oskOpen: false
     property bool overlayOpen: false
     property bool overviewOpen: false
