@@ -17,7 +17,7 @@
 # Config change = restart: systemctl --user restart airdrop-receiver.service
 
 [Unit]
-Description=AirDrop receiver over firmware-native AWDL (awdl0)
+Description=AirDrop receiver
 Documentation=file:@PLUGIN_DIR@/README.md
 # awdl0 is created by the root-side control plane; wait for it, do not create it.
 # No After=/BindsTo= on sys-subsystem-net-devices-awdl0.device: awdl0 appears
@@ -45,7 +45,7 @@ ExecStartPre=/bin/sh -c 'for i in $(seq 1 40); do ss -Hltn 2>/dev/null | grep -q
 # running"). This unit once burned three restarts on that gap and gave up.
 # Wait for the address.
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do ip -6 addr show dev awdl0 scope link 2>/dev/null | grep -q inet6 && exit 0; sleep 0.5; done; echo "awdl0 has no link-local after 30s" >&2; exit 1'
-ExecStart=/usr/bin/python3 @PLUGIN_DIR@/bin/airdrop-serve.py --iface awdl0 --port 8771
+ExecStart=/usr/bin/python3 "@PLUGIN_DIR@/bin/airdrop-serve.py" --iface awdl0 --port 8771
 Restart=on-failure
 RestartSec=2s
 # Hardening: it serves HTTPS on one port and writes into one directory.

@@ -520,8 +520,11 @@ identity_unlock() { exec 8>&-; }
 identity_notice() {
   local msg=$1
   printf '%s\n' "$msg" >&2
-  command -v omarchy-notification-send >/dev/null 2>&1 \
-    && omarchy-notification-send -t 8000 "Omdrop" "$msg" >/dev/null 2>&1
+  if command -v omarchy-notification-send >/dev/null 2>&1; then
+    omarchy-notification-send -t 8000 "Omdrop" "$msg" >/dev/null 2>&1
+  else
+    notify-send -t 8000 -a AirDrop "Omdrop" "$msg" >/dev/null 2>&1
+  fi
   return 0
 }
 
@@ -1040,7 +1043,8 @@ git -C '$src' checkout --detach 50208dd6a3f9f4fc90a106bd17c8fe6bade49f42 && make
     build="$build
 $self_q firewall install"
   fi
-  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
+  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1 \
+      && ! command -v kitty >/dev/null 2>&1; then
     echo "Omdrop requires a patched wifi driver, which requires administrative privilege to install. You will be prompted for your password."
     echo
     echo "Install the driver with:"
@@ -1080,7 +1084,8 @@ $self_q firewall install"
     echo "The receiver's packages are installed and the radio comes from $(probe_field backend) $(probe_field version). Nothing to do."
     return 0
   fi
-  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
+  if ! command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1 \
+      && ! command -v kitty >/dev/null 2>&1; then
     echo "Install what the receiver needs with:"
     printf '\n%s\n\n' "$build"
     return 0
@@ -1097,7 +1102,11 @@ launch_install() {
   local build=$1 intro=$2
   local script="( $build
 ); rc=\$?; if [ \$rc -ne 0 ]; then echo; echo \"Installing failed (exit \$rc). The messages above say why.\"; read -rsn 1 -p 'Press any key to close...' </dev/tty; echo; exit 130; fi"
-  omarchy-launch-floating-terminal-with-presentation "echo '$intro'; echo; $script"
+  if command -v omarchy-launch-floating-terminal-with-presentation >/dev/null 2>&1; then
+    omarchy-launch-floating-terminal-with-presentation "echo '$intro'; echo; $script"
+  else
+    kitty --detach --hold bash -c 'printf "%s\n\n" "$1"; bash -c "$2"' _ "$intro" "$script"
+  fi
 }
 
 cmd_on() {
@@ -2295,7 +2304,11 @@ act_open() {
 cmd_open_link() {
   local f=${1:?usage: omdrop open-link FILE} url raw why
   if url=$(link_target "$f"); then
-    omarchy-launch-browser "$url" >/dev/null 2>&1
+    if command -v omarchy-launch-browser >/dev/null 2>&1; then
+      omarchy-launch-browser "$url" >/dev/null 2>&1
+    else
+      launch xdg-open "$url"
+    fi
     return
   fi
   if raw=$(link_url "$f") && [[ "$raw" == *:* ]]; then
@@ -2303,8 +2316,7 @@ cmd_open_link() {
   else
     why="There is no web link in it."
   fi
-  omarchy-notification-send "Can't open $(basename "$f")" "$why" >/dev/null 2>&1 \
-    || echo "omdrop: can't open $f: $why" >&2
+  identity_notice "Can't open $(basename "$f"): $why"
   return 1
 }
 
@@ -2541,6 +2553,12 @@ copy_to_clipboard() {
 act_notify() {
   local f=$1 args=()
   copy_to_clipboard "$f"
+  if ! command -v omarchy-notification-send >/dev/null 2>&1; then
+    # ponytail: the native notification lives in its own user unit so that
+    # closing a one-file receive window cannot kill its clickable action.
+    launch "$SELF" act notify-native "$f"
+    return
+  fi
   # Only images get a thumbnail, the way a screenshot notification does.
   case "${f,,}" in *.png|*.jpg|*.jpeg|*.gif|*.webp|*.heic|*.avif) args+=(--image "$f") ;; esac
   # Same shape as omarchy-capture-screenshot: clipboard plus file, a thumbnail,
@@ -2570,8 +2588,16 @@ cmd_act() {
   local what=${1:?usage: omdrop act open|shell|browse FILE} f=${2:?}
   local dir; dir=$(dirname "$f")
   case "$what" in
+    notify-native)
+      local action
+      action=$(notify-send --app-name=AirDrop --expire-time=8000 --wait \
+        --action=default=Apri "$(basename "$f")" "Salvato in $(tildify "$dir")") || return
+      [[ "$action" != default ]] || act_open "$f"
+      ;;
     open)   act_open "$f" ;;
-    shell)  ( cd "$dir" && launch "$(omarchy-default-terminal)" ) ;;
+    shell)  ( cd "$dir" && if command -v omarchy-default-terminal >/dev/null 2>&1; then
+                launch "$(omarchy-default-terminal)"
+              else launch kitty; fi ) ;;
     browse) launch xdg-open "$dir" ;;
     *) die "act $what: one of open, shell, browse" ;;
   esac
