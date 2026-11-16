@@ -1,4 +1,4 @@
-"""Check production blur-buffer acquisition without a GPU: python3 tests/native-glass-buffer-check.py SOURCE_DIR."""
+"""Check production blur-buffer acquisition without a GPU: python3 tests/native-glass-buffer-check.py SOURCE_DIR [--pending-target]."""
 from pathlib import Path
 import subprocess
 import sys
@@ -52,6 +52,8 @@ auto g_pGlobalState = &globals;
 '''
 harness += r'''
 struct CGlassLayerSurface {
+    SP<Render::IFramebuffer> m_savedCurrentFB;
+    SP<Render::IFramebuffer> m_frostInputFramebuffer = std::make_shared<Render::IFramebuffer>();
     SP<Render::IFramebuffer> m_surfaceTempFramebuffer = std::make_shared<Render::IFramebuffer>();
     SP<Render::IFramebuffer> m_sampleFramebuffer = std::make_shared<Render::IFramebuffer>();
     SP<Render::IFramebuffer> m_frostFramebuffer = std::make_shared<Render::IFramebuffer>();
@@ -72,7 +74,7 @@ struct CGlassDecoration {
     ~CGlassDecoration();
 };
 '''
-harness += 'void blurBackground(SP<Render::IFramebuffer>, SP<Render::IFramebuffer>&, float, int, GLuint, int, int, const CBox* = nullptr, int = 8);\n'
+harness += 'void blurBackground(SP<Render::IFramebuffer>, SP<Render::IFramebuffer>&, float, int, GLuint, int, int, const CBox* = nullptr, int = 8, SP<Render::IFramebuffer> = nullptr);\n'
 harness += '#include ' + repr(str(Path(sys.argv[1]).resolve() / 'src/GlassRegions.hpp')).replace("'", '"') + '\n'
 checks = r'''
 int main() {
@@ -95,6 +97,28 @@ int main() {
     assert((glassBounds(panel) == std::array<float, 4>{0, 30, 1450, 870}));
     for (auto& r : panel.regions) r.opacity = 0;
     assert(!glassBounds(panel));
+
+    SGlassClient before, after;
+    before.enhanced = after.enhanced = true;
+    SGlassSurface barSurface{"quickshell:bar", "eDP-1", 1920, 50};
+    SGlassSurface dashboard{"quickshell:dashboard", "eDP-1", 1100, 680};
+    barSurface.regions = dashboard.regions = {region};
+    before.surfaces = after.surfaces = {barSurface, dashboard};
+    assert(!glassSurfaceChanged(before, after, "quickshell:bar", "eDP-1"));
+    after.surfaces[1].regions[0].rect[1] += 1;
+    assert(glassSurfaceChanged(before, after, "quickshell:dashboard", "eDP-1"));
+    assert(!glassSurfaceChanged(before, after, "quickshell:bar", "eDP-1"));
+    assert(!glassSurfaceChanged(before, after, "quickshell:dashboard", "DP-2"));
+    after = before;
+    after.surfaces[1].regions[0].frost += 1;
+    assert(glassSurfaceChanged(before, after, "quickshell:dashboard", "eDP-1"));
+    after = before;
+    after.surfaces.pop_back();
+    assert(glassSurfaceChanged(before, after, "quickshell:dashboard", "eDP-1"));
+    assert(glassSurfaceChanged(after, before, "quickshell:dashboard", "eDP-1"));
+    assert(!glassSurfaceChanged(before, after, "quickshell:bar", "eDP-1"));
+    after.enhanced = false;
+    assert(glassSurfaceChanged(before, after, "quickshell:bar", "eDP-1"));
     panel.regions = {region}; panel.regions[0].rect = {-100, -100, 10, 10};
     assert(!glassBounds(panel));
 
@@ -150,6 +174,9 @@ int main() {
 }
 '''
 with tempfile.TemporaryDirectory(prefix='glass-buffer-', dir='/tmp') as directory:
+    if '--pending-target' in sys.argv[2:]:
+        harness = harness.replace('SP<Render::IFramebuffer> m_savedCurrentFB;',
+                                  'SP<Render::IFramebuffer> m_savedCurrentFB = std::make_shared<Render::IFramebuffer>();')
     path = Path(directory)
     (path / 'check.cpp').write_text(harness + acquire + release + release_window + checks)
     subprocess.run(['c++', '-std=c++23', str(path / 'check.cpp'), '-o', str(path / 'check')], check=True)

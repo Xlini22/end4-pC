@@ -1,0 +1,291 @@
+--- a/src/GlassDecoration.cpp
++++ b/src/GlassDecoration.cpp
+@@ -238,7 +238,8 @@
+             const int factor = support >= 12 ? 2 : 1;
+             const int w = (sourceW + factor - 1) / factor, h = (sourceH + factor - 1) / factor;
+             if (!m_frostFramebuffer) m_frostFramebuffer = g_pHyprRenderer->createFB("hyprglass-window-frost");
+-            if (m_frostFramebuffer->m_size != Vector2D(w, h) && !m_frostFramebuffer->alloc(w, h, m_sampleFramebuffer->m_drmFormat)) return;
++            if ((m_frostFramebuffer->m_size != Vector2D(w, h) || m_frostFramebuffer->m_drmFormat != m_sampleFramebuffer->m_drmFormat)
++                && !m_frostFramebuffer->alloc(w, h, m_sampleFramebuffer->m_drmFormat)) return;
+             g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, false);
+             glBindFramebuffer(GL_READ_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_sampleFramebuffer.get())->getFBID());
+             glBindFramebuffer(GL_DRAW_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_frostFramebuffer.get())->getFBID());
+--- a/src/GlassLayerSurface.cpp
++++ b/src/GlassLayerSurface.cpp
+@@ -42,6 +42,7 @@
+     m_frostInputFramebuffer.reset();
+     m_blurTempFramebuffer.reset();
+     m_frostTempFramebuffer.reset();
++    m_savedCurrentFB.reset();
+     glBindFramebuffer(GL_READ_FRAMEBUFFER, readFB);
+     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFB);
+     // Damage the area where glass was last drawn so the compositor
+@@ -58,11 +59,11 @@
+ 
+ std::string CGlassLayerSurface::contrastSample() {
+     const auto layer = m_layerSurface.lock();
+-    if (!layer || layer->m_fadingOut || layer->m_namespace != "quickshell:settings" || !enhanced()) return "null";
++    if (!layer || !layer->m_monitor || m_contrastFailed || layer->m_fadingOut || layer->m_namespace != "quickshell:settings" || !enhanced()) return "null";
+     const auto now = std::chrono::steady_clock::now();
+     // One wakeup on subscription; polling an idle panel must not force continuous redraws.
+     if (now - m_contrastRequested > std::chrono::seconds(2) || m_contrastFence)
+-        g_pHyprRenderer->damageBox(CBox{layer->m_realPosition->value(), layer->m_realSize->value()});
++        damageMaterial();
+     m_contrastRequested = now;
+     if (m_contrastReady.time_since_epoch().count() == 0 || m_contrastFailed) return "null";
+     const auto& monitor = layer->m_monitor->m_name;
+@@ -90,6 +91,10 @@
+     glGetIntegerv(GL_PACK_ROW_LENGTH, &rowLength);
+     glGetIntegerv(GL_PACK_SKIP_ROWS, &skipRows);
+     glGetIntegerv(GL_PACK_SKIP_PIXELS, &skipPixels);
++    GLint scissorBox[4]{}, texture = 0;
++    const bool scissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
++    glGetIntegerv(GL_SCISSOR_BOX, scissorBox);
++    glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
+     const auto restore = Hyprutils::Utils::CScopeGuard([&] {
+         glBindFramebuffer(GL_READ_FRAMEBUFFER, readFB);
+         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFB);
+@@ -98,11 +103,19 @@
+         glPixelStorei(GL_PACK_ROW_LENGTH, rowLength);
+         glPixelStorei(GL_PACK_SKIP_ROWS, skipRows);
+         glPixelStorei(GL_PACK_SKIP_PIXELS, skipPixels);
++        glBindTexture(GL_TEXTURE_2D, texture);
++        g_pHyprOpenGL->scissor(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3], false);
++        g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, scissorEnabled);
+     });
+     if (m_contrastFence) {
+         // Never wait on the GPU; a late sample keeps the previous text colours.
+         const auto state = glClientWaitSync(m_contrastFence, 0, 0);
+-        if (state == GL_TIMEOUT_EXPIRED) return;
++        if (state == GL_TIMEOUT_EXPIRED) {
++            // Stop requesting frames; retain this one pending PBO until surface destruction.
++            // This bounds retries, not time spent inside a stalled driver call.
++            if (now - m_contrastStarted > seconds(2)) m_contrastFailed = true;
++            return;
++        }
+         if (state == GL_WAIT_FAILED) { m_contrastFailed = true; return; }
+         glBindBuffer(GL_PIXEL_PACK_BUFFER, m_contrastBuffer);
+         const auto* pixels = static_cast<const unsigned char*>(glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, 32 * 24 * 4, GL_MAP_READ_BIT));
+@@ -150,8 +163,22 @@
+     glFlush();
+     m_contrastStarted = now;
+     // Complete the asynchronous read on a later frame, including on a static desktop.
+-    if (const auto layer = m_layerSurface.lock())
+-        g_pHyprRenderer->damageBox(CBox{layer->m_realPosition->value(), layer->m_realSize->value()});
++    damageMaterial();
++}
++
++void CGlassLayerSurface::damageMaterial() {
++    const auto layer = m_layerSurface.lock();
++    if (!layer) return;
++    const auto monitor = layer->m_monitor.lock();
++    const auto position = layer->m_realPosition->value(), size = layer->m_realSize->value();
++    if (monitor && monitor->m_transform == WL_OUTPUT_TRANSFORM_NORMAL && layer->m_namespace == "quickshell:settings") {
++        if (const auto* surface = enhancedSurface()) {
++            if (const auto box = glassDamageBox(*surface, {position.x, position.y, size.x, size.y}, monitor->m_scale))
++                g_pHyprRenderer->damageBox(CBox{(*box)[0], (*box)[1], (*box)[2], (*box)[3]});
++            return;
++        }
++    }
++    g_pHyprRenderer->damageBox(CBox{position, size});
+ }
+ 
+ bool CGlassLayerSurface::enhanced() const {
+@@ -183,16 +210,8 @@
+     const auto layer = m_layerSurface.lock();
+     if (!layer || !enhanced()) return nullptr;
+     if (layer->m_fadingOut) return m_lastSurface ? &*m_lastSurface : nullptr;
+-    const SGlassSurface* found = nullptr;
+-    for (const auto& surface : g_pGlobalState->glassClients.at(layer->getPID()).surfaces) {
+-        if (surface.name != layer->m_namespace || surface.monitor != layer->m_monitor->m_name ||
+-            std::abs(surface.width - layer->m_realSize->goal().x) > 2 ||
+-            std::abs(surface.height - layer->m_realSize->goal().y) > 2) continue;
+-        // ponytail: ambiguous equal-sized windows keep layer optics; unique surface IDs would remove this ceiling.
+-        if (found) return nullptr;
+-        found = &surface;
+-    }
+-    return found;
++    return glassSurfaceForLayer(g_pGlobalState->glassClients.at(layer->getPID()), layer->m_namespace,
++        layer->m_monitor->m_name, layer->m_realSize->goal().x, layer->m_realSize->goal().y);
+ }
+ 
+ bool CGlassLayerSurface::hasVisibleMaterial() const {
+@@ -477,7 +496,15 @@
+                 frostRendered = true;
+             }
+         }
+-        if (!frostRendered) m_frostMapping.reset();
++        if (!frostRendered) {
++            m_frostMapping.reset();
++            if (m_frostFramebuffer || m_frostInputFramebuffer || m_frostTempFramebuffer) {
++                m_frostFramebuffer.reset();
++                m_frostInputFramebuffer.reset();
++                m_frostTempFramebuffer.reset();
++                glBindFramebuffer(GL_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(source.get())->getFBID());
++            }
++        }
+         m_hasCachedSample      = true;
+     }
+ 
+@@ -494,7 +521,9 @@
+     if (!m_surfaceTempFramebuffer)
+         m_surfaceTempFramebuffer = g_pHyprRenderer->createFB("hyprglass-layer-temp");
+ 
+-    if (m_surfaceTempFramebuffer->m_size.x != monitorWidth || m_surfaceTempFramebuffer->m_size.y != monitorHeight)
++    const bool maskReallocated = m_surfaceTempFramebuffer->m_size.x != monitorWidth || m_surfaceTempFramebuffer->m_size.y != monitorHeight
++        || m_surfaceTempFramebuffer->m_drmFormat != DRM_FORMAT_ARGB8888;
++    if (maskReallocated)
+         m_surfaceTempFramebuffer->alloc(monitorWidth, monitorHeight, DRM_FORMAT_ARGB8888);
+ 
+     m_savedCurrentFB = source;
+@@ -508,9 +537,18 @@
+ 
+     if (std::isfinite(clearBox.x) && std::isfinite(clearBox.y) && std::isfinite(clearBox.w) && std::isfinite(clearBox.h) &&
+         clearBox.w > 0.0 && clearBox.h > 0.0) {
+-        g_pHyprOpenGL->scissor(clearBox, false);
+         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+-        glClear(GL_COLOR_BUFFER_BIT);
++        if (partial && !maskReallocated && layerSurface->m_namespace == "quickshell:settings") {
++            // Qt repaints damaged foreground only: preserve its mask everywhere else too.
++            auto clearDamage = g_pHyprRenderer->m_renderData.damage.copy().intersect(clearBox);
++            clearDamage.forEachRect([&](const auto& rect) {
++                g_pHyprOpenGL->scissor(rect.x1, rect.y1, rect.x2 - rect.x1, rect.y2 - rect.y1, false);
++                glClear(GL_COLOR_BUFFER_BIT);
++            });
++        } else {
++            g_pHyprOpenGL->scissor(clearBox, false);
++            glClear(GL_COLOR_BUFFER_BIT);
++        }
+         g_pHyprOpenGL->scissor(nullptr);
+     }
+ }
+@@ -583,7 +621,7 @@
+ 
+     if (const auto* dimming = glassDarkeningOptics(layerSurface->getPID(), glassProfileKey(layerSurface->m_namespace))) {
+         maskInfo.darkening = dimming->darkeningValue();
+-        if (dimming->darkeningTransition()) g_pHyprRenderer->damageBox(CBox{layerSurface->m_realPosition->value(), layerSurface->m_realSize->value()});
++        if (dimming->darkeningTransition()) damageMaterial();
+     }
+     if (const auto* surface = enhancedSurface()) {
+         const float sx = transformBox.w / surface->width, sy = transformBox.h / surface->height;
+--- a/src/GlassLayerSurface.hpp
++++ b/src/GlassLayerSurface.hpp
+@@ -20,6 +20,7 @@
+     void compositeAndRestore(PHLMONITOR monitor, float alpha);
+ 
+     void damageIfMoved();
++    void damageMaterial();
+     std::string contrastSample();
+ 
+     [[nodiscard]] PHLLS getLayerSurface() const;
+--- a/src/GlassRegions.hpp
++++ b/src/GlassRegions.hpp
+@@ -31,6 +31,19 @@
+     std::vector<SGlassSurface> surfaces;
+ };
+ 
++inline const SGlassSurface* glassSurfaceForLayer(const SGlassClient& client, std::string_view name,
++        std::string_view monitor, double width, double height) {
++    const SGlassSurface* found = nullptr;
++    for (const auto& surface : client.surfaces) {
++        if (surface.name != name || surface.monitor != monitor || std::abs(surface.width - width) > 2
++            || std::abs(surface.height - height) > 2) continue;
++        // ponytail: ambiguous equal-sized layers retain the full fallback; unique IDs would remove this ceiling.
++        if (found) return nullptr;
++        found = &surface;
++    }
++    return found;
++}
++
+ inline bool glassSurfaceChanged(const SGlassClient& before, const SGlassClient& after,
+                                 std::string_view name, std::string_view monitor) {
+     if (before.enhanced != after.enhanced) return true;
+@@ -53,6 +66,27 @@
+     bottom = std::clamp(bottom, 0.0f, surface.height);
+     if (right <= left || bottom <= top) return std::nullopt;
+     return std::array<float, 4>{left, top, right - left, bottom - top};
++}
++
++// Logical desktop coordinates, including conservative refraction/blur/AA support.
++inline std::optional<std::array<double, 4>> glassDamageBox(const SGlassSurface& surface,
++        const std::array<double, 4>& layer, double scale) {
++    if (!std::isfinite(scale) || scale <= 0 || !std::isfinite(surface.width) || !std::isfinite(surface.height)
++        || surface.width <= 0 || surface.height <= 0) return std::nullopt;
++    for (double value : layer) if (!std::isfinite(value)) return std::nullopt;
++    if (layer[2] <= 0 || layer[3] <= 0) return std::nullopt;
++    const auto bounds = glassBounds(surface);
++    if (!bounds) return std::nullopt;
++    const double sx = layer[2] / surface.width, sy = layer[3] / surface.height;
++    float frost = 0;
++    for (const auto& region : surface.regions) if (region.opacity > 0) frost = std::max(frost, region.frost);
++    // ponytail: one conservative rectangle per surface; disjoint materials need region-wise damage.
++    const double padding = std::max(80.0, 3 * frost * std::min(sx, sy)) + 2 / scale;
++    const double left = std::floor(layer[0] + (*bounds)[0] * sx - padding);
++    const double top = std::floor(layer[1] + (*bounds)[1] * sy - padding);
++    const double right = std::ceil(layer[0] + ((*bounds)[0] + (*bounds)[2]) * sx + padding);
++    const double bottom = std::ceil(layer[1] + ((*bounds)[1] + (*bounds)[3]) * sy + padding);
++    return std::array<double, 4>{left, top, right - left, bottom - top};
+ }
+ 
+ // Parse into a temporary: a malformed IPC message must never replace the last valid geometry.
+--- a/src/GlassRenderer.cpp
++++ b/src/GlassRenderer.cpp
+@@ -47,7 +47,8 @@
+     if (!sampleFramebuffer)
+         sampleFramebuffer = g_pHyprRenderer->createFB("hyprglass-sample");
+ 
+-    if (sampleFramebuffer->m_size.x != sampleWidth || sampleFramebuffer->m_size.y != sampleHeight)
++    if (sampleFramebuffer->m_size.x != sampleWidth || sampleFramebuffer->m_size.y != sampleHeight
++        || sampleFramebuffer->m_drmFormat != sourceFramebuffer->m_drmFormat)
+         sampleFramebuffer->alloc(sampleWidth, sampleHeight, sourceFramebuffer->m_drmFormat);
+ 
+     int srcX0 = static_cast<int>(box.x) - pad;
+@@ -108,7 +109,8 @@
+     if (!blurTempFramebuffer)
+         blurTempFramebuffer = g_pHyprRenderer->createFB("hyprglass-blur-temp");
+ 
+-    if (blurTempFramebuffer->m_size.x != width || blurTempFramebuffer->m_size.y != height)
++    if (blurTempFramebuffer->m_size.x != width || blurTempFramebuffer->m_size.y != height
++        || blurTempFramebuffer->m_drmFormat != sampleFramebuffer->m_drmFormat)
+         blurTempFramebuffer->alloc(width, height, sampleFramebuffer->m_drmFormat);
+ 
+     // Fullscreen quad projection: maps VAO positions [0,1] to clip space [-1,1]
+--- a/src/Globals.hpp
++++ b/src/Globals.hpp
+@@ -69,7 +69,7 @@
+ inline constexpr std::string_view PLUGIN_NAME        = "hyprglass";
+ inline constexpr std::string_view PLUGIN_DESCRIPTION = "Apple-style Liquid Glass effect";
+ inline constexpr std::string_view PLUGIN_AUTHOR      = "Hyprnux";
+-inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r35";
++inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r36-candidate";
+ 
+ inline const SGlassOptics* glassOptics(int pid, const std::string& key) {
+     const auto client = g_pGlobalState->glassProfiles.find(pid);
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -425,8 +425,23 @@
+             // Only repaint changed surfaces: scrolling Dashboard must not invalidate the bar and dock.
+             for (const auto& [ptr, state] : g_pGlobalState->layerSurfaces) {
+                 if (auto layer = state->getLayerSurface(); layer && !layer->m_fadingOut && layer->getPID() == pid) {
+-                    if (auto monitor = layer->m_monitor.lock(); monitor && glassSurfaceChanged(previous, current, layer->m_namespace, monitor->m_name))
+-                        g_pHyprRenderer->damageBox(CBox{layer->m_realPosition->value(), layer->m_realSize->value()});
++                    if (auto monitor = layer->m_monitor.lock(); monitor && glassSurfaceChanged(previous, current, layer->m_namespace, monitor->m_name)) {
++                        const auto size = layer->m_realSize->goal();
++                        const auto* oldSurface = glassSurfaceForLayer(previous, layer->m_namespace, monitor->m_name, size.x, size.y);
++                        const auto* newSurface = glassSurfaceForLayer(current, layer->m_namespace, monitor->m_name, size.x, size.y);
++                        if (layer->m_namespace == "quickshell:settings" && previous.enhanced && current.enhanced
++                            && oldSurface && newSurface
++                            && monitor->m_transform == WL_OUTPUT_TRANSFORM_NORMAL) {
++                            const auto position = layer->m_realPosition->value(), size = layer->m_realSize->value();
++                            // Erase the old footprint and paint the new one; keep disjoint damage disjoint.
++                            for (const auto* surface : {oldSurface, newSurface}) {
++                                if (const auto box = glassDamageBox(*surface, {position.x, position.y, size.x, size.y}, monitor->m_scale))
++                                    g_pHyprRenderer->damageBox(CBox{(*box)[0], (*box)[1], (*box)[2], (*box)[3]});
++                            }
++                        } else {
++                            g_pHyprRenderer->damageBox(CBox{layer->m_realPosition->value(), layer->m_realSize->value()});
++                        }
++                    }
+                 }
+             }
+             for (const auto& decoration : g_pGlobalState->decorations) {

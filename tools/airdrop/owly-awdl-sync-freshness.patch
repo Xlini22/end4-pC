@@ -1,0 +1,188 @@
+--- a/crates/owly-awdl/src/node.rs
++++ b/crates/owly-awdl/src/node.rs
+@@ -146,6 +146,8 @@
+ #[derive(Debug, Clone, Default, PartialEq, Eq)]
+ pub struct Stats {
+     pub rx_action: u64,
++    /// Synchronization announcements actually applied to the local clock.
++    pub sync_updates: u64,
+     pub rx_data: u64,
+     pub rx_malformed: u64,
+     pub tx_action: u64,
+@@ -433,17 +435,32 @@
+         if rssi.is_some() {
+             peer.rssi = rssi;
+         }
++        let previous_election = peer.election;
+         let up = peer.absorb(&advert, subtype == frame::subtype::MIF);
++        let election_changed = peer.election != previous_election;
+         if let Some(s) = advert.sync {
+             peer.sync_offset_us =
+                 Some(self.clock.error_tu(now, s.next_tu, s.aw_counter) * TU as i64);
+-            // AWDL-7: follow the master's schedule.
+-            if ours {
+-                self.clock.update(now, s.next_tu, s.aw_counter);
+-            }
+-        }
+-        if up {
+-            let info = peer.info();
++        }
++        let info = up.then(|| peer.info());
++        // ponytail: new/non-selected peers keep the normal one-second cadence;
++        // reelection on all peer changes can remove that delay if needed.
++        // Rank the selected peer's changed state before using its clock:
++        // it may have dropped its metric or changed trees.
++        if ours && election_changed {
++            self.election.run(
++                self.peers.values().filter(|p| p.valid).map(|p| &p.election),
++                self.cfg.radio.presence.ranking(),
++            );
++            self.adopt_sequence();
++        }
++        if self.election.sync == src
++            && let Some(s) = advert.sync
++        {
++            self.clock.update(now, s.next_tu, s.aw_counter);
++            self.stats.sync_updates += 1;
++        }
++        if let Some(info) = info {
+             out.push(Action::PeerUp(info));
+             self.release_syns(src, out);
+         }
+--- a/crates/owly-awdl/src/driver.rs
++++ b/crates/owly-awdl/src/driver.rs
+@@ -260,6 +260,7 @@
+                 },
+                 *self.node.election(),
+                 self.node.stats().rx_action,
++                self.node.stats().sync_updates,
+                 sync_sample(&self.node, &input),
+             )
+         });
+@@ -281,7 +282,7 @@
+                 Action::Deliver(p) => self.netif.deliver(p),
+             }
+         }
+-        if let Some((at, before, received, sample)) = diagnostic {
++        if let Some((at, before, received, updates, sample)) = diagnostic {
+             let after = self.node.election();
+             if (
+                 before.master,
+@@ -311,7 +312,7 @@
+                     src,
+                     before.master,
+                     before.sync,
+-                    src == before.sync,
++                    self.node.stats().sync_updates > updates,
+                     error,
+                     self.node.clock().current_aw(at),
+                     self.node.clock().next_slot_tu(at)
+--- /dev/null
++++ b/crates/owly-awdl/tests/sync_freshness.rs
+@@ -0,0 +1,106 @@
++//! A selected peer drops its rank and resets its clock between election ticks.
++//! No driver, sockets, radio or backend installation.
++use owly_awdl::election::Election;
++use owly_awdl::frame::{self, subtype};
++use owly_awdl::tlv::{self, Own};
++use owly_awdl::{
++    Channel, Config, Input, MacAddr, Node, Presence, RadioConstraints, Sequence, Time,
++};
++
++fn frame(mac: MacAddr, metric: u32, aw: u16, next: u16, mif: bool) -> Vec<u8> {
++    let sequence = Sequence::fixed(Channel(6));
++    let mut election = Election::own(mac);
++    election.master_metric = metric;
++    election.self_metric = metric;
++    let own = Own {
++        addr: mac,
++        name: "synthetic",
++        devclass: tlv::devclass::IOS,
++        channel: 6,
++        master_channel: Channel(6),
++        next_tu: next,
++        aw_counter: aw,
++        psf_interval_tu: 110,
++        sequence: &sequence,
++        election: &election,
++        ht: None,
++    };
++    frame::action_frame(
++        mac,
++        1,
++        if mif { subtype::MIF } else { subtype::PSF },
++        0,
++        |out| tlv::put_all(out, &own, mif),
++    )
++}
++
++fn feed(node: &mut Node, now: Time, bytes: &[u8]) {
++    node.handle(Input::Frame {
++        rx_time: now,
++        rssi: Some(-30),
++        bytes,
++    })
++    .for_each(drop);
++}
++
++#[test]
++fn a_demoted_sync_peer_cannot_reset_our_clock_before_the_next_tick() {
++    let local = MacAddr([2, 0, 0, 0, 0, 1]);
++    let phone = MacAddr([2, 0, 0, 0, 0, 2]);
++    let other = MacAddr([2, 0, 0, 0, 0, 3]);
++    let start = Time(10_000_000);
++    let radio = RadioConstraints {
++        channel: Channel(6),
++        presence: Presence::Fixed,
++    };
++    let mut node = Node::new(Config::new(local, "repro", radio), start);
++    feed(
++        &mut node,
++        start.plus(100_000),
++        &frame(phone, 513, 400, 64, true),
++    );
++    node.handle(Input::Timer(start.plus(1_000_000)))
++        .for_each(drop);
++    assert_eq!(node.election().sync, phone);
++    feed(
++        &mut node,
++        start.plus(1_100_000),
++        &frame(phone, 513, 456, 20, false),
++    );
++    feed(
++        &mut node,
++        start.plus(1_200_000),
++        &frame(other, 541, 456, 20, true),
++    );
++    node.handle(Input::Timer(start.plus(2_000_000)))
++        .for_each(drop);
++    assert_eq!(node.election().sync, other);
++    feed(
++        &mut node,
++        start.plus(2_100_000),
++        &frame(other, 541, 512, 20, false),
++    );
++
++    let at = start.plus(2_300_000);
++    let before = *node.clock();
++    let updates = node.stats().sync_updates;
++    // The captured peer's analogous PSF drops to metric65 and starts AW6.
++    feed(&mut node, at, &frame(other, 65, 6, 18, false));
++    assert_eq!(node.peer(other).unwrap().election.master_metric, 65);
++    assert_eq!(
++        node.election().sync,
++        phone,
++        "re-rank before adopting a demoted peer's clock"
++    );
++    assert_eq!(
++        *node.clock(),
++        before,
++        "the low-metric peer's reset must not be applied"
++    );
++    assert_eq!(node.stats().sync_updates, updates);
++    let now = start.plus(2_400_000);
++    feed(&mut node, now, &frame(phone, 513, 528, 32, false));
++    assert_eq!(node.clock().error_tu(now, 32, 528), 0);
++    assert_eq!(node.stats().sync_updates, updates + 1);
++    assert_eq!(node.election().sync, phone);
++}

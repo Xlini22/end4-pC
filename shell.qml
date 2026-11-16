@@ -3,11 +3,13 @@
 //@ pragma Env QT_QUICK_CONTROLS_STYLE=Basic
 //@ pragma Env QT_QUICK_FLICKABLE_WHEEL_DECELERATION=10000
 //@ pragma Env QT_LOGGING_RULES=qt.text.font.db.info=false
+// ponytail: keep Qt's default animation driver; simple mode repaints idle windows (QTBUG-126099).
 // Remove two slashes below and adjust the value to change the UI scale
 ////@ pragma Env QT_SCALE_FACTOR=1
 import "modules/common"
 import "services"
 import "panelFamilies"
+import "modules/ii/lock" as SessionLock
 import QtQuick
 import QtQuick.Window
 import Quickshell
@@ -57,6 +59,9 @@ ShellRoot {
         identifier: "ii"
         component: IllogicalImpulseFamily {}
     }
+
+    // ponytail: the Wayland lock must survive reloads before asynchronous Config.ready.
+    SessionLock.Lock {}
 
     component PanelFamilyLoader: LazyLoader {
         required property string identifier

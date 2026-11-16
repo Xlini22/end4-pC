@@ -1,0 +1,171 @@
+--- a/crates/owly-awdl/src/node.rs
++++ b/crates/owly-awdl/src/node.rs
+@@ -107,6 +107,8 @@
+     /// AX201) holds up every frame behind it. Lost, it costs a TCP
+     /// retransmission instead.
+     pub no_ack: bool,
++    /// Local pacing experiment; zero preserves the original scheduler.
++    pub unicast_gap_us: u64,
+     /// Accept a peer's Block Ack session (AWDL-15).
+     pub accept_addba: bool,
+     /// Send unicast packets to one peer as A-MSDUs, up to the peer's limit.
+@@ -132,6 +134,7 @@
+             radio,
+             rate: TxRate::BASIC,
+             no_ack,
++            unicast_gap_us: 0,
+             accept_addba: false,
+             amsdu: false,
+             max_frame: 2304,
+@@ -229,6 +232,9 @@
+     next_echo: Time,
+     /// Set when a burst was cut short.
+     resume: Option<Time>,
++    // ponytail: one global unicast limit for this single-phone experiment.
++    // For concurrent peers, move the deadline into each peer.
++    next_unicast: Time,
+     /// The sync master and its channel, while its sequence has no slot on
+     /// ours (a shared radio).
+     no_overlap: Option<(MacAddr, u8)>,
+@@ -255,6 +261,7 @@
+             awdl_seq: 0,
+             echo_seq: 0,
+             resume: None,
++            next_unicast: now,
+             no_overlap: None,
+             stats: Stats::default(),
+         }
+@@ -798,7 +805,8 @@
+         let mut blocked: Vec<MacAddr> = Vec::new();
+         while let Some(q) = items.pop_front() {
+             let dst = q.packet.dst;
+-            let open = *sent < BURST
++            let open = now >= self.next_unicast
++                && *sent < BURST
+                 && !blocked.contains(&dst)
+                 && self
+                     .peers
+@@ -842,6 +850,7 @@
+                 self.stats.tx_amsdu += 1;
+                 frame::amsdu_frame(self.cfg.addr, dst, seq, awdl_seq, &packets)
+             };
++            self.next_unicast = now.plus(self.cfg.unicast_gap_us);
+             self.stats.tx_unicast += batch.len() as u64;
+             *sent += 1;
+             out.push(Action::Transmit {
+@@ -876,7 +885,8 @@
+             }
+             seen.push(q.packet.dst);
+             if let Some(p) = self.peers.get(&q.packet.dst) {
+-                t = t.min(now.plus(self.unicast_wait(p, now).max(1)));
++                let ready = now.max(self.next_unicast);
++                t = t.min(ready.plus(self.unicast_wait(p, ready)).max(now.plus(1)));
+             }
+         }
+         t.max(now)
+--- a/crates/owly-awdl/tests/node.rs
++++ b/crates/owly-awdl/tests/node.rs
+@@ -545,3 +545,93 @@
+         assert_eq!(answered, accept);
+     }
+ }
++
++#[test]
++fn local_pacing_survives_new_inputs_and_respects_channel_windows() {
++    let mut cfg = Config::new(
++        US,
++        "paced",
++        RadioConstraints {
++            channel: Channel(6),
++            presence: Presence::Fixed,
++        },
++    );
++    cfg.unicast_gap_us = 2_000;
++    let mut n = Node::new(cfg, START);
++    let mut channels = [6; SLOTS];
++    channels[3] = 44;
++    let met = meet(&mut n, &seq(channels));
++    feed(
++        &mut n,
++        met,
++        &phone_frame(subtype::PSF, &seq(channels), 456, 64),
++    );
++    let t = met.plus(10_000);
++    let packet = |id| Ipv6Packet::echo_request(US, PHONE, 1, id, b"paced-payload");
++    let count = |a: &[Action]| {
++        transmits(a)
++            .iter()
++            .filter(|f| f.bytes.ends_with(b"paced-payload"))
++            .count()
++    };
++    assert_eq!(
++        count(
++            &n.handle(Input::Outbound {
++                now: t,
++                packet: packet(1)
++            })
++            .collect::<Vec<_>>()
++        ),
++        1
++    );
++    let queued = n
++        .handle(Input::Outbound {
++            now: t,
++            packet: packet(2),
++        })
++        .collect::<Vec<_>>();
++    assert_eq!(count(&queued), 0);
++    assert!(queued.contains(&Action::ArmTimer(t.plus(2_000))));
++    assert_eq!(
++        count(
++            &n.handle(Input::Outbound {
++                now: t.plus(500),
++                packet: packet(3)
++            })
++            .collect::<Vec<_>>()
++        ),
++        0
++    );
++    assert_eq!(count(&tick(&mut n, t.plus(1_999))), 0);
++    assert_eq!(count(&tick(&mut n, t.plus(2_000))), 1);
++    assert_eq!(count(&tick(&mut n, t.plus(3_999))), 0);
++    assert_eq!(count(&tick(&mut n, t.plus(4_000))), 1);
++    // Send just before the guard; the next paced packet must wait through ch44.
++    let edge = t.plus(n.clock().next_slot_us(t) - UNICAST_GUARD_US - 1);
++    assert_eq!(n.clock().slot(edge), 2);
++    assert_eq!(
++        count(
++            &n.handle(Input::Outbound {
++                now: edge,
++                packet: packet(4)
++            })
++            .collect::<Vec<_>>()
++        ),
++        1
++    );
++    assert_eq!(
++        count(
++            &n.handle(Input::Outbound {
++                now: edge,
++                packet: packet(5)
++            })
++            .collect::<Vec<_>>()
++        ),
++        0
++    );
++    assert_eq!(count(&tick(&mut n, edge.plus(2_000))), 0);
++    assert_eq!(count(&tick(&mut n, edge.plus(UNICAST_GUARD_US + 1))), 0);
++    let shared_again = edge.plus(UNICAST_GUARD_US + 1 + SLOT_US + UNICAST_GUARD_US);
++    assert_eq!(n.clock().slot(shared_again), 4);
++    assert_eq!(count(&tick(&mut n, shared_again)), 1);
++}
+--- a/crates/owly-radio/src/injection/setup.rs
++++ b/crates/owly-radio/src/injection/setup.rs
+@@ -223,6 +223,7 @@
+             awdl.no_ack = no_ack;
+         }
+         awdl.amsdu = self.settings.tx_amsdu;
++        awdl.unicast_gap_us = 2_000; // Local experiment only.
+         Prepared {
+             mode,
+             awdl,

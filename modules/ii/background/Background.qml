@@ -17,6 +17,8 @@ import Quickshell.Hyprland
 Variants {
     id: root
     model: Quickshell.screens
+    Component.onCompleted: Wallpapers.automaticConsumers++
+    Component.onDestruction: Wallpapers.automaticConsumers--
 
     PanelWindow {
         id: bgRoot
@@ -226,17 +228,6 @@ Variants {
             }
         }
 
-        Timer {
-            id: wallpaperChangeTimer
-            interval: Config.options.wallpaperSelector.changeInterval
-            running: Config.options.wallpaperSelector.changeInterval > 0
-            repeat: true
-            onTriggered: {
-                if (Wallpapers.folderModel.count > 0) {
-                    Wallpapers.randomFromCurrentFolder()
-                }
-            }
-        }
 
         Connections {
             target: Config
@@ -507,6 +498,8 @@ Variants {
 
                 WidgetsLoader {
                     screen: bgRoot.screen
+                    presented: !bgRoot.hiddenForFullscreen && !GlobalStates.startupLockPending
+                        && !bgRoot.desktopDimmed && !Collage.enabled
                     wallpaperItem: Collage.enabled && collageLoader.item ? collageLoader.item : wallpaper
                     wallpaperSafetyTriggered: bgRoot.wallpaperSafetyTriggered
                 }

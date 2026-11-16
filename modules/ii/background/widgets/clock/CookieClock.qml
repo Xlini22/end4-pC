@@ -7,6 +7,7 @@ import qs.modules.common.functions
 import QtQuick
 import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
+import Quickshell
 import Quickshell.Io
 
 import qs.modules.ii.background.widgets.clock.dateIndicator
@@ -23,6 +24,7 @@ Item {
     property real originX: 0
     property real originY: 0
     property bool blurWidgets: Config.options.background.widgets.blurWidgets
+    property bool rotationPaused: false
 
     property color colShadow: Appearance.colors.colShadow
     property color colBackground: Appearance.colors.colPrimaryContainer
@@ -89,6 +91,7 @@ Item {
 
         RotationAnimation on rotation {
             running: Config.options.background.widgets.clock.cookie.constantlyRotate
+            paused: root.rotationPaused && Config.options.background.widgets.clock.cookie.constantlyRotate
             duration: 30000
             easing.type: Easing.Linear
             loops: Animation.Infinite
@@ -135,7 +138,7 @@ Item {
         FastBlurred {
             id: cookieBlur
             anchors.fill: parent
-            blurSource: root.wallpaperItem
+            blurSource: root.blurWidgets && root.QsWindow.window === root.wallpaperItem?.QsWindow.window ? root.wallpaperItem : null
             cardRadius: 0
             tint: Appearance.colors.colLayer1
             tintOpacity: 0.55

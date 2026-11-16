@@ -221,7 +221,9 @@ Item {
         width: root.sessionWidth
     })
 
-    readonly property bool hasActiveActivity: root.isRecording || root.hasActiveTimer || root.latestNotification != null || root.batteryAlertActive || GlobalStates.osdVolumeOpen
+    readonly property bool showOsd: GlobalStates.osdVolumeOpen
+        && (GlobalStates.osdIndicatorType !== "volume" || GlobalStates.osdVolumePillScreen === "")
+    readonly property bool hasActiveActivity: root.isRecording || root.hasActiveTimer || root.latestNotification != null || root.batteryAlertActive || root.showOsd
 
     readonly property var activeProvider:
         root.sessionExclusive ? root.sessionProvider : null
@@ -407,7 +409,7 @@ Item {
                     contentComponent: batteryComponent
                 }
                 ActivitySlot {
-                    shown: GlobalStates.osdVolumeOpen
+                    shown: root.showOsd
                     targetWidth: root.osdWidth
                     contentComponent: osdComponent
                 }

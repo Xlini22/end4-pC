@@ -18,11 +18,12 @@ Scope {
             id: window
             title: "illogical-impulse Settings"
             surfaceFormat.opaque: false // Glassy can become available after the window is created.
-            color: GlassCompositor.active && GlassCompositor.windowFrostedAvailable ? "transparent" : Appearance.colors.colUiBackground
+            color: dashboardGlass.nativeGlass ? "transparent" : Appearance.colors.colUiBackground
 
             WindowGlass {
+                id: dashboardGlass
                 anchors.fill: parent
-                glassEnabled: GlassCompositor.windowFrostedAvailable
+                glassEnabled: GlassCompositor.windowFrostedAvailable && Config.options.background.widgets.glass.elements.settings.enable
                 tint: Appearance.colors.colUiBackground
             }
 

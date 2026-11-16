@@ -349,6 +349,8 @@ Singleton {
                                 property real refraction: 200
                                 property real blur: 1
                                 property real reflections: 50
+                                property real darkening: 0
+                                property bool automaticDarkening: false
                             }
                             property JsonObject dock: JsonObject {
                                 property bool enable: true
@@ -356,6 +358,8 @@ Singleton {
                                 property real refraction: 135
                                 property real blur: Math.max(8, root.options.background.widgets.glass.haze)
                                 property real reflections: 50
+                                property real darkening: 0
+                                property bool automaticDarkening: false
                             }
                             property JsonObject sidebar: JsonObject {
                                 property bool enable: true
@@ -363,6 +367,8 @@ Singleton {
                                 property real refraction: 135
                                 property real blur: Math.max(8, root.options.background.widgets.glass.haze)
                                 property real reflections: 50
+                                property real darkening: 0
+                                property bool automaticDarkening: false
                             }
                             property JsonObject settings: JsonObject {
                                 property bool enable: true
@@ -370,6 +376,8 @@ Singleton {
                                 property real refraction: 135
                                 property real blur: Math.max(8, root.options.background.widgets.glass.haze)
                                 property real reflections: 50
+                                property real darkening: 0
+                                property bool automaticDarkening: false
                             }
                             property JsonObject lockscreen: JsonObject {
                                 property bool enable: true
@@ -377,6 +385,8 @@ Singleton {
                                 property real refraction: 135
                                 property real blur: root.options.background.widgets.glass.haze
                                 property real reflections: 50
+                                property real darkening: 0
+                                property bool automaticDarkening: false
                             }
                             property JsonObject terminal: JsonObject {
                                 property bool enable: false
@@ -384,6 +394,8 @@ Singleton {
                                 property real refraction: 135
                                 property real blur: 3
                                 property real reflections: 50
+                                property real darkening: 0
+                                property bool automaticDarkening: false
                             }
                         }
                     }
@@ -911,7 +923,7 @@ Singleton {
             }
 
             property JsonObject osd: JsonObject {
-                property int timeout: 1000
+                property int timeout: 2500
             }
 
             property JsonObject osk: JsonObject {

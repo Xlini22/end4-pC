@@ -9,6 +9,7 @@ RippleButton {
     property real outerInset: 0
     property real magnifyBaseline: height
     property bool magnifiable: false
+    readonly property bool launching: (root.contentItem?.item ?? root.contentItem)?.launching ?? false
     property int magnifyId: -1
     readonly property var magnifyValue: root.magnifyId >= 0 ? (DockMagnify.values[root.magnifyId] ?? null) : null
     readonly property bool magnifyActive: DockStyle.magnifying && root.magnifiable
@@ -42,4 +43,11 @@ RippleButton {
 
     background.implicitHeight: DockStyle.buttonBase
     background.implicitWidth: DockStyle.buttonBase
+
+    function launchApp(entry) {
+        if (!entry) return
+        entry.execute()
+        const icon = root.contentItem?.item ?? root.contentItem
+        icon?.playLaunchAnimation?.()
+    }
 }

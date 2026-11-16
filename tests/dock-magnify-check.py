@@ -18,7 +18,17 @@ import qs.modules.ii.dock as Dock
 ShellRoot {
     id: root
     property bool passed: false
+    property int launches: 0
+    property int activations: 0
+    property real launchBaseline: 0
+    property real dotBaseline: 0
+    property var launchEntry: ({execute: () => { root.launches++ }})
     function check(value, message) { if (!value) throw new Error(message) }
+    function visualBottom(button) {
+        const icon = button.contentItem.item ?? button.contentItem
+        const visual = icon.children[0]
+        return visual.mapToItem(null, visual.width / 2, visual.height).y
+    }
     PanelWindow {
         id: window
         visible: false
@@ -29,7 +39,7 @@ ShellRoot {
             id: app; x: 70; y: 15; width: 50; height: 50; magnifiable: true
             innerInset: DockStyle.iconInset; outerInset: DockStyle.iconInset
             magnifyBaseline: contentItem.y + contentItem.iconBottom
-            contentItem: DockAppIcon { iconSource: Qt.resolvedUrl("assets/icons/github-symbolic.svg"); anchors.centerIn: parent }
+            contentItem: DockAppIcon { iconSource: Qt.resolvedUrl("assets/icons/github-symbolic.svg"); anchors.centerIn: parent; launchScale: app.scale }
         }
         DockAppButton {
             id: inlineSeparator
@@ -43,6 +53,7 @@ ShellRoot {
             iconSize: 29
             appToplevel: ({appId: "image-missing", toplevels: []})
         }
+        DockContextMenu { id: launchMenu }
         Item {
             id: dockRoot
             width: 260; height: 80
@@ -90,7 +101,7 @@ ShellRoot {
                 root.check(pinSymbol.renderType === Text.QtRendering && apps.contentItem.renderType === Text.QtRendering,
                     "Pin and launcher glyphs must use scalable text rendering")
                 const icons = [app.contentItem, running.contentItem.item]
-                const images = icons.map(icon => icon.children[0].item.backer)
+                const images = icons.map(icon => icon.children[0].children[0].item.backer)
                 const symbolBottom = symbol => symbol.mapToItem(null, symbol.width / 2, (symbol.height + symbol.iconSize) / 2).y
                 const baselines = [app, running].map(iconBottom)
                 const symbolBaselines = [pinSymbol, apps.contentItem].map(symbolBottom)
@@ -201,10 +212,69 @@ ShellRoot {
                         && dockVisualBackground.anchors.rightMargin === -DockMagnify.rightExtra,
                         "Dock background must follow its expansion directly, without spring motion")
                 }
-                console.log("DOCK MAGNIFICATION PASSED")
-                root.passed = true
+                running.appToplevel = ({appId:"image-missing", toplevels:[{activated:false, activate:()=>{root.activations++}}]})
+                running.clicked()
+                root.check(root.activations === 1 && !running.launching, "Activating an existing window must not bounce or relaunch")
+                running.appToplevel = ({appId:"image-missing", toplevels:[]})
+                running.desktopEntry = root.launchEntry
+                app.launchApp(null)
+                root.check(!app.launching && root.launches === 0, "A missing desktop entry must not start an animation")
+                const zoom = {}
+                for (const item of controls) zoom[item.magnifyId] = {scale:2,shift:0}
+                DockMagnify.values = zoom
+                root.launchBaseline = root.visualBottom(app)
+                root.dotBaseline = app.contentItem.children[1].mapToItem(null,0,0).y
+                app.launchApp(root.launchEntry)
+                running.clicked()
+                root.check(root.launches === 2 && app.launching && running.launching, "Launching apps must start the icon bounce")
+                root.check(DockStyle.headroom >= DockStyle.magnifyHeadroom + 40, "The dock surface must reserve space for zoom and a full launch jump")
+                launchCheck.start()
+                return
             } catch (error) { console.error(error.message) }
             Qt.quit()
+        }
+    }
+    Timer {
+        id: launchCheck
+        property int stage: 0
+        interval: 120
+        onTriggered: {
+            try {
+                if (stage === 0) {
+                    root.check(app.contentItem.launchOffset < -1 && app.contentItem.launchOffset >= -40,
+                        "The launched icon must rise by at most 40px")
+                    root.check(Math.abs(root.visualBottom(app) - root.launchBaseline - app.contentItem.launchOffset) < .01,
+                        "Zoom must not multiply the jump height")
+                    root.check(Math.abs(app.contentItem.children[1].mapToItem(null,0,0).y - root.dotBaseline) < .01,
+                        "Only the icon may jump; running indicators must stay at the baseline")
+                    launchMenu.launchButton = app
+                    launchMenu.launch(root.launchEntry)
+                    running.middleClickAction()
+                    root.check(root.launches === 4 && !launchMenu.launchButton && app.launching && running.launching,
+                        "Context-menu and middle-click launches must restart the same bounce")
+                    interval = 1550
+                } else if (stage === 1) {
+                    root.check(app.launching && running.launching, "The reference launch animation must repeat all three jumps")
+                    interval = 750
+                } else if (stage === 2) {
+                    root.check(!app.launching && !running.launching && app.contentItem.launchOffset === 0
+                        && running.contentItem.item.launchOffset === 0, "All three jumps must end at the original baseline")
+                    root.check(Math.abs(root.visualBottom(app) - root.launchBaseline) < .01, "Finishing the launch must restore the same lower edge")
+                    Config.options.dock.magnify = false
+                    DockMagnify.recompute()
+                    app.launchApp(root.launchEntry)
+                    root.check(app.launching && DockStyle.headroom === 40, "Launch animation must also work without magnification")
+                    interval = 120
+                } else {
+                    root.check(app.contentItem.launchOffset < -1 && app.scale === 1, "A non-magnifying dock must still animate only the launched icon")
+                    console.log("DOCK MAGNIFICATION PASSED")
+                    root.passed = true
+                    Qt.quit()
+                    return
+                }
+                stage++
+                restart()
+            } catch (error) { console.error(error.message); Qt.quit() }
         }
     }
 }
@@ -232,4 +302,4 @@ with tempfile.TemporaryDirectory(prefix='dock-check-', dir='/tmp') as directory:
                             capture_output=True, timeout=20)
     output = result.stdout + result.stderr
     assert result.returncode == 0 and 'DOCK MAGNIFICATION PASSED' in output, output
-    print('Dock: reference spacing/boundaries, direct tracking without spring motion, high-resolution icons without hover reloads, fixed baselines, hidden/vertical/off controls and frosted background states passed.')
+    print('Dock: fixed baselines, expanded hover, three launch jumps, zoom-independent jump height, stationary indicators, launch/focus/menu/middle-click behavior, cached icons and Glassy background checks passed.')

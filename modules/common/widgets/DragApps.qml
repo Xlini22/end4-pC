@@ -176,7 +176,7 @@ Item {
                 onClicked: {
                     const entry = slotItem.appEntry
                     if (!entry || entry.toplevels.length === 0) {
-                        slotItem.deskEntry?.execute()
+                        dockBtn.launchApp(slotItem.deskEntry)
                         return
                     }
                     const next = (slotItem._lastFocused + 1) % entry.toplevels.length
@@ -184,7 +184,7 @@ Item {
                     entry.toplevels[next].activate()
                 }
 
-                middleClickAction: () => { slotItem.deskEntry?.execute() }
+                middleClickAction: () => { dockBtn.launchApp(slotItem.deskEntry) }
                 altAction:         () => { root.contextMenu?.open(dockBtn, slotItem.appId) }
 
                 contentItem: DockAppIcon {
@@ -192,6 +192,7 @@ Item {
                     iconSource: SystemAppearance.iconPath(AppSearch.guessIcon(slotItem.appId), "image-missing")
                     windowCount: slotItem.appEntry?.toplevels?.length ?? 0
                     active: slotItem.appActive
+                    launchScale: dockBtn.scale
                 }
             }
 

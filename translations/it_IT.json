@@ -1,4 +1,8 @@
 {
+  "Automatic darkening": "Oscuramento automatico",
+  "Darkening": "Oscuramento",
+  "Bright areas of the glass background are darkened automatically. Your manual value is preserved.": "Le zone chiare dello sfondo del vetro vengono scurite automaticamente. Il valore manuale viene conservato.",
+  "Darkening is saved. Log out and back in after updating the Glassy engine to apply it to windows underneath.": "L’oscuramento è salvato. Dopo l’aggiornamento del motore Glassy, esci dalla sessione e rientra per applicarlo alle finestre sottostanti.",
   "Launch": "Avvia",
   "Columns": "Colonne",
   "Save": "Salva",

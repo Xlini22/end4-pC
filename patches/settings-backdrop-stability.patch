@@ -1,0 +1,31 @@
+--- a/modules/common/widgets/WindowGlass.qml
++++ b/modules/common/widgets/WindowGlass.qml
+@@ -17,6 +17,7 @@
+     property real bottomLeftRadius: cardRadius
+     property color tint: "transparent"
+     property bool glassEnabled: true
++    property bool stableBackdropCapture: false
+     property bool trackGeometry: true
+     property Item nativeClip: null
+     property bool fullscreenSurface: false
+@@ -334,7 +335,9 @@
+                         readonly property var client: HyprlandData.clientForToplevel(modelData)
+                         readonly property bool included: root.windowVisible(client, root.backdropMonitor?.activeWorkspace?.id, root.specialWorkspace, Quickshell.processId)
+                             && root.windowIntersects(client, root.backdropMonitor?.x ?? 0, root.backdropMonitor?.y ?? 0,
+-                                Qt.rect(root.winX + root.sceneRect.x, root.winY + root.sceneRect.y, root.sceneRect.width, root.sceneRect.height))
++                                // ponytail: moving settings keep monitor captures warm; sharing streams across materials needs a capture pool.
++                                root.stableBackdropCapture ? Qt.rect(0, 0, root.scr.width, root.scr.height)
++                                    : Qt.rect(root.winX + root.sceneRect.x, root.winY + root.sceneRect.y, root.sceneRect.width, root.sceneRect.height))
+                         x: (client?.at?.[0] ?? 0) - (root.backdropMonitor?.x ?? 0)
+                         y: (client?.at?.[1] ?? 0) - (root.backdropMonitor?.y ?? 0)
+                         width: client?.size?.[0] ?? 0
+--- a/modules/ii/settings/Settings.qml
++++ b/modules/ii/settings/Settings.qml
+@@ -83,6 +83,7 @@
+             id: settingsWindow
+             WindowGlass {
+                 id: settingsGlass
++                stableBackdropCapture: true
+                 anchors.fill: parent
+                 glassEnabled: Appearance.colors.colUiBackground.a > 0
+                 cardRadius: parent?.radius ?? 0

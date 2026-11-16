@@ -30,6 +30,7 @@ Item {
     property real maxVisualizerValue: 1000
     property int visualizerSmoothing: 2
     property real radius
+    property real glassFrost: 0
     property bool allowLyrics: true
     property bool animateResize: false
     property string growFrom: "top"
@@ -164,6 +165,7 @@ Item {
             anchors.fill: parent
             cardRadius: background.radius
             tint: root.blendedColors.colLayer0
+            frost: root.glassFrost
         }
 
         layer.enabled: true

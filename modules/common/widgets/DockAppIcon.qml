@@ -13,39 +13,70 @@ Item {
     property bool active: false
     property real iconSize: DockStyle.iconSize
     readonly property int rasterSize: Math.ceil(root.iconSize * (DockStyle.magnifying ? DockStyle.magnification : 1))
-    readonly property real iconBottom: iconImageLoader.y + iconImageLoader.height
+    readonly property real iconBottom: iconVisual.y + iconVisual.height
+    property real launchScale: 1
+    property real launchOffset: 0
+    readonly property bool launching: launchBounce.running
     property bool monochrome: Config.options.dock.monochromeIcons
 
-    Loader {
-        id: iconImageLoader
+    function playLaunchAnimation() {
+        if (DockStyle.launchHeight > 0) launchBounce.restart()
+    }
+
+    SequentialAnimation {
+        id: launchBounce
+        loops: 3
+        NumberAnimation {
+            target: root; property: "launchOffset"
+            from: 0; to: -DockStyle.launchHeight; duration: 350
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: [0, 0, 0.2, 1, 1, 1]
+        }
+        NumberAnimation {
+            target: root; property: "launchOffset"
+            from: -DockStyle.launchHeight; to: 0; duration: 350
+            easing.type: Easing.BezierSpline
+            easing.bezierCurve: [0.8, 0, 1, 1, 1, 1]
+        }
+    }
+
+    Item {
+        id: iconVisual
+        implicitHeight: iconImageLoader.implicitHeight
         anchors {
             left: parent.left
             right: parent.right
             verticalCenter: parent.verticalCenter
         }
-        sourceComponent: IconImage {
-            source: root.iconSource
-            implicitSize: root.iconSize
-            // Rasterize once for the largest zoom; hovering only transforms the cached image.
-            backer.sourceSize: Qt.size(root.rasterSize, root.rasterSize)
-        }
-    }
+        transform: Translate { y: root.launchOffset / Math.max(1, root.launchScale) }
 
-    Loader {
-        active: root.monochrome
-        anchors.fill: iconImageLoader
-        sourceComponent: Item {
-            Desaturate {
-                id: desaturatedIcon
-                visible: false
-                anchors.fill: parent
-                source: iconImageLoader
-                desaturation: 0.8
+        Loader {
+            id: iconImageLoader
+            anchors.fill: parent
+            sourceComponent: IconImage {
+                source: root.iconSource
+                implicitSize: root.iconSize
+                // Rasterize once for the largest zoom; hovering only transforms the cached image.
+                backer.sourceSize: Qt.size(root.rasterSize, root.rasterSize)
             }
-            ColorOverlay {
-                anchors.fill: desaturatedIcon
-                source: desaturatedIcon
-                color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.9)
+        }
+
+        Loader {
+            active: root.monochrome
+            anchors.fill: iconImageLoader
+            sourceComponent: Item {
+                Desaturate {
+                    id: desaturatedIcon
+                    visible: false
+                    anchors.fill: parent
+                    source: iconImageLoader
+                    desaturation: 0.8
+                }
+                ColorOverlay {
+                    anchors.fill: desaturatedIcon
+                    source: desaturatedIcon
+                    color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.9)
+                }
             }
         }
     }
@@ -55,7 +86,7 @@ Item {
         rowSpacing: DockStyle.dotSpacing
         columnSpacing: DockStyle.dotSpacing
         anchors {
-            top: DockStyle.vertical ? undefined : iconImageLoader.bottom
+            top: DockStyle.vertical ? undefined : iconVisual.bottom
             topMargin: DockStyle.vertical ? 0 : DockStyle.dotsGap
             horizontalCenter: parent.horizontalCenter
             horizontalCenterOffset: !DockStyle.vertical ? 0

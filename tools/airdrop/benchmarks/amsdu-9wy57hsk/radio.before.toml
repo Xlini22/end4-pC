@@ -1,0 +1,5 @@
+# QCA9377: trasferimenti iPhone <-> PC collaudati sul canale 6.
+station = "wlp2s0"
+allow_untested = true
+country = "IT"
+channels = [6]

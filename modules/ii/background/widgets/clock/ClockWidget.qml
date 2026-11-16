@@ -12,6 +12,7 @@ AbstractBackgroundWidget {
     id: root
 
     configEntryName: "clock"
+    property bool rotationPaused: false
 
     implicitHeight: contentColumn.implicitHeight
     implicitWidth: contentColumn.implicitWidth
@@ -59,6 +60,7 @@ AbstractBackgroundWidget {
             sourceComponent: CookieClock {
                 anchors.horizontalCenter: parent.horizontalCenter
                 wallpaperItem: root.wallpaperItem
+                rotationPaused: root.rotationPaused
                 originX: root.x
                 originY: root.y
             }

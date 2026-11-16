@@ -74,6 +74,12 @@ Scope {
                 property var thisMonitorData: HyprlandData.monitors.find(m => m.name === barRoot.screen?.name)
                 property bool monitorHasFullscreen: HyprlandData.workspaceById[thisMonitorData?.activeWorkspace?.id]?.hasfullscreen ?? false
                 property bool monitorHasSpecialOpen: (thisMonitorData?.specialWorkspace?.name ?? "") !== ""
+                readonly property var compositorBarVisible: GlassCompositor.barVisibility[barRoot.screen?.name ?? ""]
+                readonly property bool fullscreenCoversBar: typeof compositorBarVisible === "boolean"
+                    ? !compositorBarVisible : WM.fullscreenOnMonitor(barRoot.screen?.name) && !monitorHasSpecialOpen
+                readonly property real visibleTopHeight: Config.options.bar.bottom || fullscreenCoversBar
+                    || barContent.y + barContent.height <= 0.5 ? 0
+                    : barRoot.margins.top + hoverRegion.y + barContent.y + barContent.height
                 exclusionMode: ExclusionMode.Ignore
                 property int normalExclusiveZone: (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows))
                     ? 0

@@ -6,6 +6,8 @@ import sys
 import tempfile
 
 source = Path(sys.argv[1]) / 'src'
+notch = Path(__file__).resolve().parents[1] / 'modules/ii/onScreenDisplay/FullscreenVolume.qml'
+notch_namespace = re.search(r'WlrLayershell.namespace: "([^"]+)"', notch.read_text())[1]
 lookup = re.search(r'inline const SGlassOptics\* glassOptics\([\s\S]*?\n\}', (source / 'Globals.hpp').read_text())[0]
 terminal = re.search(r'static const SGlassOptics\* terminalOptics\([\s\S]*?\n\}', (source / 'GlassDecoration.cpp').read_text())[0]
 harness = r'''
@@ -38,8 +40,27 @@ int main() {
         assert(!parseGlassProfiles(bad,p));
         assert(p.pid==valid.pid && p.values.size()==6 && p.values.at("bar").rim==.24f);
     }
+    auto extended = std::string("end4profiles 123 1 2 bar 1 .24 2 1 .5 dock 1 .07 1.35 8 .5 darkening 1 bar .4 1 dock 1 0");
+    SGlassProfiles dim;
+    assert(parseGlassProfiles(extended,dim) && dim.darkeningActive);
+    assert(dim.values.at("bar").darkening==.4f && dim.values.at("bar").automaticDarkening==1);
+    assert(dim.values.at("dock").darkening==1 && dim.values.at("dock").automaticDarkening==0);
+    assert(dim.values.at("bar").darkeningValue()[0]==.4f);
+    for (const auto* tail : {"darkening 2 bar .4 1 dock 1 0", "darkening 1 bar -.1 1 dock 1 0",
+        "darkening 1 bar 1.01 1 dock 1 0", "darkening 1 bar nan 1 dock 1 0", "darkening 1 bar .4 2 dock 1 0",
+        "darkening 1 bar .4 1 bar .5 0", "darkening 1 bar .4 1 unknown .5 0", "darkening 1 bar .4 1", "darkening 1 bar .4 1 dock 1 0 extra"}) {
+        assert(!parseGlassProfiles(extended.substr(0,extended.find("darkening"))+tail,dim));
+        assert(dim.values.at("bar").darkening==.4f && dim.values.at("dock").darkening==1);
+    }
+    auto& optical = dim.values.at("bar");
+    optical.darkeningChanged = std::chrono::steady_clock::now();
+    assert(optical.darkeningTransition() && optical.darkeningValue()[0]<.001f);
+    optical.darkeningChanged -= std::chrono::seconds(1);
+    assert(!optical.darkeningTransition() && optical.darkeningValue()[0]==.4f);
     state.glassProfiles.emplace(123,p);
     assert(glassOptics(123,"bar")->refraction==2);
+    assert(glassProfileKey("NOTCH_NAMESPACE")=="bar");
+    assert(glassOptics(123,glassProfileKey("NOTCH_NAMESPACE"))==glassOptics(123,"bar"));
     assert(glassOptics(123,"dock")->refraction==1.35f);
     assert(!glassOptics(124,"bar") && !glassOptics(123,"unknown") && !glassOptics(123,"terminal"));
     state.glassProfiles.at(123).active=false;assert(!glassOptics(123,"bar"));
@@ -57,7 +78,7 @@ int main() {
     assert(glassProfileKey("quickshell:settings")=="settings");
     assert(glassProfileKey("quickshell:popup").empty());
 }
-'''.replace('LOOKUP', lookup).replace('TERMINAL', terminal)
+'''.replace('LOOKUP', lookup).replace('TERMINAL', terminal).replace('NOTCH_NAMESPACE', notch_namespace)
 with tempfile.TemporaryDirectory(prefix='glass-profiles-check-') as directory:
     cpp = Path(directory) / 'check.cpp'
     exe = Path(directory) / 'check'
@@ -68,3 +89,12 @@ main = (source / 'main.cpp').read_text()
 assert 'profiles.pid != g_pHyprCtl->m_currentRequestParams.pid' in main
 assert 'clients.size() >= 16' in main
 print('Glass profiles: bounded atomic parsing, owner isolation, independent targets and opt-in terminal passed.')
+
+# Keep both renderers on the same material curve; native foreground composition remains outside darkenGlass.
+repo = Path(__file__).resolve().parents[1]
+native_shader = (source / 'Shaders.hpp').read_text()
+qt_shader = (repo / 'modules/common/widgets/shaders/liquidLens.frag').read_text()
+curve = "max(0.0, 1.0 - 0.38 / max(backdropLuma, 0.38))"
+assert curve in native_shader and curve in qt_shader
+assert '(surface || terminal || dimming) ? &material' in (source / 'GlassDecoration.cpp').read_text()
+assert 'glassDarkeningOptics(layerSurface->getPID(), glassProfileKey(layerSurface->m_namespace))' in (source / 'GlassLayerSurface.cpp').read_text()

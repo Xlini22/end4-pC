@@ -7,7 +7,6 @@ import qs.modules.ii.background
 import qs.modules.ii.bar
 import qs.modules.ii.dock
 import qs.modules.ii.equalizer
-import qs.modules.ii.lock
 import qs.modules.ii.mediaControls
 import qs.modules.ii.notificationPopup
 import qs.modules.ii.onScreenDisplay
@@ -33,7 +32,6 @@ Scope {
     PanelLoader { component: Background {} }
     PanelLoader { extraCondition: Config.options.dock.enable; component: Dock {} }
     PanelLoader { component: EqualizerPopup {} }
-    PanelLoader { component: Lock {} }
     PanelLoader { component: MediaControls {} }
     PanelLoader { component: NotificationPopup {} }
     PanelLoader { component: OnScreenDisplay {} }

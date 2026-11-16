@@ -1,0 +1,6 @@
+/.test-tmp/
+/pkg/
+/src/
+/target/
+/*.pkg.tar.zst
+/*.tar.gz

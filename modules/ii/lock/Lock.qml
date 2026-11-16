@@ -12,8 +12,6 @@ import Quickshell.Hyprland
 LockScreen {
     id: root
 
-    property var savedWorkspaces: ({})
-    property var pushedTargets: ({})
     property string lastProcessedLockWall: ""
     property bool lastProcessedDarkmode: Appearance.m3colors.darkmode
 

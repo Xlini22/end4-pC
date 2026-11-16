@@ -1,0 +1,34 @@
+# Local workaround verified on QCA9377 168c:0042, exclusive channel 6.
+pkgname=owly-qca9377-fix
+pkgver=0.4.1
+pkgrel=1
+pkgdesc='Owly management-frame receive workaround for QCA9377'
+arch=('x86_64')
+url='https://github.com/t4t5/owly'
+license=('MIT')
+depends=('omdrop-owl-bin=0.4.1')
+makedepends=('rust')
+options=('!debug' '!strip')
+source=("owly-$pkgver.tar.gz::https://codeload.github.com/t4t5/owly/tar.gz/refs/tags/v$pkgver"
+        'owly-qca9377-management.patch' '50-qca9377.conf')
+sha256sums=('7b2127bc1556c6947e5b2c6bac820a62c36c46092f936abdf60f013b9179318c'
+            'b437ceb40b28147ef688871c4868ef755244d0ef8e7ca0c922a58901b9381d78'
+            '1174acd6286d1853c838d4d2b83bdf97afd9f98cfc779dc628b0e4223cf00428')
+prepare() {
+    cd "owly-$pkgver"
+    patch -p1 < "$srcdir/owly-qca9377-management.patch"
+}
+build() {
+    cd "owly-$pkgver"
+    cargo build --locked --release -p owlyd -j 2
+}
+check() {
+    cd "owly-$pkgver"
+    cargo test --locked --release -p owly-radio --lib management_tests
+}
+package() {
+    cd "owly-$pkgver"
+    install -Dm755 "${CARGO_TARGET_DIR:-target}/release/owlyd" "$pkgdir/usr/lib/owly-qca9377/owlyd"
+    install -Dm644 "$srcdir/50-qca9377.conf" "$pkgdir/usr/lib/systemd/system/owlyd.service.d/50-qca9377.conf"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

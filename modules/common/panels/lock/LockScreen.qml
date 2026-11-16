@@ -14,6 +14,24 @@ Scope {
 
     required property Component lockSurface
     property alias context: lockContext
+    property var savedWorkspaces: ({})
+    property var pushedTargets: ({})
+    onSavedWorkspacesChanged: if (lockState) lockState.workspacesJson = JSON.stringify(root.savedWorkspaces)
+    onPushedTargetsChanged: if (lockState) lockState.targetsJson = JSON.stringify(root.pushedTargets)
+
+    PersistentProperties {
+        id: lockState
+        property bool locked: false
+        // JS objects belong to one QML engine; persist their JSON across reloads.
+        property string workspacesJson: "{}"
+        property string targetsJson: "{}"
+        onLoaded: {
+            root.savedWorkspaces = JSON.parse(lockState.workspacesJson);
+            root.pushedTargets = JSON.parse(lockState.targetsJson);
+            GlobalStates.screenLocked = lockState.locked;
+        }
+    }
+
     property Component sessionLockSurface: WlSessionLockSurface {
         id: sessionLockSurface
         color: "transparent"
@@ -51,6 +69,7 @@ Scope {
         Connections {
             target: GlobalStates
             function onScreenLockedChanged() {
+                lockState.locked = GlobalStates.screenLocked;
                 if (GlobalStates.screenLocked) {
                     lockContext.reset();
                     lockContext.tryFingerUnlock();
@@ -88,7 +107,7 @@ Scope {
 
     WlSessionLock {
         id: lock
-        locked: GlobalStates.screenLocked
+        locked: lockState.locked
         surface: root.sessionLockSurface
         onSecureChanged: {
             if (lock.secure) GlobalStates.startupLockPending = false;

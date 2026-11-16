@@ -1,0 +1,6 @@
+target
+artifacts
+coverage
+# Inputs stay local: the marketplace security scan cannot process them.
+corpus
+artifacts-keep

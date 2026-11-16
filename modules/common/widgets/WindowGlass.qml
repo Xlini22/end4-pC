@@ -17,11 +17,13 @@ Item {
     property real bottomLeftRadius: cardRadius
     property color tint: "transparent"
     property bool glassEnabled: true
+    property bool stableBackdropCapture: false
     property bool trackGeometry: true
     property Item nativeClip: null
     property bool fullscreenSurface: false
     property real tintStrength: 0
     property real frost: 0
+    property int nativePriority: 0
     property real flareLeft: 0
     property real flareRight: 0
     property real hangLeft: 0
@@ -65,8 +67,19 @@ Item {
     readonly property bool wantsFloatTracking: live && floating && !!win?.visible && !nativeGlass
     property bool claimed: false
     property bool backdropClaimed: false
+    property bool nativeClaimed: false
+
+    function darkeningStatus() {
+        return fallbackGlass.item?.glassMaterial?.darkeningStatus() ?? null
+    }
 
     function syncClaim() {
+        const wantsNative = root.enhancedNative && root.tracking
+        if (wantsNative !== root.nativeClaimed) {
+            root.nativeClaimed = wantsNative
+            if (wantsNative) GlassCompositor.registerGlass(root)
+            else GlassCompositor.unregisterGlass(root)
+        }
         if (root.wantsBackdropTracking !== root.backdropClaimed) {
             GlassLayers.backdropConsumers += root.wantsBackdropTracking ? 1 : -1
             root.backdropClaimed = root.wantsBackdropTracking
@@ -83,7 +96,7 @@ Item {
     onWantsFloatTrackingChanged: syncClaim()
     onWantsBackdropTrackingChanged: syncClaim()
     Component.onDestruction: {
-        GlassCompositor.unregisterGlass(root)
+        if (root.nativeClaimed) GlassCompositor.unregisterGlass(root)
         if (root.claimed) GlassFloating.release()
         if (root.backdropClaimed) GlassLayers.backdropConsumers--
     }
@@ -118,13 +131,13 @@ Item {
         // Rounded radii must still fit a thin visible slice during scrolling.
         const maxRadius = Math.floor(Math.min(rounded[2], rounded[3]) * 500) / 1000
         for (let i = 4; i < 8; i++) rounded[i] = Math.min(rounded[i], maxRadius)
-        return { win, name: floating ? "quickshell:dashboard" : win.WlrLayershell.namespace, monitor: win.screen.name,
+        return { win, priority: nativePriority, name: floating ? "quickshell:dashboard" : win.WlrLayershell.namespace, monitor: win.screen.name,
             values: rounded }
     }
     readonly property string nativeShape: JSON.stringify([topLeftRadius, topRightRadius, bottomRightRadius,
-        bottomLeftRadius, flareLeft, flareRight, hangLeft, hangRight, edge, root.opacity, materialFrost])
+        bottomLeftRadius, flareLeft, flareRight, hangLeft, hangRight, edge, root.opacity, materialFrost, nativePriority])
     onNativeShapeChanged: GlassCompositor.queueRegions()
-    onEnhancedNativeChanged: GlassCompositor.queueRegions()
+    onEnhancedNativeChanged: { syncClaim(); GlassCompositor.queueRegions() }
     onNativeClipChanged: GlassCompositor.queueRegions()
 
     function windowVisible(client, workspace, special, processId) {
@@ -255,7 +268,7 @@ Item {
     }
 
     onAncestorGeometryChanged: { Qt.callLater(root.syncAncestorTransforms); kick(); if (trackGeometry) Qt.callLater(root.refresh) }
-    onTrackingChanged: kick()
+    onTrackingChanged: { syncClaim(); kick() }
     onParentChanged: kick()
     onXChanged: kick()
     onYChanged: kick()
@@ -263,7 +276,6 @@ Item {
     onHeightChanged: kick()
     onVisibleChanged: kick()
     Component.onCompleted: {
-        GlassCompositor.registerGlass(root)
         syncAncestorTransforms()
         syncClaim()
         kick()
@@ -301,10 +313,12 @@ Item {
     }
 
     Loader {
+        id: fallbackGlass
         anchors.fill: parent
         active: root.tracking && !root.nativeGlass && !!root.scr && (root.wallpaper !== "" || root.windowBackdrop)
 
         sourceComponent: Item {
+            property alias glassMaterial: opticalGlass
             Item {
                 id: backdrop
                 width: root.scr.width
@@ -327,7 +341,9 @@ Item {
                         readonly property var client: HyprlandData.clientForToplevel(modelData)
                         readonly property bool included: root.windowVisible(client, root.backdropMonitor?.activeWorkspace?.id, root.specialWorkspace, Quickshell.processId)
                             && root.windowIntersects(client, root.backdropMonitor?.x ?? 0, root.backdropMonitor?.y ?? 0,
-                                Qt.rect(root.winX + root.sceneRect.x, root.winY + root.sceneRect.y, root.sceneRect.width, root.sceneRect.height))
+                                // ponytail: moving settings keep monitor captures warm; sharing streams across materials needs a capture pool.
+                                root.stableBackdropCapture ? Qt.rect(0, 0, root.scr.width, root.scr.height)
+                                    : Qt.rect(root.winX + root.sceneRect.x, root.winY + root.sceneRect.y, root.sceneRect.width, root.sceneRect.height))
                         x: (client?.at?.[0] ?? 0) - (root.backdropMonitor?.x ?? 0)
                         y: (client?.at?.[1] ?? 0) - (root.backdropMonitor?.y ?? 0)
                         width: client?.size?.[0] ?? 0
@@ -341,8 +357,10 @@ Item {
             }
 
             FrostedGlass {
+                id: opticalGlass
                 anchors.fill: parent
                 blurSource: backdrop
+                debounceDarkening: root.profileKey === "settings"
                 clearMaterial: root.clearMaterial
                 opticalProfile: root.opticalProfile
                 topBarOptics: root.clearMaterial && root.win?.WlrLayershell.namespace === "quickshell:bar" && !Config.options.bar.bottom

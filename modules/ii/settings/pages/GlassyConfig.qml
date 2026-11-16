@@ -126,6 +126,56 @@ ContentPage {
             wrapMode: Text.WordWrap
             color: Appearance.colors.colSubtext
         }
+        GroupedList {
+            ConfigSwitch {
+                objectName: "glass-automatic-darkening"
+                buttonIcon: "brightness_auto"
+                text: Translation.tr("Automatic darkening")
+                checked: root.profile.automaticDarkening
+                enabled: Config.options.background.widgets.glass.enable && root.profile.enable
+                onCheckedChanged: if (checked !== root.profile.automaticDarkening) root.profile.automaticDarkening = checked
+            }
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            enabled: Config.options.background.widgets.glass.enable && root.profile.enable && !root.profile.automaticDarkening
+            spacing: 8
+            RowLayout {
+                Layout.fillWidth: true
+                StyledText { Layout.fillWidth: true; text: Translation.tr("Darkening"); adaptiveGlass: true }
+                StyledText { text: Math.round(darkeningControl.value) + "%"; color: Appearance.colors.colPrimary }
+            }
+            StyledSlider {
+                id: darkeningControl
+                animateValue: false
+                objectName: "glass-darkening"
+                Layout.fillWidth: true
+                from: 0
+                to: 100
+                stepSize: 1
+                stopIndicatorValues: []
+                value: root.profile.darkening
+                tooltipContent: Math.round(value) + "%"
+                Accessible.name: Translation.tr("Darkening")
+                onPressedChanged: if (!pressed && enabled) root.profile.darkening = value
+                onMoved: if (!pressed && enabled) root.profile.darkening = value
+            }
+        }
+        StyledText {
+            Layout.fillWidth: true
+            visible: root.profile.automaticDarkening
+            text: Translation.tr("Bright areas of the glass background are darkened automatically. Your manual value is preserved.")
+            wrapMode: Text.WordWrap
+            color: Appearance.colors.colSubtext
+        }
+        StyledText {
+            Layout.fillWidth: true
+            visible: Config.options.background.widgets.glass.source === "windows"
+                && (!GlassCompositor.darkeningAvailable || (root.profile.automaticDarkening && !GlassCompositor.uniformDarkeningAvailable)) && root.target !== "lockscreen"
+            text: Translation.tr("Darkening is saved. Log out and back in after updating the Glassy engine to apply it to windows underneath.")
+            wrapMode: Text.WordWrap
+            color: Appearance.colors.colSubtext
+        }
         Repeater {
             model: [
                 { key: "rim", title: Translation.tr("Deformed edge"), max: 40, step: 1, unit: "%" },

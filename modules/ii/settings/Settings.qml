@@ -83,6 +83,7 @@ Scope {
             id: settingsWindow
             WindowGlass {
                 id: settingsGlass
+                stableBackdropCapture: true
                 anchors.fill: parent
                 glassEnabled: Appearance.colors.colUiBackground.a > 0
                 cardRadius: parent?.radius ?? 0
@@ -193,7 +194,8 @@ Scope {
         function glassStatus(): string {
             return JSON.stringify({ native: settingsGlass.nativeGlass, live: settingsGlass.live,
                 windows: settingsGlass.windowBackdrop, color: String(settingsWindow.color), namespace: panelWindow.WlrLayershell.namespace,
-                contentReady: settingsContent.status === Loader.Ready })
+                contentReady: settingsContent.status === Loader.Ready, profile: settingsGlass.profileKey,
+                darker: settingsGlass.darkeningStatus() })
         }
     }
 

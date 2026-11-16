@@ -13,7 +13,15 @@ import Quickshell.Hyprland
 Scope {
     id: root
     property string protectionMessage: ""
-    property var focusedScreen: Quickshell.screens.find(s => s.name === Hyprland.focusedMonitor?.name)
+    property var focusedScreen: Quickshell.screens.find(s => s.name === WM.focusedMonitor?.name) ?? Quickshell.screens[0] ?? null
+    readonly property bool fullscreenVolume: root.currentIndicator === "volume" && root.focusedScreen !== null
+        && WM.fullscreenOnMonitor(root.focusedScreen.name)
+    readonly property var volumePillScreen: Quickshell.screens.find(s => s.name === GlobalStates.osdVolumePillScreen) ?? null
+    readonly property bool detachedVolume: root.currentIndicator === "volume" && root.volumePillScreen !== null
+    onFullscreenVolumeChanged: {
+        if (fullscreenVolume && GlobalStates.osdVolumeOpen)
+            GlobalStates.osdVolumePillScreen = root.focusedScreen.name
+    }
 
     property string currentIndicator: "volume"
     onCurrentIndicatorChanged: GlobalStates.osdIndicatorType = currentIndicator
@@ -33,6 +41,10 @@ Scope {
     ]
 
     function triggerOsd() {
+        // Keep a fullscreen burst in its pill when the workspace changes before its timeout.
+        const keepPill = GlobalStates.osdVolumeOpen && GlobalStates.osdVolumePillScreen === root.focusedScreen?.name
+        GlobalStates.osdVolumePillScreen = root.currentIndicator === "volume" && (root.fullscreenVolume || keepPill)
+            ? root.focusedScreen.name : ""
         GlobalStates.osdVolumeOpen = true;
         osdTimeout.restart();
     }
@@ -94,19 +106,21 @@ Scope {
     }
 
     Loader {
+        id: fullscreenVolumeLoader
+        active: GlobalStates.osdVolumeOpen && root.detachedVolume
+            && !GlobalStates.screenLocked && !GlobalStates.startupLockPending
+        sourceComponent: FullscreenVolume { screen: root.volumePillScreen }
+    }
+
+    Loader {
         id: osdLoader
-        active: GlobalStates.osdVolumeOpen
+        active: GlobalStates.osdVolumeOpen && !GlobalStates.dynamicIslandEnabled && !root.detachedVolume
 
         sourceComponent: PanelWindow {
             id: osdRoot
             color: "transparent"
 
-            Connections {
-                target: root
-                function onFocusedScreenChanged() {
-                    osdRoot.screen = root.focusedScreen;
-                }
-            }
+            screen: root.focusedScreen
 
             WlrLayershell.namespace: "quickshell:onScreenDisplay"
             WlrLayershell.layer: WlrLayer.Overlay

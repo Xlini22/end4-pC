@@ -27,6 +27,7 @@ Item {
     required property var screen
     required property var wallpaperItem
     required property bool wallpaperSafetyTriggered
+    property bool presented: true
 
     readonly property bool onThisScreen: Config.options.background.screenList.length === 0
         || Config.options.background.screenList.includes(root.screen.name)
@@ -171,7 +172,9 @@ Item {
     }
     Component {
         id: clockComp
-        ClockWidget {
+        WindowedClock {
+            canvas: root.parent
+            surfaceEnabled: root.presented
             screenWidth: root.screen.width
             screenHeight: root.screen.height
             scaledScreenWidth: root.screen.width

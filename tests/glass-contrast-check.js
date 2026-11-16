@@ -8,7 +8,8 @@ const rgba = (r, g, b, a = 1) => ({r, g, b, a});
 const sample = {name: 'quickshell:settings', monitor: 'test', width: 800, height: 600,
     rect: [0, 0, 800, 600], columns: 32, rows: 24, luma: Array(768).fill(0)};
 const context = vm.createContext({Qt: {rgba, rect: (x, y, width, height) => ({x, y, width, height})},
-    contrastActive: true, contrastTick: 1, contrastSamples: [sample]});
+    Config: {options: {background: {widgets: {glass: {elements: {settings: {darkening: 0, automaticDarkening: false}}}}}}},
+    contrastMaterialSnapshot: {regions:[]}, uniformDarkeningAvailable: true, darkeningAvailable: true, contrastActive: true, contrastTick: 1, contrastSamples: [sample]});
 for (const name of ['foreground', 'localLuminance', 'validContrast']) {
     const fn = source.match(new RegExp('    function ' + name + '\\([^]*?\\n    \\}'));
     assert.ok(fn, name);
@@ -26,6 +27,16 @@ for (const bad of [{...sample, luma: [0]}, {...sample, luma: Array(768).fill(256
 assert.deepEqual(ink(), rgba(231 / 255, 237 / 255, 242 / 255), 'Black backdrop requires softened light ink');
 sample.luma.fill(255);
 assert.deepEqual(ink(), rgba(27 / 255, 34 / 255, 41 / 255), 'White backdrop requires softened dark ink');
+const dimming = context.Config.options.background.widgets.glass.elements.settings;
+dimming.darkening = 100;
+assert.ok(ink().r > .9, 'Black manual wash requires light ink even over a white source');
+dimming.darkening = 0;
+dimming.automaticDarkening = true;
+assert.ok(ink().r > .9, 'Automatic wash must not leave dark ink on the darkened background');
+context.darkeningAvailable = false;
+assert.ok(ink().r < .2, 'Old engine must not adjust ink for an unavailable background wash');
+context.darkeningAvailable = true;
+dimming.automaticDarkening = false;
 base.a = .7;
 assert.equal(ink().a, base.a, 'Preserve requested text opacity');
 base.a = 1;
@@ -34,6 +45,17 @@ for (let y = 0; y < 24; ++y) for (let x = 0; x < 32; ++x) sample.luma[y * 32 + x
 assert.ok(ink().r > .9);
 label.mapToItem = () => ({x: 640, y: 40, width: 100, height: 20});
 assert.ok(ink().r < .2);
+// A bright stripe between the global probes still needs dark ink; selecting its own card changes the wash.
+for (let y=0; y<24; ++y) for (let x=0; x<32; ++x) sample.luma[y*32+x] = x >= 25 && x <= 30 ? 255 : 0;
+dimming.automaticDarkening = true;
+assert.ok(ink().r < .2, 'Mixed box must retain dark ink over the still-bright side');
+context.uniformDarkeningAvailable = false;
+assert.ok(ink().r > .9, 'Old per-pixel engine retains its original ink calculation');
+context.uniformDarkeningAvailable = true;
+context.contrastMaterialSnapshot = {regions:[{win, priority:0, values:[600,0,200,600]}]};
+assert.ok(ink().r > .9, 'Foreground must use the selected card reference, not the entire window');
+context.contrastMaterialSnapshot = {regions:[]};
+dimming.automaticDarkening = false;
 // Prefer AA when available; softened inks cannot cover every mid-grey at 4.5:1.
 const linear = v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
 const luma = c => .2126 * linear(c.r) + .7152 * linear(c.g) + .0722 * linear(c.b);

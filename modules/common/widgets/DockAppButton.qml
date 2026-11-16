@@ -64,7 +64,7 @@ DockButton {
 
     onClicked: {
         if (appToplevel.toplevels.length === 0) {
-            root.desktopEntry?.execute();
+            root.launchApp(root.desktopEntry);
             return;
         }
         lastFocused = (lastFocused + 1) % appToplevel.toplevels.length
@@ -72,7 +72,7 @@ DockButton {
     }
 
     middleClickAction: () => {
-        root.desktopEntry?.execute();
+        root.launchApp(root.desktopEntry);
     }
 
     altAction: () => {
@@ -85,6 +85,7 @@ DockButton {
             anchors.centerIn: parent
             iconSource: SystemAppearance.iconPath(AppSearch.guessIcon(appToplevel.appId), "image-missing")
             iconSize: root.iconSize
+            launchScale: root.scale
             windowCount: appToplevel.toplevels.length
             active: root.appIsActive
         }

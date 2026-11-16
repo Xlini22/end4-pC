@@ -1,0 +1,72 @@
+--- a/modules/common/widgets/FrostedGlass.qml
++++ b/modules/common/widgets/FrostedGlass.qml
+@@ -47,6 +47,12 @@
+         return root.mapToItem(root.blurSource, Qt.rect(0, 0, root.width, root.height))
+     }
+ 
++    function darkeningStatus() {
++        return { enabled: root.debounceDarkening, automatic: root.automaticDarkening,
++            rect: [root.sourceRect.x, root.sourceRect.y, root.sourceRect.width, root.sourceRect.height],
++            detail: lumaState.item?.status() ?? null }
++    }
++
+     ShaderEffectSource {
+         id: capture
+         sourceItem: root.blurSource
+@@ -69,6 +75,10 @@
+             property int sampleSerial: -1
+             property bool busy: false
+ 
++            function status() {
++                return { motionSerial, sampleSerial, busy, waiting: settled.running,
++                    fading: fade.running, blend, targetLive: target.live, previousLive: previous.live }
++            }
+             function moved() {
+                 motionSerial++
+                 fade.stop()
+--- a/modules/common/widgets/WindowGlass.qml
++++ b/modules/common/widgets/WindowGlass.qml
+@@ -69,6 +69,10 @@
+     property bool backdropClaimed: false
+     property bool nativeClaimed: false
+ 
++    function darkeningStatus() {
++        return fallbackGlass.item?.glassMaterial?.darkeningStatus() ?? null
++    }
++
+     function syncClaim() {
+         const wantsNative = root.enhancedNative && root.tracking
+         if (wantsNative !== root.nativeClaimed) {
+@@ -309,10 +313,12 @@
+     }
+ 
+     Loader {
++        id: fallbackGlass
+         anchors.fill: parent
+         active: root.tracking && !root.nativeGlass && !!root.scr && (root.wallpaper !== "" || root.windowBackdrop)
+ 
+         sourceComponent: Item {
++            property alias glassMaterial: opticalGlass
+             Item {
+                 id: backdrop
+                 width: root.scr.width
+@@ -351,6 +357,7 @@
+             }
+ 
+             FrostedGlass {
++                id: opticalGlass
+                 anchors.fill: parent
+                 blurSource: backdrop
+                 debounceDarkening: root.profileKey === "settings"
+--- a/modules/ii/settings/Settings.qml
++++ b/modules/ii/settings/Settings.qml
+@@ -194,7 +194,8 @@
+         function glassStatus(): string {
+             return JSON.stringify({ native: settingsGlass.nativeGlass, live: settingsGlass.live,
+                 windows: settingsGlass.windowBackdrop, color: String(settingsWindow.color), namespace: panelWindow.WlrLayershell.namespace,
+-                contentReady: settingsContent.status === Loader.Ready })
++                contentReady: settingsContent.status === Loader.Ready, profile: settingsGlass.profileKey,
++                darker: settingsGlass.darkeningStatus() })
+         }
+     }
+ 

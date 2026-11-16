@@ -1,5 +1,6 @@
 """Check real partial redraws without screenshots forcing a full repaint.
 Run: python3 tests/native-glass-damage-check.py --plugin /path/to/hyprglass.so
+Add --settings to exercise partitioned settings materials.
 Reads two pixels directly after native composition in an isolated compositor.
 """
 import json
@@ -33,8 +34,11 @@ qml=qml.replace('    IpcHandler {', '''
         function patch(value: bool): void { root.patchRed=value }
         function outside(): void { root.patchOutside=true }
         function marker(value: bool): void { root.markerRed=value }
-        function frost(value: real): void { root.frostStrength=value }
+        function frost(value: real): void { root.frostStrength=value; Config.options.background.widgets.glass.elements.sidebar.blur=value }
 ''')
+if '--settings' in sys.argv:
+    qml = qml.replace('quickshell:sidebarLeft', 'quickshell:settings')
+    qml = qml.replace('            Rectangle { x:200;', '            Item { x:300; y:50; width:80; height:100; WindowGlass { anchors.fill:parent; cardRadius:16; frost:8 } }\n            Rectangle { x:200;')
 tracer={}
 exec((repo/'tests/native-glass-performance.py').read_text().split('repo = Path(__file__)',1)[0],tracer)
 trace=tracer['TRACE'].replace('static GLuint blur, glass;', 'static GLuint blur, glass;\nstatic int currentRegions;')
@@ -42,13 +46,13 @@ trace=trace.replace('ORIGINAL(glUniform1i); real(location,value);','ORIGINAL(glU
 needle='    if (!blur || (program != blur && program != glass)) return;'
 assert trace.count(needle)==1
 trace=trace.replace(needle, r'''
-    if (program==glass && currentRegions>=2) {
+    if (program==glass && currentRegions>=1) {
         unsigned char center[4]={0}, marker[4]={0};
         int centerHit=!clipped || (scissor[0]<=160 && scissor[1]<=260 && scissor[0]+scissor[2]>160 && scissor[1]+scissor[3]>260);
         int markerHit=!clipped || (scissor[0]<=256 && scissor[1]<=276 && scissor[0]+scissor[2]>256 && scissor[1]+scissor[3]>276);
         if(centerHit) glReadPixels(160,260,1,1,GL_RGBA,GL_UNSIGNED_BYTE,center);
         if(markerHit) glReadPixels(256,276,1,1,GL_RGBA,GL_UNSIGNED_BYTE,marker);
-        FILE *pixels=fopen(getenv("END4_GL_PIXEL_LOG"),"a");
+        FILE *pixels=(centerHit || markerHit) ? fopen(getenv("END4_GL_PIXEL_LOG"),"a") : NULL;
         if(pixels) {
             fprintf(pixels,"%d %d %d %d %d %d %d %d\n",center[0],center[1],center[2],marker[0],marker[1],marker[2],centerHit,markerHit);
             fclose(pixels);
@@ -107,7 +111,7 @@ with tempfile.TemporaryDirectory(prefix='glass-damage-',dir='/tmp') as temporary
         for red in (True,False,True):
             ipc('patch',str(red).lower());time.sleep(.3)
         assert len(rows())==count,('Updates outside the glass still recompose it',rows()[count:])
-        for strength in ('32','8'):
+        for strength in ('16','8'):
             count=len(rows());ipc('frost',strength);time.sleep(.3)
             assert any(row[6] for row in rows()[count:]), 'Material-only update did not invalidate the native glass'
         flag.unlink()
