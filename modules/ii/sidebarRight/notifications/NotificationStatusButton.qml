@@ -9,6 +9,7 @@ GroupButton {
     property string buttonText: ""
 
     glass: true
+    glassFrost: Math.max(8, Config.options.background.widgets.glass.haze)
 
     baseHeight: 36
     baseWidth: content.implicitWidth + 46

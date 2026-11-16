@@ -507,6 +507,8 @@ Variants {
 
                 WidgetsLoader {
                     screen: bgRoot.screen
+                    presented: !bgRoot.hiddenForFullscreen && !GlobalStates.startupLockPending
+                        && !bgRoot.desktopDimmed && !Collage.enabled
                     wallpaperItem: Collage.enabled && collageLoader.item ? collageLoader.item : wallpaper
                     wallpaperSafetyTriggered: bgRoot.wallpaperSafetyTriggered
                 }

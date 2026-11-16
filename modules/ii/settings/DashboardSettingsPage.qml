@@ -549,6 +549,7 @@ Item {
         Flickable {
             id: flick
             readonly property bool dashboardSettingsViewport: true
+            readonly property real preloadY: Math.floor(contentY / root.rowHeight) * root.rowHeight
             readonly property var glassGeometry: [x, y, width, height]
             onGlassGeometryChanged: if (GlassCompositor.enhancedActive) glassFrame.running = true
             onContentYChanged: if (GlassCompositor.enhancedActive) glassFrame.running = true
@@ -604,8 +605,8 @@ Item {
                         readonly property var shown: place ?? lastPlace
                         readonly property real colW: (canvas.width - root.gap * 3) / 4
                         readonly property bool inView: place !== null
-                            && place.y + place.height > flick.contentY - 240
-                            && place.y < flick.contentY + flick.height + 240
+                            && place.y + place.height > flick.preloadY - 240
+                            && place.y < flick.preloadY + root.rowHeight + flick.height + 240
 
                         onPlaceChanged: {
                             if (place) lastPlace = place;
@@ -628,6 +629,7 @@ Item {
                         Behavior on scale { enabled: slot.ready; SpringAnimation { spring: 3.2; damping: 0.3 } }
 
                         active: place !== null && (modelData.kind === "header" || inView)
+                        asynchronous: modelData.kind !== "header"
                         sourceComponent: modelData.kind === "header" ? headerComponent
                             : modelData.type === "style" ? styleComponent
                             : modelData.type === "schemes" ? schemesComponent

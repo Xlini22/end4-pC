@@ -11,13 +11,14 @@ import QtQuick.Layouts
 Rectangle {
     id: root
     WindowGlass {
+        id: bottomGlass
         anchors.fill: parent
-        glassEnabled: (parent?.color.a ?? 0) > 0
-        cardRadius: parent?.radius ?? 0
-        tint: parent?.color ?? 'transparent'
+        cardRadius: root.radius
+        tint: Appearance.colors.colLayer1
+        frost: Math.max(8, Config.options.background.widgets.glass.haze)
     }
     radius: Appearance.rounding.normal
-    color: Appearance.colors.colLayer1
+    color: bottomGlass.live ? "transparent" : Appearance.colors.colLayer1
     clip: true
     implicitHeight: collapsed ? collapsedBottomWidgetGroupRow.implicitHeight : 350
     property int selectedTab: Persistent.states.sidebar.bottomGroup.tab

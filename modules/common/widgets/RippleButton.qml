@@ -161,6 +161,9 @@ Button {
         border.width: root.border ? root.borderWidth : 0
         border.color: root.colBorder
         Behavior on color {
+            id: backgroundColorBehavior
+            // Invisible RGB changes need no frames; retain visible colour and alpha transitions.
+            enabled: (backgroundColorBehavior.targetValue?.a ?? 0) > 0 || buttonBackground.color.a > 0
             animation: Appearance?.animation.elementMoveFast.colorAnimation.createObject(this)
         }
 

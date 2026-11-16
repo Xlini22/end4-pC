@@ -1,8 +1,11 @@
 """Compare native glass builds in isolated nested compositors.
 Run: python3 tests/native-glass-performance.py OLD.so NEW.so
-Add --sidebar to measure the real sidebar home; --partial/--outside limit background motion.
+Add --settings-interface to measure the real Interface page; --sidebar measures sidebar home; --partial/--outside limit background motion.
 END4_GL_BENCH_WIDE=1 restores its old unused surface width for baseline measurements.
 Reports actual blur fragment coverage and GPU time per rendered frame; does not reconfigure the desktop plugin.
+Nested compositors still share the desktop GPU and driver. A black-screen
+freeze requiring forced shutdown occurred during this fixture on 14 November
+2026; see docs/native-glass.md before resuming hardware experiments.
 """
 import json
 import os
@@ -22,12 +25,13 @@ TRACE = r'''
 #include <string.h>
 #include <unistd.h>
 static GLuint blur, glass;
+static int pending_frame;
 static GLint regionCountLocation=-1;
 static __thread GLuint program;
 static __thread GLint viewport[4], scissor[4];
 static __thread int clipped;
 // ponytail: one compositor render thread; multiple GL render threads need per-thread aggregation.
-static unsigned long long draws, frames, full_pixels, pixels, glass_pixels, allocations;
+static unsigned long long all_draws, all_pixels, draws, frames, full_pixels, pixels, glass_pixels, allocations;
 #define ORIGINAL(name) static __typeof__(&name) real; if (!real) real = dlsym(RTLD_NEXT, #name)
 GLint glGetUniformLocation(GLuint p, const GLchar *name) {
     ORIGINAL(glGetUniformLocation);
@@ -41,8 +45,10 @@ void glUseProgram(GLuint p) { ORIGINAL(glUseProgram); program = p; real(p); }
 void glUniform1i(GLint location, GLint value) {
     ORIGINAL(glUniform1i); real(location,value);
     const char *flag=getenv("END4_GL_BENCH_ACTIVE");
-    if(program==glass && location==regionCountLocation && value>1 && flag && !access(flag,F_OK)) frames++;
+    if(program==glass && location==regionCountLocation && value>1 && pending_frame && flag && !access(flag,F_OK)) { frames++; pending_frame=0; }
 }
+// One mask clear starts a composition, even when it draws several spatial bands.
+void glClear(GLbitfield mask) { ORIGINAL(glClear); real(mask); if(mask & GL_COLOR_BUFFER_BIT) pending_frame=1; }
 void glViewport(GLint x, GLint y, GLsizei w, GLsizei h) {
     ORIGINAL(glViewport); viewport[0]=x; viewport[1]=y; viewport[2]=w; viewport[3]=h; real(x,y,w,h);
 }
@@ -59,6 +65,10 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count) {
     ORIGINAL(glDrawArrays); real(mode,first,count);
     const char *flag = getenv("END4_GL_BENCH_ACTIVE");
     if (!flag || access(flag,F_OK)) return;
+    all_draws++;
+    int ax=viewport[0], ay=viewport[1], ar=ax+viewport[2], ab=ay+viewport[3];
+    if(clipped) { if(scissor[0]>ax) ax=scissor[0]; if(scissor[1]>ay) ay=scissor[1]; if(scissor[0]+scissor[2]<ar) ar=scissor[0]+scissor[2]; if(scissor[1]+scissor[3]<ab) ab=scissor[1]+scissor[3]; }
+    if(ar>ax && ab>ay) all_pixels+=(unsigned long long)(ar-ax)*(ab-ay);
     if (!blur || (program != blur && program != glass)) return;
     int x=viewport[0], y=viewport[1], right=x+viewport[2], bottom=y+viewport[3];
     if (program == blur) full_pixels += (unsigned long long)viewport[2]*viewport[3];
@@ -76,7 +86,7 @@ void glDrawArrays(GLenum mode, GLint first, GLsizei count) {
 __attribute__((destructor)) static void report(void) {
     const char *path=getenv("END4_GL_WORK_LOG"); if (!path) return;
     FILE *out=fopen(path,"w"); if (!out) return;
-    fprintf(out,"{\"draws\":%llu,\"frames\":%llu,\"full_pixels\":%llu,\"pixels\":%llu,\"allocations\":%llu,\"glass_pixels\":%llu}\n",draws,frames,full_pixels,pixels,allocations,glass_pixels);
+    fprintf(out,"{\"scene_draws\":%llu,\"scene_pixels\":%llu,\"draws\":%llu,\"frames\":%llu,\"full_pixels\":%llu,\"pixels\":%llu,\"allocations\":%llu,\"glass_pixels\":%llu}\n",all_draws,all_pixels,draws,frames,full_pixels,pixels,allocations,glass_pixels);
     fclose(out);
 }
 '''
@@ -160,11 +170,28 @@ ShellRoot {
 
 repo = Path(__file__).resolve().parents[1]
 fixture = repo / 'tests/native-glass-motion-check.py'
-sidebar = '--sidebar' in sys.argv
+settings_page = '--settings-interface' in sys.argv
+sidebar = '--sidebar' in sys.argv or settings_page
+if settings_page:
+    SIDEBAR = SIDEBAR.replace('qs.modules.ii.sidebarLeft as Left', 'qs.modules.ii.settings as Settings').replace('Left.SidebarLeft { id: sidebar }', 'Settings.Settings {}')
+    start = SIDEBAR.index('            Config.options.background.widgets.glass.enhanced=true')
+    end = SIDEBAR.index('        function wideSurface()', start)
+    SIDEBAR = SIDEBAR[:start] + '''            Config.options.background.widgets.glass.enhanced=true
+            Config.options.settings.style="default"
+            GlobalStates.openSettingsAt("interface")
+        }
+''' + SIDEBAR[end:]
+    start = SIDEBAR.index('        function state(): string')
+    SIDEBAR = SIDEBAR[:start] + '''        function state(): string { return JSON.stringify({ready:GlassCompositor.enhancedActive && GlobalStates.settingsOpen,
+            width:GlassCompositor.glassItems.find(item=>item.nativeRegion()?.name === "quickshell:settings")?.QsWindow.window.width ?? 0,
+            cards:GlassCompositor.glassItems.filter(item=>item.nativeRegion()?.name === "quickshell:settings").length}) }
+    }
+}
+'''
 outside = '--outside' in sys.argv
 partial = '--partial' in sys.argv or outside
 assert not partial or sidebar, '--partial requires --sidebar'
-plugins = [Path(arg).resolve(strict=True) for arg in sys.argv[1:] if arg not in ('--sidebar','--partial','--outside')]
+plugins = [Path(arg).resolve(strict=True) for arg in sys.argv[1:] if arg not in ('--sidebar','--partial','--outside','--settings-interface')]
 assert plugins, __doc__
 haze = float(os.environ.get('END4_GL_BENCH_HAZE', '4'))
 assert 1 <= haze <= 16, 'Benchmark haze must be between 1 and 16'
@@ -183,8 +210,8 @@ with tempfile.TemporaryDirectory(prefix='glass-perf-', dir='/tmp') as temporary:
             ipc('benchmarkPanel')
             ipc('setBlur', str(haze))
             if partial: ipc('partialMotion', 'true' if outside else 'false')
-            if sidebar and os.environ.get('END4_GL_BENCH_WIDE') == '1': ipc('wideSurface')
-            time.sleep(1)
+            if sidebar and not settings_page and os.environ.get('END4_GL_BENCH_WIDE') == '1': ipc('wideSurface')
+            time.sleep(8)
             if sidebar: measurement['surface_width'] = json.loads(ipc('state'))['width']
             before = counters(pid)
             start = time.monotonic()
@@ -216,15 +243,15 @@ def ipc(function, *args):
 ipc('benchmarkPanel')
 for _ in range(100):
     state = json.loads(ipc('state'))
-    if state['ready'] and state['cards'] == 7: break
+    if state['ready'] and (state['cards'] > 2 if settings_page else state['cards'] == 7): break
     time.sleep(.1)
-assert state['ready'] and state['cards'] == 7, state
+assert state['ready'] and (state['cards'] > 2 if settings_page else state['cards'] == 7), state
 '''
         needle = "str(config)], env=nested_env,"
         assert source.count(needle) == 1
         source = source.replace(needle, "str(config)], env={**nested_env, **bench_env},")
         source += "\nbench_version = json.loads(control('plugin','list','-j'))[0]['version']\nmeasure(processes[0].pid,ipc)\nassert control('dispatch','exit') == 'ok'\nassert processes[0].wait(timeout=10) == 0\n"
-        scope = {'__file__': str(fixture), '__name__': '__main__', 'bench_env': bench_env, 'measure': measure, 'SIDEBAR': SIDEBAR}
+        scope = {'__file__': str(fixture), '__name__': '__main__', 'bench_env': bench_env, 'measure': measure, 'SIDEBAR': SIDEBAR, 'settings_page': settings_page}
         previous_args = sys.argv
         try:
             sys.argv = [str(fixture), '--plugin', str(plugin)] + (['--blur-rules'] if sidebar else [])
@@ -237,7 +264,9 @@ assert state['ready'] and state['cards'] == 7, state
         assert outside or work['draws'] > 20, ('No usable blur frames', work)
         frames = work['frames']
         assert outside or frames > 20, ('No panel frames', work)
-        report = {'plugin': str(plugin), 'version': scope['bench_version'], 'panel': 'sidebar' if sidebar else 'settings', 'output': [scope['width'], scope['height']], 'surface_width': measurement.get('surface_width'), 'partial': partial, 'outside': outside, 'haze': haze, 'frames': frames,
+        report = {'plugin': str(plugin), 'version': scope['bench_version'], 'panel': 'settings-interface' if settings_page else 'sidebar' if sidebar else 'settings', 'output': [scope['width'], scope['height']], 'surface_width': measurement.get('surface_width'), 'partial': partial, 'outside': outside, 'haze': haze, 'frames': frames,
+                  'scene_draws_per_frame': round(work['scene_draws']/frames, 2) if frames else 0,
+                  'scene_pixels_per_frame': round(work['scene_pixels']/frames) if frames else 0,
                   'blur_pixels_per_draw': round(work['pixels']/work['draws']) if work['draws'] else 0,
                   'blur_coverage': round(work['pixels']/work['full_pixels'], 4) if work['full_pixels'] else 0,
                   'blur_pixels_per_frame': round(work['pixels']/frames) if frames else 0,

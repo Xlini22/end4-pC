@@ -39,7 +39,7 @@ Rectangle {
         anchors.fill: parent
         // Render the glass behind the card's coloured wash, including the wallpaper fallback.
         z: -1
-        glassEnabled: !root.blurSource && GlassCompositor.windowFrostedAvailable
+        glassEnabled: !root.blurSource && GlassCompositor.windowFrostedAvailable && Config.options.background.widgets.glass.elements.settings.enable
         cardRadius: root.cardRadius
         tint: root.tint
         frost: Math.max(8, Config.options.background.widgets.glass.haze)

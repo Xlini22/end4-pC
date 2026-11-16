@@ -9,6 +9,9 @@ Rectangle {
     id: root
 
     property bool show: false
+    property bool glass: false
+    readonly property Item backgroundItem: dialogBackground
+    readonly property bool glassActive: dialogGlass.live
     default property alias data: contentColumn.data
     property real backgroundHeight: dialogBackground.implicitHeight
     property real backgroundWidth: 350
@@ -46,7 +49,17 @@ Rectangle {
         id: dialogBackground
         anchors.horizontalCenter: parent.horizontalCenter
         radius: Appearance.rounding.large
-        color: Appearance.m3colors.m3surfaceContainerHigh // Use opaque version of layer3
+        color: dialogGlass.live ? "transparent" : Appearance.m3colors.m3surfaceContainerHigh
+
+        WindowGlass {
+            id: dialogGlass
+            anchors.fill: parent
+            glassEnabled: root.glass && Config.options.background.widgets.glass.elements.sidebar.enable
+            cardRadius: dialogBackground.radius
+            tint: Appearance.m3colors.m3surfaceContainerHigh
+            frost: Math.max(8, Config.options.background.widgets.glass.haze)
+            nativePriority: 1
+        }
         
         property real targetY: root.height / 2 - root.backgroundHeight / 2
         y: root.show ? targetY : (targetY - root.backgroundAnimationMovementDistance)

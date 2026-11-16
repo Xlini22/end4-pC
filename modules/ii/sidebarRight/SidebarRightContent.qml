@@ -41,6 +41,7 @@ Item {
         ]
         : [{ id: "layout", name: Translation.tr("Layout"), icon: "dashboard_customize" }]
     property bool showIconPickerDialog: false
+    property Item activeDialog: null
 
     readonly property bool animatedEntrance: WM.compositor !== "hyprland"
     readonly property bool sidebarOpen: GlobalStates.sidebarRightOpen
@@ -128,21 +129,22 @@ Item {
 
     StyledRectangularShadow {
         target: sidebarRightBackground
+        visible: !sidebarGlass.live
     }
     Rectangle {
         id: sidebarRightBackground
         WindowGlass {
+            id: sidebarGlass
             anchors.fill: parent
-            glassEnabled: (parent?.color.a ?? 0) > 0
-            cardRadius: parent?.radius ?? 0
-            tint: parent?.color ?? 'transparent'
+            cardRadius: sidebarRightBackground.radius
+            tint: Appearance.colors.colUiBackground
         }
 
         anchors.fill: parent
         implicitHeight: parent.height - Appearance.sizes.hyprlandGapsOut * 2
         implicitWidth: sidebarWidth - Appearance.sizes.hyprlandGapsOut * 2
-        color: Appearance.colors.colUiBackground
-        border.width: 1
+        color: sidebarGlass.live ? "transparent" : Appearance.colors.colUiBackground
+        border.width: sidebarGlass.live ? 0 : 1
         border.color: ColorUtils.transparentize(Appearance.colors.colLayer0Border, 0.8) 
         radius: Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 5
 
@@ -158,6 +160,28 @@ Item {
             onReordered: newOrder => Config.options.sidebar.sectionOrder = newOrder
             componentForKey: key => root.sectionComponents[key] ?? null
             isKeyActive: key => root.sectionActive(key)
+
+            // The native glass replaces the backdrop, not Qt controls painted beneath a modal.
+            layer.enabled: root.activeDialog?.glassActive ?? false
+            layer.effect: OpacityMask {
+                invert: true
+                maskSource: Item {
+                    width: sectionColumn.width
+                    height: sectionColumn.height
+                    Rectangle {
+                        readonly property var pane: root.activeDialog?.backgroundItem ?? null
+                        readonly property rect cutout: pane
+                            ? pane.parent.mapToItem(sectionColumn, Qt.rect(pane.x, pane.y, pane.width, pane.height))
+                            : Qt.rect(0, 0, 0, 0)
+                        x: cutout.x
+                        y: cutout.y
+                        width: cutout.width
+                        height: cutout.height
+                        radius: pane?.radius ?? 0
+                        color: "white"
+                    }
+                }
+            }
         }
     }
 
@@ -207,15 +231,16 @@ Item {
                 Rectangle {
                     id: sysRect
                     WindowGlass {
+                        id: bannerGlass
                         anchors.fill: parent
-                        glassEnabled: (parent?.color.a ?? 0) > 0
-                        cardRadius: parent?.radius ?? 0
-                        tint: parent?.color ?? 'transparent'
+                        cardRadius: sysRect.radius
+                        tint: Appearance.colors.colLayer1
+                        frost: Math.max(8, Config.options.background.widgets.glass.haze)
                     }
                     readonly property real inset: 5
                     anchors.fill: parent
                     radius: Appearance.rounding.normal
-                    color: Appearance.colors.colLayer1
+                    color: bannerGlass.live ? "transparent" : Appearance.colors.colLayer1
 
                     Rectangle {
                         id: wallpaperRect
@@ -439,13 +464,14 @@ Item {
             Rectangle {
                 anchors.fill: parent
                 radius: Appearance.rounding.normal
-                color: (Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) ? Appearance.colors.colLayer1 : "transparent"
+                color: "transparent"
 
                 WindowGlass {
                     anchors.fill: parent
-                    glassEnabled: parent.color.a > 0
+                    glassEnabled: Config.options.background.widgets.glass.elements.sidebar.enable
                     cardRadius: parent.radius
-                    tint: parent.color
+                    tint: Appearance.colors.colLayer1
+                    frost: Math.max(8, Config.options.background.widgets.glass.haze)
                 }
             }
 
@@ -511,6 +537,7 @@ Item {
                     allowLyrics: false
                     visualizerPoints: GlobalStates.visualizerPoints
                     radius: Appearance.rounding.normal
+                    glassFrost: Math.max(8, Config.options.background.widgets.glass.haze)
                 }
             }
         }
@@ -624,6 +651,8 @@ Item {
         active: shown
         onActiveChanged: {
             if (active) {
+                item.glass = true;
+                root.activeDialog = item;
                 item.show = true;
                 item.forceActiveFocus();
             }
@@ -662,6 +691,14 @@ Item {
     component SystemButtonRow: Item {
         implicitHeight: Math.max(uptimeContainer.implicitHeight, systemButtonsRow.implicitHeight)
 
+        WindowGlass {
+            id: systemGlass
+            anchors.fill: parent
+            cardRadius: Appearance.rounding.normal
+            tint: Appearance.colors.colLayer1
+            frost: Math.max(8, Config.options.background.widgets.glass.haze)
+        }
+
         Rectangle {
             id: uptimeContainer
             anchors {
@@ -669,7 +706,7 @@ Item {
                 bottom: parent.bottom
                 left: parent.left
             }
-            color: Appearance.colors.colLayer1
+            color: systemGlass.live ? "transparent" : Appearance.colors.colLayer1
             radius: Appearance.rounding.normal
             implicitWidth: uptimeRow.implicitWidth + 24
             implicitHeight: uptimeRow.implicitHeight + 8
@@ -715,7 +752,7 @@ Item {
                 bottom: parent.bottom
                 right: parent.right
             }
-            color: Appearance.colors.colLayer1
+            color: systemGlass.live ? "transparent" : Appearance.colors.colLayer1
             padding: 4
 
             QuickToggleButton {

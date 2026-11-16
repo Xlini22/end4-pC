@@ -38,6 +38,7 @@ Button {
     implicitHeight: (root.down && bounce) ? clickedHeight : baseHeight
 
     property bool glass: false
+    property real glassFrost: 0
     readonly property bool glassActive: glass && !toggled && (Config.options?.background.widgets.glass.enable ?? false) && GlassProfiles.enabledForItem(root)
     property color colBackground: ColorUtils.transparentize(colBackgroundHover, 1) || "transparent"
     property color colBackgroundHover: Appearance?.colors.colLayer1Hover ?? "#E5DFED"
@@ -136,6 +137,7 @@ Button {
             anchors.fill: parent
             glassEnabled: root.glassActive
             cardRadius: Math.min(root.leftRadius, root.rightRadius)
+            frost: root.glassFrost
         }
 
         Behavior on color {

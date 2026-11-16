@@ -10,13 +10,14 @@ import QtQuick.Layouts
 Rectangle {
     id: root
     WindowGlass {
+        id: notificationGlass
         anchors.fill: parent
-        glassEnabled: (parent?.color.a ?? 0) > 0
-        cardRadius: parent?.radius ?? 0
-        tint: parent?.color ?? 'transparent'
+        cardRadius: root.radius
+        tint: Appearance.colors.colLayer1
+        frost: Math.max(8, Config.options.background.widgets.glass.haze)
     }
     radius: Appearance.rounding.normal
-    color: Appearance.colors.colLayer1
+    color: notificationGlass.live ? "transparent" : Appearance.colors.colLayer1
 
     NotificationList {
         anchors.fill: parent

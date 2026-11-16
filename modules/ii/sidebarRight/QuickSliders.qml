@@ -11,10 +11,11 @@ import Quickshell.Services.UPower
 Rectangle {
     id: root
     WindowGlass {
+        id: slidersGlass
         anchors.fill: parent
-        glassEnabled: (parent?.color.a ?? 0) > 0
-        cardRadius: parent?.radius ?? 0
-        tint: parent?.color ?? 'transparent'
+        cardRadius: root.radius
+        tint: Appearance.colors.colLayer1
+        frost: Math.max(8, Config.options.background.widgets.glass.haze)
     }
 
     property var screen: root.QsWindow.window?.screen
@@ -23,7 +24,7 @@ Rectangle {
     implicitWidth: contentItem.implicitWidth + root.horizontalPadding * 2
     implicitHeight: contentItem.implicitHeight + root.verticalPadding * 2
     radius: Appearance.rounding.normal
-    color: Appearance.colors.colLayer1
+    color: slidersGlass.live ? "transparent" : Appearance.colors.colLayer1
     property real verticalPadding: 4
     property real horizontalPadding: 12
 

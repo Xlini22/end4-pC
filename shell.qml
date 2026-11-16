@@ -3,6 +3,7 @@
 //@ pragma Env QT_QUICK_CONTROLS_STYLE=Basic
 //@ pragma Env QT_QUICK_FLICKABLE_WHEEL_DECELERATION=10000
 //@ pragma Env QT_LOGGING_RULES=qt.text.font.db.info=false
+// ponytail: keep Qt's default animation driver; simple mode repaints idle windows (QTBUG-126099).
 // Remove two slashes below and adjust the value to change the UI scale
 ////@ pragma Env QT_SCALE_FACTOR=1
 import "modules/common"

@@ -1,6 +1,7 @@
 #version 440
 
 layout(location = 0) in vec2 qt_TexCoord0;
+layout(location = 1) in float materialLuma;
 layout(location = 0) out vec4 fragColor;
 
 layout(std140, binding = 0) uniform buf {
@@ -20,6 +21,10 @@ layout(std140, binding = 0) uniform buf {
     float edge;
     float enhanced;
     float frosted;
+    float darkening;
+    float automaticDarkening;
+    float holdDarkening;
+    float darkeningBlend;
 };
 
 layout(binding = 1) uniform sampler2D backdrop;
@@ -194,6 +199,13 @@ void main() {
     }
 
     col = mix(col, wash.rgb, wash.a);
+    float darkness = darkening;
+    if (automaticDarkening > 0.0) {
+        float backdropLuma = materialLuma;
+        float adaptiveBlack = max(0.0, 1.0 - 0.38 / max(backdropLuma, 0.38));
+        darkness = mix(darkening, adaptiveBlack, automaticDarkening);
+    }
+    col *= 1.0 - darkness;
     if (frosted < 0.5) col += vec3(rimLight);
 
     fragColor = vec4(clamp(col, 0.0, 1.0) * cover, cover) * qt_Opacity;

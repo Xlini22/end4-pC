@@ -8,6 +8,8 @@ RippleButton {
     id: root
     property string buttonIcon
     property alias iconSize: iconWidget.iconSize
+    // Equal transparent colours avoid repainting the glass beneath an invisible hover.
+    colBackground: "transparent"
     colBackgroundHover: "transparent"
 
     Layout.fillWidth: true
