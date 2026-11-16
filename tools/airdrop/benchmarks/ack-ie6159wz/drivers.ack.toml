@@ -1,0 +1,7 @@
+[drivers.ath10k_pci]
+tx_noack = false
+status = "untested"
+mode = "exclusive"
+channels = [6]
+reconnect_after_monitor = true
+notes = "QCA9377 168c:0042: collaudo locale nei due versi con patch nl80211; Wi-Fi sospeso durante AirDrop."

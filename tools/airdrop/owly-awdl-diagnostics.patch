@@ -1,0 +1,160 @@
+--- a/crates/owly-awdl/src/driver.rs
++++ b/crates/owly-awdl/src/driver.rs
+@@ -36,6 +36,24 @@
+ /// How soon to try again once the radio's queue was full.
+ const RETRY_PAUSE: Duration = Duration::from_micros(500);
+ const STATS_EVERY: Duration = Duration::from_secs(10);
++
++/// Offset against the node's clock BEFORE it receives this announcement.
++fn sync_sample(node: &Node, input: &Input<'_>) -> Option<(Time, MacAddr, i64)> {
++    let Input::Frame { rx_time, bytes, .. } = input else {
++        return None;
++    };
++    let crate::frame::Received::Action { header, tlvs, .. } = crate::frame::parse(bytes).ok()?
++    else {
++        return None;
++    };
++    let sync = crate::tlv::Advert::parse(tlvs).ok()?.sync?;
++    Some((
++        *rx_time,
++        header.src,
++        node.clock()
++            .error_tu(*rx_time, sync.next_tu, sync.aw_counter),
++    ))
++}
+ 
+ /// A frame heard on the air.
+ #[derive(Debug, Clone, PartialEq, Eq)]
+@@ -143,6 +161,7 @@
+                 tx: TxStats::default(),
+                 timer: Time(1),
+                 lateness: Lateness::default(),
++                diagnostic: std::env::var("OWLY_AWDL_DIAG").as_deref() == Ok("1"),
+             }));
+             if let Err(why) = result {
+                 tracing::warn!("AWDL stopped: {why}");
+@@ -219,6 +238,8 @@
+     tx: TxStats,
+     timer: Time,
+     lateness: Lateness,
++    /// Local diagnostics only; off unless explicitly requested at daemon start.
++    diagnostic: bool,
+ }
+ 
+ impl<A: Air, N: Netif> Driver<A, N> {
+@@ -231,6 +252,17 @@
+     }
+ 
+     fn handle(&mut self, input: Input) {
++        let diagnostic = self.diagnostic.then(|| {
++            (
++                match &input {
++                    Input::Frame { rx_time, .. } => *rx_time,
++                    Input::Timer(now) | Input::Outbound { now, .. } => *now,
++                },
++                *self.node.election(),
++                self.node.stats().rx_action,
++                sync_sample(&self.node, &input),
++            )
++        });
+         let actions: Vec<Action> = self.node.handle(input).collect();
+         for a in actions {
+             match a {
+@@ -247,6 +279,43 @@
+                     self.publish_peers();
+                 }
+                 Action::Deliver(p) => self.netif.deliver(p),
++            }
++        }
++        if let Some((at, before, received, sample)) = diagnostic {
++            let after = self.node.election();
++            if (
++                before.master,
++                before.sync,
++                before.height,
++                before.master_metric,
++            ) != (after.master, after.sync, after.height, after.master_metric)
++            {
++                tracing::info!(
++                    "AWDL_DIAG_ELECTION t_us={} master={} sync={} height={} metric={} counter={}",
++                    at.0,
++                    after.master,
++                    after.sync,
++                    after.height,
++                    after.master_metric,
++                    after.master_counter
++                );
++            }
++            // The node may reject an action frame for RSSI or malformed TLVs.
++            // Only report offsets for announcements it actually accepted.
++            if self.node.stats().rx_action > received
++                && let Some((at, src, error)) = sample
++            {
++                tracing::info!(
++                    "AWDL_DIAG_SYNC t_us={} src={} master={} sync={} applied={} error_before_tu={} aw_after={} next_after_tu={}",
++                    at.0,
++                    src,
++                    before.master,
++                    before.sync,
++                    src == before.sync,
++                    error,
++                    self.node.clock().current_aw(at),
++                    self.node.clock().next_slot_tu(at)
++                );
+             }
+         }
+         self.log_overlap();
+@@ -403,6 +472,53 @@
+     }
+ }
+ 
++#[cfg(test)]
++mod diagnostic_tests {
++    use super::*;
++
++    #[test]
++    fn samples_are_pre_update_signed_offsets_without_mutating_the_node() {
++        let at = Time(10_000_000);
++        let mac = MacAddr([2, 0, 0, 0, 0, 1]);
++        let radio = crate::RadioConstraints {
++            channel: crate::Channel(6),
++            presence: crate::Presence::Fixed,
++        };
++        let node = Node::new(Config::new(mac, "diagnostic", radio), at);
++        let mut packet = crate::frame::action_frame(mac, 1, 0, 0, |out| {
++            // Sync TLV: one slot ahead (4 AW), next boundary 20 TU away.
++            let mut sync = [0u8; 31];
++            sync[1..3].copy_from_slice(&20u16.to_le_bytes());
++            sync[29..31].copy_from_slice(&4u16.to_le_bytes());
++            out.extend_from_slice(&[4, 31, 0]);
++            out.extend_from_slice(&sync);
++        });
++        let clock = *node.clock();
++        let input = Input::Frame {
++            rx_time: at,
++            rssi: Some(-30),
++            bytes: &packet,
++        };
++        assert_eq!(sync_sample(&node, &input), Some((at, mac, 108)));
++        assert_eq!(*node.clock(), clock);
++        assert!(sync_sample(&node, &Input::Timer(at)).is_none());
++        let length = packet.len();
++        packet[length - 2..].copy_from_slice(&65532u16.to_le_bytes());
++        let behind = Input::Frame {
++            rx_time: at,
++            rssi: Some(-30),
++            bytes: &packet,
++        };
++        assert_eq!(sync_sample(&node, &behind), Some((at, mac, -20)));
++        let malformed = Input::Frame {
++            rx_time: at,
++            rssi: None,
++            bytes: &packet[..packet.len() - 1],
++        };
++        assert!(sync_sample(&node, &malformed).is_none());
++    }
++}
++
+ async fn run<A: Air, N: Netif>(mut d: Driver<A, N>) -> Result<(), String> {
+     let mut stats = tokio::time::interval(STATS_EVERY);
+     let mut peers = tokio::time::interval(Duration::from_secs(1));

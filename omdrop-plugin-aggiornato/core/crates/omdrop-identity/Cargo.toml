@@ -1,0 +1,26 @@
+[package]
+name = "omdrop-identity"
+description = "Omdrop identity: the shared identity contract, keyring cache, disk and self-signed pairs, 1Password lifecycle"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zeroize.workspace = true
+rustls.workspace = true
+rustls-pki-types.workspace = true
+hex.workspace = true
+# The event stream, for safeplist's bounded parse of untrusted plists; the
+# feature name is plist's, and Cargo.lock pins the version it was built with.
+plist = { workspace = true, features = ["enable_unstable_features_that_may_break_with_minor_version_bumps"] }
+tempfile.workspace = true
+
+[dev-dependencies]
+base64.workspace = true
+sha2.workspace = true

@@ -1,0 +1,304 @@
+--- a/crates/owly-radio/src/native.rs
++++ b/crates/owly-radio/src/native.rs
+@@ -9,6 +9,7 @@
+ //! turns valid gets a permanent neighbour entry (NET-2). The monitor asks
+ //! for MTU 8192 so A-MSDUs fit.
+ 
++use std::collections::VecDeque;
+ use std::ffi::CString;
+ use std::io;
+ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+@@ -59,6 +60,13 @@
+         cfg.max_frame = monitor_mtu.saturating_sub(RADIOTAP_MAX).max(1500);
+ 
+         let air = packet_socket(monitor_index, false)?;
++        // ponytail: opt-in IBSS experiment; other modes keep their existing path.
++        let management =
++            if std::env::var_os("OWLY_RX_MGMT").as_deref() == Some(std::ffi::OsStr::new("1")) {
++                Some(Management::open(crate::injection::IBSS)?)
++            } else {
++                None
++            };
+         let tap_fd = open_tap(tap)?;
+         let index = if_index(tap)?;
+         // No address of the kernel's own beside ours.
+@@ -77,6 +85,16 @@
+                 let monitor = Monitor {
+                     fd: register(air)?,
+                     buf: vec![0; 16 * 1024],
++                    management: management
++                        .map(|(fd, index)| {
++                            Ok::<_, io::Error>(Management {
++                                fd: register(fd)?,
++                                index,
++                                buf: vec![0; 64 * 1024],
++                                pending: VecDeque::new(),
++                            })
++                        })
++                        .transpose()?,
+                 };
+                 let tap = Tap {
+                     fd: register(tap_fd)?,
+@@ -108,30 +126,18 @@
+ struct Monitor {
+     fd: AsyncFd<OwnedFd>,
+     buf: Vec<u8>,
++    management: Option<Management>,
+ }
+ 
+ impl Air for Monitor {
+     async fn recv(&mut self) -> io::Result<Received> {
+-        loop {
+-            let mut guard = self.fd.readable().await?;
+-            let read = guard.try_io(|fd| Ok(nix::unistd::read(fd.get_ref(), &mut self.buf)?));
+-            match read {
+-                Ok(Ok(n)) => {
+-                    if let Some(rx) = radiotap::parse(&self.buf[..n]) {
+-                        return Ok(Received {
+-                            bytes: rx.frame.to_vec(),
+-                            rssi: rx.rssi,
+-                        });
+-                    }
+-                }
+-                Ok(Err(e)) => {
+-                    return Err(io::Error::new(
+-                        e.kind(),
+-                        format!("the monitor interface failed: {e}"),
+-                    ));
+-                }
+-                Err(_would_block) => {}
+-            }
++        if let Some(management) = &mut self.management {
++            tokio::select! {
++                rx = management.recv() => rx,
++                rx = recv_monitor(&self.fd, &mut self.buf) => rx,
++            }
++        } else {
++            recv_monitor(&self.fd, &mut self.buf).await
+         }
+     }
+ 
+@@ -146,6 +152,209 @@
+                 Ok(())
+             }
+         }
++    }
++}
++
++async fn recv_monitor(fd: &AsyncFd<OwnedFd>, buf: &mut [u8]) -> io::Result<Received> {
++    loop {
++        let mut guard = fd.readable().await?;
++        let read = guard.try_io(|fd| Ok(nix::unistd::read(fd.get_ref(), buf)?));
++        match read {
++            Ok(Ok(n)) => {
++                if let Some(rx) = radiotap::parse(&buf[..n]) {
++                    return Ok(Received {
++                        bytes: rx.frame.to_vec(),
++                        rssi: rx.rssi,
++                    });
++                }
++            }
++            Ok(Err(e)) => {
++                return Err(io::Error::new(
++                    e.kind(),
++                    format!("the monitor interface failed: {e}"),
++                ));
++            }
++            Err(_would_block) => {}
++        }
++    }
++}
++
++/// ath10k can deliver vendor action frames to nl80211 but omit them from
++/// its monitor socket. Keep the existing AWDL parser and peer validation.
++struct Management {
++    fd: AsyncFd<OwnedFd>,
++    index: u32,
++    buf: Vec<u8>,
++    pending: VecDeque<Received>,
++}
++
++impl Management {
++    fn open(iface: &str) -> io::Result<(OwnedFd, u32)> {
++        use crate::netlink::{Attrs, Genl};
++        use nix::fcntl::{FcntlArg, OFlag, fcntl};
++        let index = if_index(iface)?;
++        let mut socket = Genl::open("nl80211")?;
++        let mut attrs = Attrs::new();
++        attrs
++            .u32(3, index)
++            .u16(101, 0xd0)
++            .bytes(91, &[0x7f, 0, 0x17, 0xf2, 8]);
++        socket.request(58, 0, &attrs)?;
++        let fd = socket.into_fd();
++        let flags = OFlag::from_bits_truncate(fcntl(&fd, FcntlArg::F_GETFL)?);
++        fcntl(&fd, FcntlArg::F_SETFL(flags | OFlag::O_NONBLOCK))?;
++        tracing::info!("receiving AWDL management frames on {iface} via nl80211");
++        Ok((fd, index))
++    }
++
++    async fn recv(&mut self) -> io::Result<Received> {
++        use nix::sys::socket::{NetlinkAddr, recvfrom};
++        loop {
++            if let Some(rx) = self.pending.pop_front() {
++                return Ok(rx);
++            }
++            let mut guard = self.fd.readable().await?;
++            let read = guard.try_io(|fd| {
++                Ok(recvfrom::<NetlinkAddr>(
++                    fd.get_ref().as_raw_fd(),
++                    &mut self.buf,
++                )?)
++            });
++            match read {
++                Ok(Ok((n, Some(sender)))) if sender.pid() == 0 => {
++                    self.pending
++                        .extend(management_frames(&self.buf[..n], self.index));
++                }
++                Ok(Err(e)) => return Err(e),
++                _ => {}
++            }
++        }
++    }
++}
++
++fn management_frames(mut data: &[u8], index: u32) -> Vec<Received> {
++    use crate::netlink::{align, as_u32, attr, u16_at, u32_at};
++    let mut received = Vec::new();
++    while data.len() >= 16 {
++        let len = u32_at(data, 0) as usize;
++        if len < 16 || len > data.len() {
++            break;
++        }
++        let message = &data[..len];
++        if len >= 20 && u16_at(message, 4) >= 16 && message[16] == 59 {
++            let attrs = &message[20..];
++            if attr(attrs, 3).and_then(as_u32) == Some(index)
++                && let Some(frame) = attr(attrs, 51)
++                && frame.len() >= 31
++                && u16_at(frame, 0) & 0x00fc == 0xd0
++                && frame[24..29] == [0x7f, 0, 0x17, 0xf2, 8]
++            {
++                let rssi = attr(attrs, 151)
++                    .and_then(as_u32)
++                    .and_then(|v| i8::try_from(v as i32).ok());
++                received.push(Received {
++                    bytes: frame.to_vec(),
++                    rssi,
++                });
++            }
++        }
++        data = &data[align(len).min(data.len())..];
++    }
++    received
++}
++
++#[cfg(test)]
++mod management_tests {
++    #[test]
++    #[ignore = "requires OWLY_MGMT_CAPTURE pointing to a local iw management dump"]
++    fn captured_management_frames_confirm_peers() {
++        use super::*;
++        use owly_awdl::{Channel, Input, Node, Presence, RadioConstraints, Time};
++        let capture = std::fs::read_to_string(std::env::var("OWLY_MGMT_CAPTURE").unwrap()).unwrap();
++        let mut node = Node::new(
++            Config::new(
++                MacAddr([2, 0, 0, 0, 0, 1]),
++                "replay",
++                RadioConstraints {
++                    channel: Channel(6),
++                    presence: Presence::Fixed,
++                },
++            ),
++            Time(0),
++        );
++        let mut frame = Vec::new();
++        let mut count = 0;
++        let mut confirmed = 0;
++        for line in capture.lines().chain(std::iter::once("freq end")) {
++            if line.starts_with("freq ") && !frame.is_empty() {
++                count += 1;
++                node.handle(Input::Frame {
++                    rx_time: Time(count * 10_000),
++                    rssi: None,
++                    bytes: &frame,
++                })
++                .for_each(drop);
++                confirmed = confirmed.max(node.peers().filter(|p| p.valid).count());
++                frame.clear();
++            }
++            if let Some(hex) = line.strip_prefix("mgmt: ") {
++                frame.extend(
++                    hex.split_whitespace()
++                        .map(|b| u8::from_str_radix(b, 16).unwrap()),
++                );
++            }
++        }
++        eprintln!(
++            "replayed={count} rx_action={} malformed={} confirmed_peers={confirmed}",
++            node.stats().rx_action,
++            node.stats().rx_malformed
++        );
++        assert!(node.stats().rx_action > 0);
++        assert!(confirmed > 0);
++    }
++    use super::*;
++    use crate::netlink::{Attrs, align};
++
++    #[test]
++    fn vendor_management_events_are_bounded_and_keep_all_frames() {
++        let mut frame = vec![0; 31];
++        frame[0] = 0xd0;
++        frame[24..29].copy_from_slice(&[0x7f, 0, 0x17, 0xf2, 8]);
++        let mut attrs = Attrs::new();
++        attrs.u32(3, 7).bytes(51, &frame).u32(151, (-29i32) as u32);
++        let len = 20 + attrs.0.len();
++        let mut event = Vec::new();
++        event.extend_from_slice(&(len as u32).to_ne_bytes());
++        event.extend_from_slice(&32u16.to_ne_bytes());
++        event.extend_from_slice(&[0; 10]);
++        event.extend_from_slice(&[59, 0, 0, 0]);
++        event.extend_from_slice(&attrs.0);
++        event.resize(align(len), 0);
++        let expected = Received {
++            bytes: frame,
++            rssi: Some(-29),
++        };
++        assert_eq!(management_frames(&event, 7), vec![expected.clone()]);
++        assert!(management_frames(&event, 8).is_empty());
++        for end in 0..len {
++            assert!(management_frames(&event[..end], 7).is_empty());
++        }
++        let mut batch = event.clone();
++        batch.extend_from_slice(&event);
++        assert_eq!(
++            management_frames(&batch, 7),
++            vec![expected.clone(), expected]
++        );
++        event[16] = 58;
++        assert!(management_frames(&event, 7).is_empty());
++        event[16] = 59;
++        // Corrupt the vendor OUI in the frame attribute.
++        let at = event
++            .windows(5)
++            .position(|b| b == [0x7f, 0, 0x17, 0xf2, 8])
++            .unwrap();
++        event[at + 1] = 1;
++        assert!(management_frames(&event, 7).is_empty());
+     }
+ }
+ 
+--- a/crates/owly-radio/src/netlink.rs
++++ b/crates/owly-radio/src/netlink.rs
+@@ -261,6 +261,11 @@
+ }
+ 
+ impl Genl {
++    /// Keep registrations alive and receive unsolicited kernel events.
++    pub fn into_fd(self) -> OwnedFd {
++        self.socket.fd
++    }
++
+     pub fn open(name: &str) -> io::Result<Genl> {
+         let mut socket = Socket::new(SockProtocol::NetlinkGeneric)?;
+         let mut a = Attrs::new();
