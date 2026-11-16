@@ -20,6 +20,7 @@ Item {
     // the button item itself would close the menu whenever the dock rebuilds its
     // app list (any window opening/closing destroys the unpinned buttons).
     property rect anchorRect
+    property Item launchButton: null
 
     // Looked up live so the menu follows windows opening/closing while open.
     // TaskbarApps keys entries by lowercased appId.
@@ -50,6 +51,7 @@ Item {
         menuLoader.active = false;
         const topLeft = root.QsWindow.mapFromItem(button, 0, 0);
         root.anchorRect = Qt.rect(topLeft.x, topLeft.y, button.width, button.height);
+        root.launchButton = button;
         root.appId = appId;
         root.desktopEntry = DesktopEntries.heuristicLookup(appId);
         menuLoader.active = true;
@@ -60,6 +62,13 @@ Item {
         // Drop the live lookups so closed menus don't track TaskbarApps.
         root.appId = "";
         root.desktopEntry = null;
+        root.launchButton = null;
+    }
+
+    function launch(entry) {
+        if (root.launchButton) root.launchButton.launchApp(entry);
+        else entry?.execute();
+        root.close();
     }
 
     function moveToWorkspace(ws) {
@@ -193,8 +202,7 @@ Item {
                             iconName: "chevron_right"
                             label: modelData.name
                             onClicked: {
-                                modelData.execute();
-                                root.close();
+                                root.launch(modelData);
                             }
                         }
                     }
@@ -208,8 +216,7 @@ Item {
                         label: Translation.tr("Open new instance")
                         enabled: root.desktopEntry !== null
                         onClicked: {
-                            root.desktopEntry?.execute();
-                            root.close();
+                            root.launch(root.desktopEntry);
                         }
                     }
 

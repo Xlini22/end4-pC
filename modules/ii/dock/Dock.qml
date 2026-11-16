@@ -78,10 +78,12 @@ Scope {
             property bool reveal: {
                 if (dockContextMenu.isOpen)
                     return true
+                if (DockMagnify.entries.some(entry => entry.item?.launching && entry.item.QsWindow.window === dockRoot))
+                    return true
                 if (fullscreenOnThisMonitor)
-                    return Config.options?.dock.hoverToReveal && dockMouseArea.containsMouse
+                    return Config.options?.dock.hoverToReveal && (dockMouseArea.containsMouse || riseArea.containsMouse)
                 return root.pinned
-                    || (Config.options?.dock.hoverToReveal && (dockMouseArea.containsMouse || GlobalStates.isFrameHovered(dockRoot.screen?.name, dockRoot.position)))
+                    || (Config.options?.dock.hoverToReveal && (dockMouseArea.containsMouse || riseArea.containsMouse || GlobalStates.isFrameHovered(dockRoot.screen?.name, dockRoot.position)))
                     || activeApps.requestDockShow
                     || dragSlots.requestDockShow
                     || (!ToplevelManager.activeToplevel?.activated)
@@ -150,7 +152,7 @@ Scope {
                 acceptedButtons: Qt.NoButton
                 x: dockMouseArea.x
                 width: dockMouseArea.width
-                height: DockStyle.headroom * dockRoot.magnifyAmp
+                height: DockStyle.magnifyHeadroom * dockRoot.magnifyAmp
                 anchors.bottom: dockMouseArea.top
                 onPositionChanged: mouse => dockRoot.updatePointer(riseArea, mouse.x)
                 onEntered: dockRoot.updatePointer(riseArea, mouseX)
@@ -162,7 +164,7 @@ Scope {
                 onPositionChanged: mouse => dockRoot.updatePointer(dockMouseArea, mouse.x)
                 onEntered: dockRoot.updatePointer(dockMouseArea, mouseX)
                 width: dockRoot.vertical ? parent.width : implicitWidth
-                height: dockRoot.vertical ? implicitHeight : (dockRoot.macos ? DockStyle.thickness : parent.height)
+                height: dockRoot.vertical ? implicitHeight : DockStyle.thickness
                 implicitWidth: dockHoverRegion.implicitWidth + dockRoot.shadowMargin * 2
                 implicitHeight: dockHoverRegion.implicitHeight + dockRoot.shadowMargin * 2
 
@@ -176,10 +178,10 @@ Scope {
                 }
 
                 anchors {
-                    top: dockRoot.vertical || dockRoot.macos ? undefined : parent.top
+                    top: dockRoot.vertical ? parent.top : undefined
                     topMargin: dockMouseArea.offset
-                    bottom: dockRoot.macos ? parent.bottom : undefined
-                    bottomMargin: dockRoot.macos ? -dockMouseArea.offset : 0
+                    bottom: dockRoot.vertical ? undefined : parent.bottom
+                    bottomMargin: dockRoot.vertical ? 0 : -dockMouseArea.offset
                     horizontalCenter: dockRoot.vertical ? undefined : parent.horizontalCenter
                     verticalCenter: dockRoot.vertical ? parent.verticalCenter : undefined
                     left: dockRoot.position === "left" ? parent.left : undefined

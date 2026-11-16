@@ -44,7 +44,9 @@ Singleton {
     readonly property bool hug: Config.options.dock.style === "hug"
     readonly property bool magnifying: position === "bottom" && Config.options.dock.magnify
     readonly property real magnification: Math.max(1, Math.min(2.2, Config.options.dock.magnification ?? 1.2))
-    readonly property real headroom: magnifying ? Math.ceil((magnification - 1) * (iconSize + 14)) + 6 : 0
+    readonly property real launchHeight: vertical ? 0 : 40
+    readonly property real magnifyHeadroom: magnifying ? Math.ceil((magnification - 1) * (iconSize + 14)) + 6 : 0
+    readonly property real headroom: magnifyHeadroom + launchHeight
     readonly property real thickness: (Config.options.dock.height ?? 70) + (iconSize - defaultIconSize) + Appearance.sizes.elevationMargin + Appearance.sizes.hyprlandGapsOut
     readonly property real activeSpacing: -4
     readonly property real mediaLength: 240

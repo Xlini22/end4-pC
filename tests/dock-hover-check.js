@@ -33,3 +33,35 @@ assert(previewWanted(), 'Returning rapidly to the open app must request its prev
 hover(root, open, false);
 assert(!previewWanted(), 'Leaving the current app must dismiss its preview');
 console.log('Dock hover: open/closed/open switching, late exit events and normal dismissal passed.');
+
+const dock = fs.readFileSync(path.join(__dirname, '../modules/ii/dock/Dock.qml'), 'utf8');
+const revealBody = dock.match(/property bool reveal: \{([\s\S]*?)\n            \}/)[1];
+const dockRoot = {fullscreenOnThisMonitor: false, position: 'bottom', screen: {name: 'test'}};
+const dockMouseArea = {containsMouse: false}, riseArea = {containsMouse: false};
+const magnify = {entries: []};
+const reveal = new Function('root', 'dockRoot', 'dockContextMenu', 'Config', 'dockMouseArea', 'riseArea',
+    'GlobalStates', 'activeApps', 'dragSlots', 'ToplevelManager', 'DockMagnify', 'fullscreenOnThisMonitor', revealBody);
+const visible = () => reveal({pinned: false}, dockRoot, {isOpen: false},
+    {options:{dock:{hoverToReveal:true}}}, dockMouseArea, riseArea,
+    {isFrameHovered:()=>false}, {requestDockShow:false}, {requestDockShow:false},
+    {activeToplevel:{activated:true}}, magnify, dockRoot.fullscreenOnThisMonitor);
+for (const fullscreen of [false, true]) {
+    dockRoot.fullscreenOnThisMonitor = fullscreen;
+    dockMouseArea.containsMouse = true;
+    assert(visible());
+    dockMouseArea.containsMouse = false;
+    riseArea.containsMouse = true;
+    assert(visible(), 'Moving over the magnified upper icons must not hide or move the dock');
+    riseArea.containsMouse = false;
+    assert(!visible());
+    const item = {launching:true, QsWindow:{window:dockRoot}};
+    magnify.entries = [{item}];
+    assert(visible(), 'A launch animation must keep its own dock visible');
+    item.QsWindow.window = {};
+    assert(!visible(), 'A launch on another monitor must not reveal this dock');
+    item.QsWindow.window = dockRoot;
+    item.launching = false;
+    assert(!visible(), 'Finishing the launch must release auto-hide');
+    magnify.entries = [];
+}
+console.log('Dock reveal: expanded hover area, launch retention, fullscreen and monitor isolation passed.');
