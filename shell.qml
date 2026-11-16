@@ -8,6 +8,7 @@
 import "modules/common"
 import "services"
 import "panelFamilies"
+import "modules/ii/lock" as SessionLock
 import QtQuick
 import QtQuick.Window
 import Quickshell
@@ -57,6 +58,9 @@ ShellRoot {
         identifier: "ii"
         component: IllogicalImpulseFamily {}
     }
+
+    // ponytail: the Wayland lock must survive reloads before asynchronous Config.ready.
+    SessionLock.Lock {}
 
     component PanelFamilyLoader: LazyLoader {
         required property string identifier
