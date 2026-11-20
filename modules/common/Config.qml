@@ -332,6 +332,7 @@ Singleton {
                     property real blurRadius: 32
                     property JsonObject glass: JsonObject {
                         property bool enable: false
+                        property bool nativePlugin: false
                         property string source: "wallpaper"
                         property bool enhanced: false
                         property string tint: "transparent"

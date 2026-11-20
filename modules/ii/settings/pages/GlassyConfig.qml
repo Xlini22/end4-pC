@@ -55,12 +55,32 @@ ContentPage {
                 ]
             }
             ConfigSwitch {
+                buttonIcon: "extension"
+                text: "HyprGlass"
+                visible: WM.compositor === "hyprland"
+                enabled: !GlassCompositor.pluginBusy
+                checked: Config.options.background.widgets.glass.nativePlugin
+                onClicked: {
+                    GlassCompositor.setPluginEnabled(!Config.options.background.widgets.glass.nativePlugin)
+                    checked = Qt.binding(() => Config.options.background.widgets.glass.nativePlugin)
+                }
+            }
+            ConfigSwitch {
                 buttonIcon: "auto_awesome"
                 text: Translation.tr("Enhanced")
                 checked: Config.options.background.widgets.glass.enhanced
                 enabled: Config.options.background.widgets.glass.enable
                 onCheckedChanged: if (checked !== Config.options.background.widgets.glass.enhanced) Config.options.background.widgets.glass.enhanced = checked
             }
+        }
+        StyledText {
+            Layout.fillWidth: true
+            visible: WM.compositor === "hyprland"
+            text: GlassCompositor.pluginError || (GlassCompositor.pluginBusy
+                ? Translation.tr("Saving HyprGlass settings…")
+                : Translation.tr("HyprGlass changes require logging out and back in. Enabling it selects Windows underneath. Disabling it stops its effects without unloading the plugin in this session."))
+            wrapMode: Text.WordWrap
+            color: Appearance.colors.colSubtext
         }
     }
     SecondaryTabBar {

@@ -1,0 +1,10 @@
+diff --git a/src/GlassLayerSurface.cpp b/src/GlassLayerSurface.cpp
+--- a/src/GlassLayerSurface.cpp
++++ b/src/GlassLayerSurface.cpp
+@@ -619,5 +619,5 @@
+         .sampleUVScale = m_sampleUVScale,
+     };
+ 
+-    if (const auto* dimming = glassDarkeningOptics(layerSurface->getPID(), glassProfileKey(layerSurface->m_namespace))) {
++    if (const auto* dimming = glassDarkeningOptics(layerSurface->getPID(), (layerSurface->m_namespace == "quickshell:popup" || layerSurface->m_namespace == "quickshell:popupMorph") ? "bar" : glassProfileKey(layerSurface->m_namespace))) {
+         maskInfo.darkening = dimming->darkeningValue();

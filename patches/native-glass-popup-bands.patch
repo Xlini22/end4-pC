@@ -1,0 +1,23 @@
+diff --git a/src/GlassLayerSurface.cpp b/src/GlassLayerSurface.cpp
+--- a/src/GlassLayerSurface.cpp
++++ b/src/GlassLayerSurface.cpp
+@@ -538,7 +538,8 @@
+     if (std::isfinite(clearBox.x) && std::isfinite(clearBox.y) && std::isfinite(clearBox.w) && std::isfinite(clearBox.h) &&
+         clearBox.w > 0.0 && clearBox.h > 0.0) {
+         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+-        if (partial && !maskReallocated && layerSurface->m_namespace == "quickshell:settings") {
++        if (partial && !maskReallocated && (layerSurface->m_namespace == "quickshell:settings"
++            || layerSurface->m_namespace == "quickshell:popup" || layerSurface->m_namespace == "quickshell:popupMorph")) {
+             // Qt repaints damaged foreground only: preserve its mask everywhere else too.
+             auto clearDamage = g_pHyprRenderer->m_renderData.damage.copy().intersect(clearBox);
+             clearDamage.forEachRect([&](const auto& rect) {
+@@ -633,6 +634,9 @@
+             maskInfo.regions.push_back(region);
+         }
+     }
++
++    if (maskInfo.darkening[1] > 0 && (layerSurface->m_namespace == "quickshell:popup" || layerSurface->m_namespace == "quickshell:popupMorph"))
++        maskInfo.darkeningReference = {0, 0, 1, 1};
+ 
+     if (maskInfo.darkening[1] > 0 && layerSurface->m_namespace == "quickshell:bar") {
+         // ponytail: one strip represents the bar profile; local per-pill adaptation needs stable material IDs.

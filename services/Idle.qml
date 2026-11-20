@@ -4,29 +4,14 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 
-/**
- * A nice wrapper for date and time strings.
- */
 Singleton {
     id: root
 
     property alias inhibit: idleInhibitor.enabled
-    inhibit: false
-
-    Connections {
-        target: Persistent
-        function onReadyChanged() {
-            root.inhibit = Persistent.states.idle.inhibit;
-        }
-    }
+    inhibit: Persistent.states.idle.inhibit
 
     function toggleInhibit(active = null) {
-        if (active !== null) {
-            root.inhibit = active;
-        } else {
-            root.inhibit = !root.inhibit;
-        }
-        Persistent.states.idle.inhibit = root.inhibit;
+        Persistent.states.idle.inhibit = active !== null ? active : !root.inhibit;
     }
 
     IdleInhibitor {

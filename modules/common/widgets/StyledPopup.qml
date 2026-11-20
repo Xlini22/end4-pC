@@ -36,12 +36,15 @@ LazyLoader {
     onShouldShowChanged: if (!root.shouldShow) root.canShow = false
     property bool closing: false
     property bool popupCreated: false
+    property bool compositorAnimation: false
     // ponytail: retain one window per opened popup so effects never move between windows.
     // If many popup types are added, move their content into window-owned Components before unloading.
     active: root.popupCreated
     onCanShowChanged: {
-        if (root.canShow) root.popupCreated = true
-        else if (root.item) root.closing = true
+        if (root.canShow) {
+            root.compositorAnimation = GlassCompositor.active
+            root.popupCreated = true
+        } else if (root.item) root.closing = !root.compositorAnimation
     }
 
     readonly property bool barVertical: Config.options.bar.vertical
@@ -275,6 +278,11 @@ LazyLoader {
         Connections {
             target: root
             function onCanShowChanged() {
+                if (root.compositorAnimation) {
+                    openAnim.stop()
+                    closeAnim.stop()
+                    return
+                }
                 if (root.canShow) {
                     closeAnim.stop();
                     openAnim.restart();
@@ -315,13 +323,13 @@ LazyLoader {
                 bottomMargin: Appearance.sizes.elevationMargin + root.popupBackgroundMargin * (!popupWindow.anchors.bottom) + (root.barEdge === "top" ? root.bounceRoom : 0)
             }
             visible: popupWindow.geometryReady
-            opacity: root.morph ? 1 : 0
+            opacity: root.compositorAnimation || root.morph ? 1 : 0
             transform: Scale {
                 id: bodyScale
                 origin.x: root.barEdge === "left" ? 0 : root.barEdge === "right" ? body.width : body.width / 2
                 origin.y: root.barEdge === "top" ? 0 : root.barEdge === "bottom" ? body.height : body.height / 2
-                xScale: root.morph ? (root.barVertical ? 0.01 : 1) : (root.barVertical ? 0.4 : 0.8)
-                yScale: root.morph ? (root.barVertical ? 1 : 0.01) : (root.barVertical ? 0.8 : 0.4)
+                xScale: root.compositorAnimation ? 1 : root.morph ? (root.barVertical ? 0.01 : 1) : (root.barVertical ? 0.4 : 0.8)
+                yScale: root.compositorAnimation ? 1 : root.morph ? (root.barVertical ? 1 : 0.01) : (root.barVertical ? 0.8 : 0.4)
             }
 
             StyledRectangularShadow {
@@ -376,11 +384,11 @@ LazyLoader {
                 Item {
                     id: contentHolder
                     anchors.fill: parent
-                    opacity: 0
+                    opacity: root.compositorAnimation ? 1 : 0
                     transform: Translate {
                         id: contentShift
-                        x: root.barEdge === "left" ? -16 : root.barEdge === "right" ? 16 : 0
-                        y: root.barEdge === "top" ? -16 : root.barEdge === "bottom" ? 16 : 0
+                        x: root.compositorAnimation ? 0 : root.barEdge === "left" ? -16 : root.barEdge === "right" ? 16 : 0
+                        y: root.compositorAnimation ? 0 : root.barEdge === "top" ? -16 : root.barEdge === "bottom" ? 16 : 0
                     }
                 }
 
@@ -396,7 +404,7 @@ LazyLoader {
 
         ParallelAnimation {
             id: openAnim
-            running: true
+            running: !root.compositorAnimation
             NumberAnimation {
                 target: bodyScale
                 property: root.barVertical ? "xScale" : "yScale"
