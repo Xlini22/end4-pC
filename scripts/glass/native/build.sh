@@ -12,8 +12,10 @@ git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glas
 git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glass-popup-darkening.patch"
 git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glass-popup-bands.patch"
 git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glass-popup-frame.patch"
+git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glass-close-darkening.patch"
 python3 "$task_script_dir/../../../tests/native-glass-buffer-check.py" "$task_build/source" --pending-target
 python3 "$task_script_dir/../../../tests/native-glass-safety-check.py" "$task_build/source"
+python3 "$task_script_dir/../../../tests/native-glass-fade-darkening-check.py" "$task_build/source"
 python3 "$task_script_dir/../../../tests/native-glass-frost-check.py" "$task_build/source"
 python3 "$task_script_dir/../../../tests/native-glass-visibility-check.py" "$task_build/source"
 python3 "$task_script_dir/../../../tests/topbar-glass-check.py" "$task_build/source"
