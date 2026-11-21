@@ -1,4 +1,6 @@
 """Probe/load only the ABI-matched end4 HyprGlass build installed by the user."""
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import json
 import os
@@ -28,12 +30,27 @@ def sync_directory(directory):
         os.close(descriptor)
 
 
+@contextmanager
+def installation_lock():
+    directory = install_directory()
+    directory.mkdir(parents=True, exist_ok=True)
+    # ponytail: one local flock serializes arm/cancel/load; never wait on another detector.
+    with (directory / 'loader.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        yield directory
+
+
 def arm_once(staging):
+    with installation_lock():
+        return _arm_once(staging)
+
+
+def _arm_once(staging):
     directory = install_directory()
     instance = os.environ.get('HYPRLAND_INSTANCE_SIGNATURE')
     if not instance:
         raise ValueError('Cannot arm a test without the current Hyprland session identity')
-    if (directory / 'hyprglass.so').exists():
+    if os.path.lexists(directory / 'hyprglass.so'):
         raise ValueError('Remove the ordinary plugin installation before arming a one-session test')
     if any(plugin.get('name') == 'hyprglass' for plugin in json.loads(query('plugin', 'list', '-j'))):
         raise ValueError('HyprGlass is already loaded; no hot replacement is permitted')
@@ -54,8 +71,19 @@ def arm_once(staging):
         temporary.flush()
         os.fsync(temporary.fileno())
         os.link(temporary.name, directory / 'test-once.json')
-    sync_directory(directory)
+    try:
+        sync_directory(directory)
+    except OSError:
+        (directory / 'test-once.json').unlink()
+        raise
     return {'available': False, 'reason': 'One-session test armed for the next login in this boot; reboot cancels it'}
+
+
+def cancel_once():
+    with installation_lock() as directory:
+        (directory / 'test-once.json').unlink(missing_ok=True)
+        sync_directory(directory)
+    return {'available': False, 'reason': 'Pending test cancelled; an already loaded plugin is not unloaded'}
 
 
 def query(*args):
@@ -64,6 +92,13 @@ def query(*args):
 
 
 def status(ensure=False):
+    if not ensure:
+        return _status(False)
+    with installation_lock():
+        return _status(True)
+
+
+def _status(ensure):
     plugins = json.loads(query('plugin', 'list', '-j'))
     plugin = next((p for p in plugins if p.get('name') == 'hyprglass'), None)
     if plugin:
@@ -79,7 +114,7 @@ def status(ensure=False):
     if once:
         if not ensure:
             return {'available': False, 'reason': 'One-session test is pending'}
-        if binary.exists():
+        if os.path.lexists(binary):
             return {'available': False, 'reason': 'Ordinary installation must remain absent during a one-session test'}
         manifest = ticket
         metadata = json.loads(ticket.read_text())
@@ -121,8 +156,12 @@ if __name__ == '__main__':
     try:
         if len(sys.argv) == 3 and sys.argv[1] == '--arm-once':
             result = arm_once(sys.argv[2])
-        else:
+        elif sys.argv[1:] == ['--cancel-once']:
+            result = cancel_once()
+        elif sys.argv[1:] in ([], ['--ensure']):
             result = status('--ensure' in sys.argv[1:])
+        else:
+            raise ValueError('Usage: backend.py [--ensure | --arm-once STAGING_DIRECTORY | --cancel-once]')
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         result = {'available': False, 'reason': str(error)}
     print(json.dumps(result))

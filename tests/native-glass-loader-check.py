@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from unittest.mock import patch
+import subprocess
 
 spec = importlib.util.spec_from_file_location('backend', Path(__file__).resolve().parents[1] / 'scripts/glass/native/backend.py')
 backend = importlib.util.module_from_spec(spec)
@@ -125,3 +127,153 @@ with tempfile.TemporaryDirectory() as temporary:
     assert not backend.status(True)['available']
     assert calls == [('plugin', 'list', '-j')], calls
 print('Native loader validates ABI/hash, defers current/unknown sessions and loads verified builds in new sessions')
+
+# Every byte, boot identity and compositor response below is fake.
+with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {
+    'XDG_DATA_HOME': temporary, 'HYPRLAND_INSTANCE_SIGNATURE': 'preparation-session',
+}), patch.object(backend, 'boot_id', return_value='11111111-1111-1111-1111-111111111111') as current_boot:
+    directory = backend.install_directory()
+    directory.mkdir(parents=True)
+    staging = Path(temporary) / 'staging'
+    staging.mkdir()
+    binary = staging / 'hyprglass.so'
+    binary.write_bytes(b'fake staged plugin; never executable')
+    metadata = {'abiHash': 'matching-abi', 'sha256': hashlib.sha256(binary.read_bytes()).hexdigest()}
+    (staging / 'manifest.json').write_text(json.dumps(metadata))
+    ticket = directory / 'test-once.json'
+    calls, events, loaded = [], [], []
+    failure = None
+    real_sync = backend.sync_directory
+
+    def sync(path):
+        real_sync(path)
+        events.append('persisted')
+
+    def once_query(*args):
+        calls.append(args)
+        if args == ('plugin', 'list', '-j'):
+            return json.dumps(loaded)
+        if args == ('version', '-j'):
+            return json.dumps({'abiHash': 'matching-abi'})
+        if args == ('eval', 'return true'):
+            return 'ok'
+        assert args == ('plugin', 'load', str(binary)), args
+        assert not ticket.exists(), 'Consume before entering native code'
+        assert list(directory.glob('test-used-*.json')), 'Keep the consumed record'
+        assert events[-1] == 'persisted', 'Persist consumption before native code'
+        events.append('load')
+        # A second detector cannot enter while the first is loading.
+        try:
+            backend.status(True)
+        except BlockingIOError:
+            pass
+        else:
+            raise AssertionError('Concurrent ensure was not blocked')
+        if isinstance(failure, Exception):
+            raise failure
+        if failure:
+            return failure
+        loaded.append({'name': 'hyprglass', 'version': backend.CANDIDATE_VERSION})
+        return 'ok'
+
+    def expect_error(kind, action):
+        try:
+            action()
+        except kind:
+            return
+        raise AssertionError(f'Expected {kind.__name__}')
+
+    def prepare():
+        os.environ['HYPRLAND_INSTANCE_SIGNATURE'] = 'preparation-session'
+        backend.arm_once(staging)
+        os.environ['HYPRLAND_INSTANCE_SIGNATURE'] = 'test-session'
+
+    with patch.object(backend, 'query', side_effect=once_query), patch.object(backend, 'sync_directory', side_effect=sync):
+        os.environ.pop('HYPRLAND_INSTANCE_SIGNATURE')
+        expect_error(ValueError, lambda: backend.arm_once(staging))
+        os.environ['HYPRLAND_INSTANCE_SIGNATURE'] = 'preparation-session'
+        ordinary = directory / 'hyprglass.so'
+        ordinary.symlink_to(directory / 'missing-plugin')
+        expect_error(ValueError, lambda: backend.arm_once(staging))
+        ordinary.unlink()
+        loaded.append({'name': 'hyprglass', 'version': 'foreign'})
+        expect_error(ValueError, lambda: backend.arm_once(staging))
+        loaded.clear()
+        for invalid in ({**metadata, 'abiHash': 'wrong'}, {**metadata, 'sha256': 'wrong'}, []):
+            (staging / 'manifest.json').write_text(json.dumps(invalid))
+            expect_error(ValueError, lambda: backend.arm_once(staging))
+            assert not ticket.exists()
+        (staging / 'manifest.json').write_text(json.dumps(metadata))
+
+        backend.arm_once(staging)
+        pending = ticket.read_bytes()
+        expect_error(FileExistsError, lambda: backend.arm_once(staging))
+        assert ticket.read_bytes() == pending
+        assert not backend.status()['available'] and ticket.read_bytes() == pending
+        assert not backend.status(True)['available'], 'Never load in the preparation session'
+        os.environ.pop('HYPRLAND_INSTANCE_SIGNATURE')
+        assert not backend.status(True)['available'], 'An unknown session must not consume the test'
+        os.environ['HYPRLAND_INSTANCE_SIGNATURE'] = 'test-session'
+        assert backend.status(True)['available']
+        assert backend.status(True)['available']
+        assert events.count('load') == 1
+        loaded.clear()  # A new process/session must not retry the consumed test.
+        assert not backend.status(True)['available']
+        assert events.count('load') == 1
+
+        prepare()
+        current_boot.return_value = '22222222-2222-2222-2222-222222222222'
+        assert 'expired' in backend.status(True)['reason']
+        assert ticket.exists() and events.count('load') == 1
+        calls.clear()
+        backend.cancel_once()
+        backend.cancel_once()
+        assert not calls and not ticket.exists(), 'Cancellation must not query or unload the compositor'
+        current_boot.return_value = '11111111-1111-1111-1111-111111111111'
+
+        for failure in ['mock load error', subprocess.TimeoutExpired('mock-hyprctl', 10)]:
+            prepare()
+            count = events.count('load')
+            if isinstance(failure, Exception):
+                expect_error(type(failure), lambda: backend.status(True))
+            else:
+                assert not backend.status(True)['available']
+            assert not ticket.exists() and events.count('load') == count + 1
+            assert not backend.status(True)['available']
+            assert events.count('load') == count + 1, 'Failed loads must never retry'
+        failure = None
+
+        prepare()
+        with patch.object(backend, 'sync_directory', side_effect=OSError('mock fsync failure')):
+            expect_error(OSError, lambda: backend.status(True))
+        assert not ticket.exists(), 'A persistence error must block loading and consume the attempt'
+        assert not backend.status(True)['available']
+
+        with patch.object(backend, 'sync_directory', side_effect=OSError('mock fsync failure')):
+            expect_error(OSError, lambda: backend.arm_once(staging))
+        assert not ticket.exists(), 'Failed arming must not leave a valid ticket'
+
+        prepare()
+        payload = json.loads(ticket.read_text())
+        payload['sha256'] = 'changed'
+        ticket.write_text(json.dumps(payload))
+        assert not backend.status(True)['available'] and ticket.exists()
+        payload['sha256'] = metadata['sha256']
+        payload['testId'] = 'invalid UUID'
+        ticket.write_text(json.dumps(payload))
+        expect_error(ValueError, lambda: backend.status(True))
+        backend.cancel_once()
+
+        prepare()
+        payload = json.loads(ticket.read_text())
+        used = directory / ('test-used-' + payload['testId'] + '.json')
+        used.write_text('{}')
+        assert not backend.status(True)['available'], 'A recorded attempt cannot be repeated'
+        backend.cancel_once()
+
+        with backend.installation_lock():
+            for action in [lambda: backend.arm_once(staging), lambda: backend.status(True), backend.cancel_once]:
+                expect_error(BlockingIOError, action)
+        assert not any(call[:2] == ('plugin', 'unload') for call in calls)
+        assert not ordinary.exists() and not ticket.exists()
+print('One-session loader: boot expiry, durable consumption, cancellation, failures and concurrent requests passed (mock only)')
