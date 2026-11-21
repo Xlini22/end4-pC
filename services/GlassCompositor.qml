@@ -13,6 +13,7 @@ Singleton {
     id: root
     readonly property bool disabled: Quickshell.env("QS_DISABLE_COMPOSITOR_GLASS") === "1"
     readonly property bool enabled: !disabled && WM.compositor === "hyprland"
+        && Config.options.background.widgets.glass.nativePlugin
         && Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.source === "windows"
         && !GlobalStates.screenLocked
     readonly property var namespaces: ["bar", "verticalBar", "dock", "popup", "popupMorph", "settings",
@@ -20,6 +21,23 @@ Singleton {
         "onScreenDisplay", "overview", "mediaControls", "notificationPopup", "equalizer", "osk"]
         .map(name => "quickshell:" + name)
     property bool available: false
+    readonly property bool pluginBusy: pluginSelector.running
+    property string pluginError: ""
+
+    function setPluginEnabled(value) {
+        if (pluginSelector.running || value === Config.options.background.widgets.glass.nativePlugin) return
+        root.pluginError = ""
+        pluginSelector.command = ["python3", Quickshell.shellPath("scripts/switch-shell.py"), "--plugin", value ? "on" : "off"]
+        pluginSelector.running = true
+    }
+
+    Process {
+        id: pluginSelector
+        stderr: StdioCollector { onStreamFinished: root.pluginError = text.trim() }
+        onExited: (exitCode, exitStatus) => {
+            if (exitCode !== 0 && !root.pluginError) root.pluginError = Translation.tr("Could not change HyprGlass settings.")
+        }
+    }
     property bool enhancedAvailable: false
     property bool frostedAvailable: false
     property bool windowFrostedAvailable: false

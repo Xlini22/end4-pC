@@ -1,0 +1,41 @@
+diff --git a/src/main.cpp b/src/main.cpp
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -29,6 +29,29 @@
+ #include <array>
+ 
+ // Observe compositor opacity, not workspace activation: swipes reveal Top layers before committing.
++static void damageAdaptivePopups(PHLMONITOR monitor) {
++    if (!monitor || monitor->m_transform != WL_OUTPUT_TRANSFORM_NORMAL) return;
++    const auto incoming = monitor->m_damage.getBufferDamage(1);
++    if (incoming.empty()) return;
++    for (const auto& [ptr, state] : g_pGlobalState->layerSurfaces) {
++        const auto layer = state->getLayerSurface();
++        if (!layer || (!layer->m_mapped && !layer->m_fadingOut) || layer->m_monitor.lock() != monitor
++            || (layer->m_namespace != "quickshell:popup" && layer->m_namespace != "quickshell:popupMorph")) continue;
++        const auto* dimming = glassDarkeningOptics(layer->getPID(), "bar");
++        if (!dimming || dimming->darkeningValue()[1] <= 0) continue;
++        CBox popup{layer->m_realPosition->value(), layer->m_realSize->value()};
++        if (!std::isfinite(popup.x) || !std::isfinite(popup.y) || !std::isfinite(popup.w) || !std::isfinite(popup.h)
++            || popup.w <= 0 || popup.h <= 0) continue;
++        popup.translate(-monitor->m_position).scale(monitor->m_scale).round();
++        auto sample = popup;
++        sample.expand(GlassRenderer::SAMPLE_PADDING_PX * monitor->m_scale);
++        if (incoming.copy().intersect(sample).empty()) continue;
++        // Only expand an already requested frame, before its damage is consumed.
++        // Calling damageBox here would schedule another frame and sustain idle redraws.
++        monitor->m_damage.damage(popup);
++    }
++}
++
+ static void publishBarVisibility(PHLMONITOR monitor) {
+     if (!monitor || monitor->m_name.empty() || monitor->m_name.size() > 128 ||
+         std::ranges::any_of(monitor->m_name, [](unsigned char c) { return c < 32 || c == ','; })) return;
+@@ -311,6 +334,7 @@
+     }
+ 
+     g_pGlobalState = std::make_unique<SGlobalState>();
++    g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.render.pre.listen(damageAdaptivePopups));
+     g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.render.pre.listen(publishBarVisibility));
+     g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.render.pre.listen(publishClockVisibility));
+     g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.monitor.removed.listen([](PHLMONITOR monitor) {

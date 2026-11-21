@@ -97,4 +97,6 @@ qt_shader = (repo / 'modules/common/widgets/shaders/liquidLens.frag').read_text(
 curve = "max(0.0, 1.0 - 0.38 / max(backdropLuma, 0.38))"
 assert curve in native_shader and curve in qt_shader
 assert '(surface || terminal || dimming) ? &material' in (source / 'GlassDecoration.cpp').read_text()
-assert 'glassDarkeningOptics(layerSurface->getPID(), glassProfileKey(layerSurface->m_namespace))' in (source / 'GlassLayerSurface.cpp').read_text()
+layer = (source / 'GlassLayerSurface.cpp').read_text()
+assert 'glassDarkeningOptics(layerSurface->getPID(),' in layer
+assert '(layerSurface->m_namespace == "quickshell:popup" || layerSurface->m_namespace == "quickshell:popupMorph") ? "bar" : glassProfileKey(layerSurface->m_namespace)' in layer

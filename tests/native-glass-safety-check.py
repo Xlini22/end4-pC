@@ -129,9 +129,10 @@ struct CGlassLayerSurface {
 void updateDamage(SP<Layer> layer,const SGlassClient& previous,const SGlassClient& current){
 '''+damage+r'''
 }
-void clearMask(bool partial,bool maskReallocated){
+void clearMask(bool partial,bool maskReallocated,const std::string& ns="quickshell:settings"){
  CBox transformBox{0,0,1920,1080};int monitorWidth=1920,monitorHeight=1080;
  auto layerSurface=std::make_shared<Layer>();
+ layerSurface->m_namespace=ns;
 '''+clear.replace('GlassRenderer::SAMPLE_PADDING_PX','60')+r'''
 }
 int main(){
@@ -218,6 +219,12 @@ int main(){
  g_pHyprRenderer->m_renderData.damage.add(CBox{1000,500,30,40});
  clearMask(true,false);
  assert(cleared.size()==2&&cleared[0].w*cleared[0].h+cleared[1].w*cleared[1].h==1400);
+ for(const auto* ns : {"quickshell:popup", "quickshell:popupMorph"}) {
+  cleared.clear();clearMask(true,false,ns);
+  assert(cleared.size()==2&&cleared[0].w*cleared[0].h+cleared[1].w*cleared[1].h==1400);
+  cleared.clear();clearMask(true,true,ns);
+  assert(cleared.size()==1&&cleared[0].w==1920&&cleared[0].h==1080);
+ }
  cleared.clear();clearMask(true,true);
  assert(cleared.size()==1&&cleared[0].w==1920&&cleared[0].h==1080); // Initialize new storage.
 }

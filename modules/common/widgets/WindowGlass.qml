@@ -31,6 +31,8 @@ Item {
     property int edge: 0
     readonly property string profileKey: GlassProfiles.keyFor(fullscreenSurface || popup ? "" : floating ? "quickshell:settings" : win?.WlrLayershell.namespace ?? "", fullscreenSurface)
     readonly property var opticalProfile: GlassProfiles.profile(profileKey)
+    readonly property var darkeningProfile: GlassProfiles.profile(
+        ["quickshell:popup", "quickshell:popupMorph"].includes(win?.WlrLayershell.namespace) ? "bar" : profileKey)
     readonly property real materialFrost: opticalProfile && frost > 0 ? opticalProfile.blur : frost
     readonly property bool live: (opticalProfile?.enable ?? true) && glassEnabled && (Config.options?.background?.widgets?.glass?.enable ?? false)
     readonly property bool tracking: live && visible && (win?.visible ?? true)
@@ -363,6 +365,9 @@ Item {
                 debounceDarkening: root.profileKey === "settings"
                 clearMaterial: root.clearMaterial
                 opticalProfile: root.opticalProfile
+                darkening: root.darkeningProfile?.enable && Number.isFinite(root.darkeningProfile.darkening)
+                    ? Math.max(0, Math.min(100, root.darkeningProfile.darkening)) / 100 : 0
+                automaticDarkening: root.darkeningProfile?.enable && root.darkeningProfile.automaticDarkening ? 1 : 0
                 topBarOptics: root.clearMaterial && root.win?.WlrLayershell.namespace === "quickshell:bar" && !Config.options.bar.bottom
                 frost: root.frost
                 hideSource: true

@@ -1,0 +1,32 @@
+diff --git a/src/GlassLayerSurface.hpp b/src/GlassLayerSurface.hpp
+--- a/src/GlassLayerSurface.hpp
++++ b/src/GlassLayerSurface.hpp
+@@ -54,6 +54,7 @@
+     bool         m_lastEnhanced = false;
+     bool         m_lastTopBarOptics = false;
+     std::optional<SGlassOptics> m_lastOptics;
++    std::array<float, 2> m_lastDarkening{};
+     std::optional<SGlassSurface> m_lastSurface;
+ 
+     // Track last position/size to detect movement and expand damage
+diff --git a/src/GlassLayerSurface.cpp b/src/GlassLayerSurface.cpp
+--- a/src/GlassLayerSurface.cpp
++++ b/src/GlassLayerSurface.cpp
+@@ -620,9 +620,14 @@
+         .sampleUVScale = m_sampleUVScale,
+     };
+ 
+-    if (const auto* dimming = glassDarkeningOptics(layerSurface->getPID(), (layerSurface->m_namespace == "quickshell:popup" || layerSurface->m_namespace == "quickshell:popupMorph") ? "bar" : glassProfileKey(layerSurface->m_namespace))) {
+-        maskInfo.darkening = dimming->darkeningValue();
+-        if (dimming->darkeningTransition()) damageMaterial();
++    if (layerSurface->m_fadingOut) {
++        maskInfo.darkening = m_lastDarkening;
++    } else {
++        if (const auto* dimming = glassDarkeningOptics(layerSurface->getPID(), (layerSurface->m_namespace == "quickshell:popup" || layerSurface->m_namespace == "quickshell:popupMorph") ? "bar" : glassProfileKey(layerSurface->m_namespace))) {
++            maskInfo.darkening = dimming->darkeningValue();
++            if (dimming->darkeningTransition()) damageMaterial();
++        }
++        m_lastDarkening = maskInfo.darkening;
+     }
+     if (const auto* surface = enhancedSurface()) {
+         const float sx = transformBox.w / surface->width, sy = transformBox.h / surface->height;
