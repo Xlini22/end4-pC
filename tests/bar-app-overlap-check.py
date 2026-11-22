@@ -43,9 +43,15 @@ function update(){
     if(next!==previous){appOverlapTimer.restart();previous=next;}
 }
 function tick(ms){now+=ms;if(deadline!==null&&now>=deadline){deadline=null;appOverlapActive=barRoot.wantsAppOverlap;}}
-function win(appId,monitor='eDP-1',workspace=1){return {appId,HyprlandToplevel:{monitor:{name:monitor},workspace:{id:workspace}},client:{}};}
+// The attached object only resolves the handle; its own monitor/workspace are null.
+function win(appId,monitor='eDP-1',workspace=1){return {appId,HyprlandToplevel:{monitor:null,workspace:null,
+    handle:{monitor:{name:monitor},workspace:{id:workspace}}},client:{}};}
 const firefox=win('firefox'),terminal=win('foot'),other=win('foot','HDMI-A-1');
 ToplevelManager.toplevels.values=[firefox,terminal,other];
+const handle=firefox.HyprlandToplevel.handle;
+firefox.HyprlandToplevel.handle=null;
+ToplevelManager.activeToplevel=firefox;update();tick(200);assert.equal(appOverlapActive,false);
+firefox.HyprlandToplevel.handle=handle;
 ToplevelManager.activeToplevel=firefox;update();tick(149);assert.equal(appOverlapActive,false);
 tick(1);assert.equal(appOverlapActive,true);
 // Layer-shell focus and focus on a different monitor must not restore the gap.
@@ -63,8 +69,8 @@ barRoot.thisMonitorData.specialWorkspace.id=0;firefox.client.pinned=true;
 update();tick(150);assert.equal(appOverlapActive,true);
 ToplevelManager.toplevels.values=[terminal,other];update();tick(150);assert.equal(appOverlapActive,false);
 ToplevelManager.toplevels.values.push(firefox);update();tick(150);assert.equal(appOverlapActive,true);
-firefox.HyprlandToplevel.monitor.name='HDMI-A-1';update();tick(150);assert.equal(appOverlapActive,false);
-firefox.HyprlandToplevel.monitor.name='eDP-1';
+firefox.HyprlandToplevel.handle.monitor.name='HDMI-A-1';update();tick(150);assert.equal(appOverlapActive,false);
+firefox.HyprlandToplevel.handle.monitor.name='eDP-1';
 for(const classes of [[],['Firefox'],['fire*'],['']]){
     Config.options.bar.appOverlap.classes=classes;update();tick(150);assert.equal(appOverlapActive,false);
 }

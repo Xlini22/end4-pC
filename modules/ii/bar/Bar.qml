@@ -86,7 +86,7 @@ Scope {
                 readonly property var overlapMonitor: appOverlapEnabled ? Hyprland.monitorFor(barRoot.screen) : null
                 readonly property var overlapCandidate: {
                     const win = appOverlapEnabled ? ToplevelManager.activeToplevel : null;
-                    return win && win.HyprlandToplevel?.monitor?.name === barRoot.screen?.name ? win : null;
+                    return win && win.HyprlandToplevel?.handle?.monitor?.name === barRoot.screen?.name ? win : null;
                 }
                 // Keep the last client when a layer-shell popup takes focus, or another monitor is focused.
                 property var overlapWindow: null
@@ -96,7 +96,7 @@ Scope {
                 function matchesOverlapWindow() {
                     const win = barRoot.overlapWindow;
                     if (!barRoot.appOverlapEnabled || !win || !ToplevelManager.toplevels.values.includes(win)) return false;
-                    const hypr = win.HyprlandToplevel;
+                    const hypr = win.HyprlandToplevel?.handle;
                     if (hypr?.monitor?.name !== barRoot.screen?.name) return false;
                     const client = HyprlandData.clientForToplevel(win);
                     const workspace = hypr.workspace?.id;
