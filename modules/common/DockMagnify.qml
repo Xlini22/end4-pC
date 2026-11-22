@@ -20,9 +20,9 @@ Singleton {
     readonly property real influenceDistance: 110 * DockStyle.iconSize / 40
     readonly property real nudge: DockStyle.iconSize * (DockStyle.magnification - 1) / 1.25
 
-    function register(item) {
+    function register(item, magnify = true) {
         const id = root.nextId++;
-        root.entries.push({ id: id, item: item });
+        root.entries.push({ id: id, item: item, magnify: magnify });
         return id;
     }
 
@@ -47,7 +47,7 @@ Singleton {
             const item = entry.item;
             if (!item || !item.visible || !item.parent || item.QsWindow.window !== root.window) continue;
             const center = item.parent.mapToItem(null, item.x + item.width / 2, 0).x;
-            list.push({ id: entry.id, center: center, base: Math.max(1, item.width) });
+            list.push({ id: entry.id, center: center, base: Math.max(1, item.width), magnify: entry.magnify !== false });
         }
         if (list.length === 0) {
             root.clear();
@@ -59,10 +59,22 @@ Singleton {
         for (const entry of list) {
             const distance = root.pointer - entry.center;
             const fraction = Math.min(1, Math.abs(distance) / root.influenceDistance);
-            const scale = 1 + (DockStyle.magnification - 1) * root.amplitude * (1 - fraction);
+            const scale = entry.magnify ? 1 + (DockStyle.magnification - 1) * root.amplitude * (1 - fraction) : 1;
             const shift = -Math.sign(distance) * root.nudge * root.amplitude
                 * (fraction < 1 ? fraction * scale : 1);
             next[entry.id] = { scale: scale, shift: shift };
+        }
+        // Follow adjacent visual edges; distant icon zoom must not move a fixed-size card.
+        for (let index = 0; index < list.length; index++) {
+            const entry = list[index];
+            if (entry.magnify) continue;
+            const left = list[index - 1], right = list[index + 1];
+            const leftEdge = left ? next[left.id].shift + (next[left.id].scale - 1) * left.base / 2 : null;
+            const rightEdge = right ? next[right.id].shift - (next[right.id].scale - 1) * right.base / 2 : null;
+            const from = leftEdge ?? rightEdge ?? 0;
+            const to = rightEdge ?? leftEdge ?? 0;
+            const fraction = Math.max(0, Math.min(1, (root.pointer - entry.center + entry.base / 2) / entry.base));
+            next[entry.id].shift = from + (to - from) * fraction;
         }
         root.values = next;
         const first = list[0], last = list[list.length - 1];

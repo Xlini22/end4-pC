@@ -113,7 +113,8 @@ Scope {
                 right: dockRoot.position !== "left"
             }
             margins {
-                bottom: dockRoot.hug && dockRoot.position === "bottom" ? -dockRoot.gap : 0
+                bottom: (dockRoot.hug && dockRoot.position === "bottom" ? -dockRoot.gap : 0)
+                    + (dockRoot.appOverlapActive ? 8 : 0)
                 left: dockRoot.hug && dockRoot.position === "left" ? -dockRoot.gap : 0
                 right: dockRoot.hug && dockRoot.position === "right" ? -dockRoot.gap : 0
             }

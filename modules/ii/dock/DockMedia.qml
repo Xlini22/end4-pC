@@ -15,6 +15,14 @@ import Quickshell.Services.Mpris
 Item {
     id: root
 
+    property int magnifyId: -1
+    readonly property var magnifyValue: DockStyle.magnifying ? DockMagnify.values[root.magnifyId] : null
+    transform: Translate {
+        x: root.magnifyValue?.shift ?? 0
+    }
+    Component.onCompleted: root.magnifyId = DockMagnify.register(root, false)
+    Component.onDestruction: DockMagnify.unregister(root.magnifyId)
+
     property real cardLength:    DockStyle.vertical ? mediaGrid.implicitHeight + Appearance.sizes.hyprlandGapsOut * 2 : DockStyle.mediaLength
     property real buttonPadding: 5
     property real artMargin:     5
