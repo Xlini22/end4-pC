@@ -319,6 +319,43 @@ ContentPage {
                     }
                 }
                 ConfigSwitch {
+                    buttonIcon: "layers"
+                    text: Translation.tr("Overlap selected apps when the bar is at the bottom")
+                    enabled: WM.compositor === "hyprland" && Config.options.bar.bottom && !Config.options.bar.vertical
+                    checked: Config.options.bar.appOverlap.enable
+                    onCheckedChanged: Config.options.bar.appOverlap.enable = checked
+                }
+                ConfigTextArea {
+                    id: overlapClassesField
+                    Layout.fillWidth: true
+                    enabled: WM.compositor === "hyprland" && Config.options.bar.bottom
+                        && !Config.options.bar.vertical && Config.options.bar.appOverlap.enable
+                    buttonIcon: "apps"
+                    text: Translation.tr("Applications to overlap")
+                    description: Translation.tr("Exact app IDs or initial window classes, one per line. Confirm to save. The layout changes for all tiled windows on that monitor.")
+                    placeholderText: "org.kde.dolphin\nfirefox"
+                    multiline: true
+                    fieldHeight: 90
+                    value: Config.options.bar.appOverlap.classes.join("\n")
+                    confirmButtonVisible: true
+                    onConfirmClicked: Config.options.bar.appOverlap.classes = [...new Set(
+                        value.split("\n").map(name => name.trim()).filter(name => name.length > 0))]
+                }
+                ConfigComboBox {
+                    enabled: overlapClassesField.enabled
+                    buttonIcon: "add"
+                    text: Translation.tr("Add an open application")
+                    currentValue: ""
+                    model: [{displayName: Translation.tr("Choose an application"), value: ""}].concat(
+                        [...new Set(HyprlandData.windowList.map(win => win.initialClass || win.class).filter(Boolean))]
+                            .sort().map(name => ({displayName: name, value: name})))
+                    onSelected: newValue => {
+                        if (!newValue) return;
+                        const names = overlapClassesField.value.split("\n").map(name => name.trim()).filter(Boolean);
+                        Config.options.bar.appOverlap.classes = [...new Set([...names, newValue])];
+                    }
+                }
+                ConfigSwitch {
                     buttonIcon: "brightness_4"
                     text: Translation.tr("Dim desktop when windows are open")
                     enabled: WM.compositor === "hyprland"
