@@ -6,14 +6,15 @@ import subprocess
 
 repo = Path(__file__).resolve().parents[1]
 qml = (repo / 'modules/ii/bar/Bar.qml').read_text()
-match = re.search(r'                function matchesOverlapWindow\(\) \{[\s\S]*?\n                \}', qml)[0]
-candidate = re.search(r'readonly property var overlapCandidate: \{([\s\S]*?)\n                \}', qml)[1]
-remember = re.search(r'onOverlapCandidateChanged: \{([\s\S]*?)\n                \}', qml)[1]
-disable = re.search(r'onAppOverlapEnabledChanged: \{([\s\S]*?)\n                \}', qml)[1]
+policy = (repo / 'modules/common/models/AppOverlapPolicy.qml').read_text().replace('root.', 'barRoot.')
+match = re.search(r'    function matchesOverlapWindow\(\) \{[\s\S]*?\n    \}', policy)[0]
+candidate = re.search(r'readonly property var overlapCandidate: \{([\s\S]*?)\n    \}', policy)[1]
+remember = re.search(r'onOverlapCandidateChanged: \{([\s\S]*?)\n    \}', policy)[1]
+disable = re.search(r'onAppOverlapEnabledChanged: \{([\s\S]*?)\n    \}', policy)[1]
 gate = re.search(r'readonly property bool appOverlapEnabled: ([\s\S]*?)\n                readonly', qml)[1]
 zone = re.search(r'\n                exclusiveZone: ([\s\S]*?)\n                WlrLayershell', qml)[1]
-assert 'onWantsAppOverlapChanged: appOverlapTimer.restart()' in qml
-assert 'interval: 150\n                    onTriggered: barRoot.appOverlapActive = barRoot.wantsAppOverlap' in qml
+assert 'onWantsAppOverlapChanged: appOverlapTimer.restart()' in policy
+assert 'interval: 150\n        onTriggered: barRoot.appOverlapActive = barRoot.wantsAppOverlap' in policy
 settings = (repo / 'modules/ii/settings/pages/BarConfig.qml').read_text()
 parse = re.search(r'onConfirmClicked: Config.options.bar.appOverlap.classes = (\[\.\.\.new Set\([\s\S]*?\)\])', settings)[1]
 subprocess.run(['node', '-e', r'''
@@ -23,7 +24,8 @@ const WM = {compositor:'hyprland'};
 const ToplevelManager = {activeToplevel:null,toplevels:{values:[]}};
 const HyprlandData = {clientForToplevel: win => win.client};
 const barRoot = {screen:{name:'eDP-1'},overlapMonitor:{activeWorkspace:{id:1}},
-    thisMonitorData:{specialWorkspace:{id:0}},overlapWindow:null};
+    thisMonitorData:{specialWorkspace:{id:0}},overlapWindow:null,
+    get classes(){return Config.options.bar.appOverlap.classes;}};
 const enabled = new Function('Config','WM','return '+process.argv[4]);
 const zone = new Function('appOverlapEnabled','appOverlapActive','contentExclusiveZone','islandTopInset','return '+process.argv[5]);
 let appOverlapActive=false, overlapCandidate=null, now=0, deadline=null;

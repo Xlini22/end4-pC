@@ -1,6 +1,7 @@
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.models
 import qs.modules.common.widgets
 import qs.modules.common.functions
 import QtQuick
@@ -75,7 +76,19 @@ Scope {
             property var monitor: WM.monitorFor(modelData.screen)
             property bool fullscreenOnThisMonitor: WM.fullscreenOnMonitor(monitor?.name)
 
+            AppOverlapPolicy {
+                id: appOverlap
+                screen: dockRoot.screen
+                classes: Config.options.dock.appOverlap.classes
+                appOverlapEnabled: WM.compositor === "hyprland" && dockRoot.position === "bottom"
+                    && Config.options.dock.appOverlap.enable
+            }
+            readonly property bool appOverlapActive: appOverlap.appOverlapEnabled && appOverlap.appOverlapActive
+            WlrLayershell.layer: appOverlapActive ? WlrLayer.Overlay : WlrLayer.Top
+
             property bool reveal: {
+                if (appOverlapActive)
+                    return true
                 if (dockContextMenu.isOpen)
                     return true
                 if (DockMagnify.entries.some(entry => entry.item?.launching && entry.item.QsWindow.window === dockRoot))
@@ -89,7 +102,7 @@ Scope {
                     || (!ToplevelManager.activeToplevel?.activated)
             }
 
-            exclusiveZone: (root.pinned && !fullscreenOnThisMonitor)
+            exclusiveZone: (root.pinned && !fullscreenOnThisMonitor && !appOverlapActive)
                 ? DockStyle.zone
                 : 0
 

@@ -805,6 +805,43 @@ ContentPage {
                     checked: Config.options.dock.pinnedOnStartup
                     onCheckedChanged: { Config.options.dock.pinnedOnStartup = checked }
                 }
+                ConfigSwitch {
+                    buttonIcon: "layers"
+                    text: Translation.tr("Keep the bottom dock above selected apps")
+                    enabled: WM.compositor === "hyprland" && Config.options.dock.position === "bottom"
+                    checked: Config.options.dock.appOverlap.enable
+                    onCheckedChanged: Config.options.dock.appOverlap.enable = checked
+                }
+                ConfigTextArea {
+                    id: dockOverlapClassesField
+                    Layout.fillWidth: true
+                    enabled: WM.compositor === "hyprland" && Config.options.dock.position === "bottom"
+                        && Config.options.dock.appOverlap.enable
+                    buttonIcon: "apps"
+                    text: Translation.tr("Applications to overlap")
+                    description: Translation.tr("Exact app IDs or initial window classes, one per line. Confirm to save. The dock stays visible even in fullscreen, without reserving space.")
+                    placeholderText: "org.kde.dolphin\nfirefox"
+                    multiline: true
+                    fieldHeight: 90
+                    value: Config.options.dock.appOverlap.classes.join("\n")
+                    confirmButtonVisible: true
+                    onConfirmClicked: Config.options.dock.appOverlap.classes = [...new Set(
+                        value.split("\n").map(name => name.trim()).filter(name => name.length > 0))]
+                }
+                ConfigComboBox {
+                    enabled: dockOverlapClassesField.enabled
+                    buttonIcon: "add"
+                    text: Translation.tr("Add an open application")
+                    currentValue: ""
+                    model: [{displayName: Translation.tr("Choose an application"), value: ""}].concat(
+                        [...new Set(HyprlandData.windowList.map(win => win.initialClass || win.class).filter(Boolean))]
+                            .sort().map(name => ({displayName: name, value: name})))
+                    onSelected: newValue => {
+                        if (!newValue) return;
+                        const names = dockOverlapClassesField.value.split("\n").map(name => name.trim()).filter(Boolean);
+                        Config.options.dock.appOverlap.classes = [...new Set([...names, newValue])];
+                    }
+                }
             }
 
             ContentSubsection {

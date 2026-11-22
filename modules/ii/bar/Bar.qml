@@ -8,6 +8,7 @@ import Quickshell.Hyprland
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.models
 import qs.modules.common.widgets
 
 Scope {
@@ -83,42 +84,12 @@ Scope {
                 exclusionMode: ExclusionMode.Ignore
                 readonly property bool appOverlapEnabled: WM.compositor === "hyprland"
                     && Config.options.bar.bottom && !Config.options.bar.vertical && Config.options.bar.appOverlap.enable
-                readonly property var overlapMonitor: appOverlapEnabled ? Hyprland.monitorFor(barRoot.screen) : null
-                readonly property var overlapCandidate: {
-                    const win = appOverlapEnabled ? ToplevelManager.activeToplevel : null;
-                    return win && win.HyprlandToplevel?.handle?.monitor?.name === barRoot.screen?.name ? win : null;
-                }
-                // Keep the last client when a layer-shell popup takes focus, or another monitor is focused.
-                property var overlapWindow: null
-                onOverlapCandidateChanged: {
-                    if (overlapCandidate) overlapWindow = overlapCandidate;
-                }
-                function matchesOverlapWindow() {
-                    const win = barRoot.overlapWindow;
-                    if (!barRoot.appOverlapEnabled || !win || !ToplevelManager.toplevels.values.includes(win)) return false;
-                    const hypr = win.HyprlandToplevel?.handle;
-                    if (hypr?.monitor?.name !== barRoot.screen?.name) return false;
-                    const client = HyprlandData.clientForToplevel(win);
-                    const workspace = hypr.workspace?.id;
-                    const special = barRoot.thisMonitorData?.specialWorkspace?.id ?? 0;
-                    if (!client?.pinned && workspace !== barRoot.overlapMonitor?.activeWorkspace?.id
-                        && !(special !== 0 && workspace === special)) return false;
-                    return Config.options.bar.appOverlap.classes.some(name =>
-                        name.length > 0 && (name === win.appId || name === client?.initialClass));
-                }
-                readonly property bool wantsAppOverlap: matchesOverlapWindow()
-                property bool appOverlapActive: false
-                onAppOverlapEnabledChanged: {
-                    if (!appOverlapEnabled) {
-                        appOverlapTimer.stop();
-                        appOverlapActive = false;
-                    }
-                }
-                onWantsAppOverlapChanged: appOverlapTimer.restart()
-                Timer {
-                    id: appOverlapTimer
-                    interval: 150
-                    onTriggered: barRoot.appOverlapActive = barRoot.wantsAppOverlap
+                readonly property bool appOverlapActive: appOverlap.appOverlapActive
+                AppOverlapPolicy {
+                    id: appOverlap
+                    screen: barRoot.screen
+                    classes: Config.options.bar.appOverlap.classes
+                    appOverlapEnabled: barRoot.appOverlapEnabled
                 }
                 property int normalExclusiveZone: (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows))
                     ? 0
@@ -182,12 +153,12 @@ Scope {
                 margins {
                     top: (Config.options.bar.cornerStyle === 3 ? 5 : 0) - barRoot.islandTopInset
                     right: (Config.options.interactions.deadPixelWorkaround.enable && barRoot.anchors.right) * -1
-                    bottom: (Config.options.interactions.deadPixelWorkaround.enable && barRoot.anchors.bottom) * -1 || Config.options.bar.cornerStyle === 3 ? 5 : 0
+                    bottom: ((Config.options.interactions.deadPixelWorkaround.enable && barRoot.anchors.bottom) * -1 || Config.options.bar.cornerStyle === 3 ? 5 : 0)
+                        + (barRoot.appOverlapEnabled && barRoot.appOverlapActive ? 8 : 0)
                 }
 
                 // Include in focus grab
                 Component.onCompleted: {
-                    if (overlapCandidate) overlapWindow = overlapCandidate;
                     GlobalFocusGrab.addPersistent(barRoot);
                     GlobalFocusGrab.addBarWindow(barRoot);
                 }

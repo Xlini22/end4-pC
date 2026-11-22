@@ -811,6 +811,10 @@ Singleton {
 
             property JsonObject dock: JsonObject {
                 property bool enable: false
+                property JsonObject appOverlap: JsonObject {
+                    property bool enable: false
+                    property list<string> classes: []
+                }
                 property bool showBackground: true
                 property string style: "float" // float | hug
                 property string position: "bottom" // bottom | left | right
