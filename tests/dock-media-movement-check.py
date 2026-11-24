@@ -9,7 +9,9 @@ media = (repo / 'modules/ii/dock/DockMedia.qml').read_text()
 engine = (repo / 'modules/common/DockMagnify.qml').read_text()
 assert 'Component.onCompleted: root.magnifyId = DockMagnify.register(root, false)' in media
 assert 'Component.onDestruction: DockMagnify.unregister(root.magnifyId)' in media
-assert 'x: root.magnifyValue?.shift ?? 0' in media
+shift = re.search(r'transform: Translate \{\s*x: ([^\n]+)', media)[1]
+hover = re.search(r'onHoveredChanged: \{([\s\S]*?)\n        \}', media)[1]
+assert 'enabled: DockStyle.magnifying' in media
 assert not re.search(r'^    scale:', media)
 functions = '\n'.join(re.search(r'    function ' + name + r'\([\s\S]*?\n    \}', engine)[0]
                       for name in ['register', 'unregister', 'clear', 'recompute'])
@@ -56,5 +58,18 @@ for(const edge of [music.x,music.x+music.width]){
 root.amplitude=0;recompute();assert.deepEqual(root.values,{});
 root.amplitude=1;DockStyle.magnifying=false;recompute();assert.deepEqual(root.values,{});
 unregister(ids[0]);assert.ok(!root.entries.some(entry=>entry.id===ids[0]));
-'''.replace('FUNCTIONS', functions)], check=True)
-print('dock media: OK (adjacent-edge movement, no distant-app jitter, continuous edges, original icon curve and reset)')
+// Capture the entry-side position once and retain it throughout the card hover.
+const readShift=new Function('root','magnifyHover','return '+process.argv[1]);
+const hoverChanged=new Function('root','hovered',process.argv[2]);
+const card={magnifyHoverShift:0,magnifyValue:{shift:0}},pointer={hovered:false};
+for(const entryShift of [-18,18]){
+ card.magnifyValue={shift:entryShift};pointer.hovered=true;hoverChanged(card,true);
+ for(const next of [-20,-10,0,10,20]){
+  card.magnifyValue={shift:next};assert.equal(readShift(card,pointer),entryShift);
+ }
+ pointer.hovered=false;hoverChanged(card,false);
+ assert.equal(readShift(card,pointer),20);
+}
+card.magnifyValue=null;assert.equal(readShift(card,pointer),0);
+'''.replace('FUNCTIONS', functions), shift, hover], check=True)
+print('dock media: OK (entry-side position held during hover, adjacent-edge movement and original icon curve)')

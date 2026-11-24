@@ -17,8 +17,16 @@ Item {
 
     property int magnifyId: -1
     readonly property var magnifyValue: DockStyle.magnifying ? DockMagnify.values[root.magnifyId] : null
+    property real magnifyHoverShift: 0
+    HoverHandler {
+        id: magnifyHover
+        enabled: DockStyle.magnifying
+        onHoveredChanged: {
+            if (hovered) root.magnifyHoverShift = root.magnifyValue?.shift ?? 0;
+        }
+    }
     transform: Translate {
-        x: root.magnifyValue?.shift ?? 0
+        x: magnifyHover.hovered ? root.magnifyHoverShift : (root.magnifyValue?.shift ?? 0)
     }
     Component.onCompleted: root.magnifyId = DockMagnify.register(root, false)
     Component.onDestruction: DockMagnify.unregister(root.magnifyId)
