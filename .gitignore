@@ -2,3 +2,11 @@ translations/es_MX.json
 __pycache__/
 *.pyc
 .pytest_cache/
+# Local captures, build trees, plugin binaries and installation backups.
+/diagnostics/*
+!/diagnostics/wallpaper-performance-20261124/
+/diagnostics/wallpaper-performance-20261124/*
+!/diagnostics/wallpaper-performance-20261124/no-reload-candidate/
+/diagnostics/wallpaper-performance-20261124/no-reload-candidate/*
+# Reproducible migration/rollback helper exercised by the CPU regression test.
+!/diagnostics/wallpaper-performance-20261124/no-reload-candidate/install.py
