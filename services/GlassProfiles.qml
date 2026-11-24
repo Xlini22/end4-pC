@@ -10,7 +10,7 @@ Singleton {
     readonly property var keys: ["bar", "dock", "sidebar", "settings", "lockscreen", "terminal"]
     readonly property string signature: JSON.stringify(keys.map(key => {
         const p = profile(key)
-        return [key, p.enable, p.rim, p.refraction, p.blur, p.reflections, p.darkening, p.automaticDarkening]
+        return [key, p.enable, p.rim, p.refraction, p.blur, p.reflections, p.darkening, p.automaticDarkening, p.automaticDarkeningStrength]
     }))
 
     function profile(key) { return Config.options.background.widgets.glass.elements[key] ?? null }
@@ -34,7 +34,10 @@ Singleton {
     function defaults(key) {
         return { enable: key !== "terminal", rim: key === "bar" ? 24 : 7,
             refraction: key === "bar" ? 200 : 135,
-            blur: key === "bar" ? 1 : key === "lockscreen" ? Config.options.background.widgets.glass.haze : key === "terminal" ? 3 : Math.max(8, Config.options.background.widgets.glass.haze), reflections: 50, darkening: 0, automaticDarkening: false }
+            blur: key === "bar" ? 1 : key === "lockscreen" ? Config.options.background.widgets.glass.haze : key === "terminal" ? 3 : Math.max(8, Config.options.background.widgets.glass.haze), reflections: 50, darkening: 0, automaticDarkening: false, automaticDarkeningStrength: 100 }
+    }
+    function darkeningStrength(profile) {
+        return Number.isFinite(profile?.automaticDarkeningStrength) ? Math.max(0, Math.min(100, profile.automaticDarkeningStrength)) / 100 : 1
     }
     function reset(key) {
         const p = profile(key), values = defaults(key)

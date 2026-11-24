@@ -1,5 +1,7 @@
 import QtQuick
+import "../functions/DarkeningWindow.js" as DarkeningWindow
 import qs
+import qs.services
 import qs.modules.common
 
 Item {
@@ -11,8 +13,10 @@ Item {
     property bool topBarOptics: false
     property var opticalProfile: null
     property real frost: 0
-    property bool debounceDarkening: false
     property real darkening: Number.isFinite(opticalProfile?.darkening) ? Math.max(0, Math.min(100, opticalProfile.darkening)) / 100 : 0
+    property real automaticDarkeningStrength: GlassProfiles.darkeningStrength(opticalProfile)
+    Behavior on automaticDarkeningStrength { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
+    property bool automaticDarkeningVisible: true
     property real automaticDarkening: opticalProfile?.automaticDarkening ? 1 : 0
     Behavior on darkening { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
     Behavior on automaticDarkening { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
@@ -48,7 +52,7 @@ Item {
     }
 
     function darkeningStatus() {
-        return { enabled: root.debounceDarkening, automatic: root.automaticDarkening,
+        return { intervalMs: 1500, mode: "temporal-mean", automatic: root.automaticDarkening,
             rect: [root.sourceRect.x, root.sourceRect.y, root.sourceRect.width, root.sourceRect.height],
             detail: lumaState.item?.status() ?? null }
     }
@@ -65,94 +69,89 @@ Item {
 
     Loader {
         id: lumaState
-        active: root.debounceDarkening && root.automaticDarkening > 0
+        active: root.automaticDarkening > 0
         sourceComponent: Item {
             id: state
-            property var previousTexture: previous
-            property var targetTexture: target
+            property var previousTexture: history
+            property var targetTexture: history
+            property var timeState: DarkeningWindow.create()
+            property vector4d step: Qt.vector4d(0, 0, -1, -1)
             property real blend: 1
-            property int motionSerial: 0
-            property int sampleSerial: -1
             property bool busy: false
-
-            function status() {
-                return { motionSerial, sampleSerial, busy, waiting: settled.running,
-                    fading: fade.running, blend, targetLive: target.live, previousLive: previous.live }
-            }
-            function moved() {
-                motionSerial++
-                fade.stop()
-                settled.restart()
+            property bool initializing: true
+            property bool restartPending: false
+            readonly property bool samplingVisible: root.visible && root.automaticDarkeningVisible
+            function visibilityChanged() {
+                fade.stop();
+                restartPending = true;
+                if (samplingVisible) { initializing = true; sample(); }
             }
             Connections {
                 target: root
-                function onSourceRectChanged() { state.moved() }
-                function onHazeChanged() { state.moved() }
-                function onBlurSourceChanged() { state.moved() }
+                function onVisibleChanged() { state.visibilityChanged() }
+                function onAutomaticDarkeningVisibleChanged() { state.visibilityChanged() }
             }
-            Component.onCompleted: moved()
-            Timer {
-                id: settled
-                interval: 1500
-                repeat: false
-                onTriggered: {
-                    if (state.busy) { restart(); return }
-                    state.busy = true
-                    state.sampleSerial = state.motionSerial
-                    previous.scheduleUpdate()
+
+            function status() {
+                return { busy, intervalMs: 1500, published: timeState.published, fading: fade.running, blend };
+            }
+            function sample() {
+                if (busy || !samplingVisible) return;
+                if (restartPending) {
+                    timeState = DarkeningWindow.create();
+                    restartPending = false;
                 }
+                const plan = DarkeningWindow.advance(timeState, Date.now() / 1000);
+                if (plan[2] > 0) fade.pause();
+                step = Qt.vector4d(plan[0], plan[1], plan[2], plan[2] < 0 ? -1 : blend);
+                busy = true;
+                history.scheduleUpdate();
+            }
+            Component.onCompleted: sample()
+            Timer {
+                interval: 100
+                running: state.samplingVisible
+                repeat: true
+                onTriggered: state.sample()
             }
             NumberAnimation {
                 id: fade
                 target: state
                 property: "blend"
-                from: 0
                 to: 1
                 duration: 800
                 easing.type: Easing.InOutQuad
             }
             ShaderEffect {
                 id: probe
+                blending: false
                 width: 1; height: 1
                 visible: false
                 property var backdrop: capture
+                property var historyLuma: history
                 property real haze: root.haze
-                vertexShader: Qt.resolvedUrl("shaders/glassLuma.vert.qsb")
-                fragmentShader: Qt.resolvedUrl("shaders/glassLuma.frag.qsb")
+                property vector4d temporalStep: state.step
+                vertexShader: Qt.resolvedUrl("shaders/glassLumaTemporal.vert.qsb")
+                fragmentShader: Qt.resolvedUrl("shaders/glassLumaTemporal.frag.qsb")
             }
             ShaderEffectSource {
-                id: target
+                id: history
                 sourceItem: probe
                 textureSize: Qt.size(1, 1)
-                // ponytail: only 1-pixel luma is held; the optical capture stays live.
-                live: !settled.running && !state.busy && !fade.running
-                visible: false
-                onScheduledUpdateCompleted: {
-                    if (!state.busy) return
-                    state.busy = false
-                    if (state.sampleSerial === state.motionSerial && !settled.running) fade.start()
-                }
-            }
-            ShaderEffect {
-                id: blended
-                width: 1; height: 1
-                visible: false
-                property var previousLuma: previous
-                property var targetLuma: target
-                property real blend: state.blend
-                fragmentShader: Qt.resolvedUrl("shaders/glassLumaBlend.frag.qsb")
-            }
-            ShaderEffectSource {
-                id: previous
-                sourceItem: blended
-                textureSize: Qt.size(1, 1)
+                format: ShaderEffectSource.RGBA32F
                 recursive: true
                 live: false
                 visible: false
                 onScheduledUpdateCompleted: {
-                    state.blend = 0
-                    if (state.sampleSerial === state.motionSerial && !settled.running) target.scheduleUpdate()
-                    else state.busy = false
+                    state.busy = false;
+                    if (state.restartPending) { state.sample(); return; }
+                    if (!state.samplingVisible) return;
+                    if (state.step.z < 0) { state.blend = 1; state.initializing = false; }
+                    if (state.step.z > 0) {
+                        fade.stop();
+                        state.blend = 0;
+                        fade.start();
+                    }
                 }
             }
         }
@@ -165,7 +164,8 @@ Item {
         property var backdrop: capture
         property var previousLuma: lumaState.item?.previousTexture ?? capture
         property var targetLuma: lumaState.item?.targetTexture ?? capture
-        property real holdDarkening: lumaState.item ? 1 : 0
+        property real holdDarkening: lumaState.item && !lumaState.item.initializing ? 1 : 0
+        property real automaticDarkeningStrength: root.automaticDarkeningStrength
         property real darkeningBlend: lumaState.item?.blend ?? 1
         property vector2d size: Qt.vector2d(width, height)
         property vector4d radii: Qt.vector4d(root.topLeftRadius, root.topRightRadius, root.bottomRightRadius, root.bottomLeftRadius)

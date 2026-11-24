@@ -9,6 +9,8 @@ import Quickshell.Hyprland
 
 Scope {
     id: root
+    readonly property bool preview: GlobalStates.glassyPreviewTargets.includes("sidebar")
+    readonly property bool open: GlobalStates.sidebarRightOpen || preview
     property int sidebarWidth: Appearance.sizes.sidebarWidth
     readonly property bool centerOnly: Config.options.bar.layouts.leftLayout.length === 0 && Config.options.bar.layouts.rightLayout.length === 0 && !Config.options.bar.vertical
     readonly property real barCenterOnlyOffset: (Config.options.bar.centerOnlyReserveFrame && root.centerOnly)
@@ -22,12 +24,12 @@ Scope {
         property bool reallyVisible: false
         visible: reallyVisible
 
-        Component.onCompleted: reallyVisible = GlobalStates.sidebarRightOpen
+        Component.onCompleted: reallyVisible = root.open
 
         Connections {
-            target: GlobalStates
-            function onSidebarRightOpenChanged() {
-                if (GlobalStates.sidebarRightOpen) {
+            target: root
+            function onOpenChanged() {
+                if (root.open) {
                     closeAnimTimer.stop();
                     panelWindow.reallyVisible = true;
                 } else if (panelWindow.animatedEntrance) {
@@ -49,7 +51,7 @@ Scope {
         }
 
         onVisibleChanged: {
-            if (visible) {
+            if (visible && !root.preview) {
                 GlobalFocusGrab.addDismissable(panelWindow);
             } else {
                 GlobalFocusGrab.removeDismissable(panelWindow);
@@ -57,16 +59,24 @@ Scope {
         }
 
         Connections {
+            target: root
+            function onPreviewChanged() {
+                if (panelWindow.visible && !root.preview) GlobalFocusGrab.addDismissable(panelWindow);
+                else GlobalFocusGrab.removeDismissable(panelWindow);
+            }
+        }
+        Connections {
             target: GlobalFocusGrab
             function onDismissed() {
-                panelWindow.hide();
+                if (!root.preview) panelWindow.hide();
             }
         }
 
+        mask: Region { item: root.preview ? null : panelWindow.contentItem }
         exclusiveZone: 0
         implicitWidth: sidebarWidth
         WlrLayershell.namespace: "quickshell:sidebarRight"
-        WlrLayershell.keyboardFocus: GlobalStates.sidebarRightOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: !root.preview && GlobalStates.sidebarRightOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         color: "transparent"
 
         anchors {
@@ -125,7 +135,7 @@ Scope {
                 width: sidebarWidth
                 clip: true
 
-                readonly property bool open: GlobalStates.sidebarRightOpen
+                readonly property bool open: root.open
                 property real cachedParentWidth: sidebarWidth
                 readonly property real restX: cachedParentWidth - width
                 x: panelWindow.animatedEntrance ? (open ? restX : cachedParentWidth) : restX
@@ -173,7 +183,7 @@ Scope {
                     focus: GlobalStates.sidebarRightOpen
                     Keys.onPressed: event => {
                         if (event.key === Qt.Key_Escape) {
-                            panelWindow.hide();
+                            if (!root.preview) panelWindow.hide();
                         }
                     }
 

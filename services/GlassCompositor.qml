@@ -43,6 +43,10 @@ Singleton {
     property bool windowFrostedAvailable: false
     property bool profilesAvailable: false
     property bool darkeningAvailable: false
+    property bool darkeningVisibilityAvailable: false
+    property bool sectionDarkeningAvailable: false
+    property bool darkeningStrengthAvailable: false
+    property int materialSerial: 0
     property bool uniformDarkeningAvailable: false
     property bool contrastAvailable: false
     property bool barVisibilityAvailable: false
@@ -150,7 +154,7 @@ Singleton {
             }
             if (brightest >= 0) reference = brightest
         }
-        const darkness = dimming.automaticDarkening ? Math.max(0, 1 - .38 / Math.max(reference, .38))
+        const darkness = dimming.automaticDarkening ? Math.max(0, 1 - .38 / Math.max(reference, .38)) * GlassProfiles.darkeningStrength(dimming)
             : Math.max(0, Math.min(100, dimming.darkening)) / 100
         const shaded = encoded * (1 - darkness)
         luminance = shaded <= .04045 ? shaded / 12.92 : Math.pow((shaded + .055) / 1.055, 2.4)
@@ -236,6 +240,10 @@ Singleton {
     readonly property bool active: enabled && available
 
     function registerGlass(item) {
+        if (!item.nativeMaterialId) {
+            if (root.materialSerial === 2147483647) throw new Error("Glassy material ID limit reached")
+            item.nativeMaterialId = ++root.materialSerial
+        }
         glassItems = glassItems.concat([item])
         queueRegions()
     }
@@ -260,20 +268,26 @@ Singleton {
                 let surface = surfaces.find(entry => entry.win === region.win)
                 if (!surface) {
                     surface = { win: region.win, name: region.name, monitor: region.monitor,
-                        width: region.win.width, height: region.win.height, regions: [] }
+                        width: region.win.width, height: region.win.height, darkeningVisible: false, regions: [] }
                     surfaces.push(surface)
                 }
+                surface.darkeningVisible = surface.darkeningVisible || region.darkeningVisible !== false
                 surface.regions.push(region)
             }
         }
-        const values = ["end4glass", Quickshell.processId, enhancedActive ? (frostedAvailable ? 2 : 1) : 0, surfaces.length]
+        const values = ["end4glass", Quickshell.processId, enhancedActive ? (sectionDarkeningAvailable ? 5 : darkeningStrengthAvailable ? 4 : darkeningVisibilityAvailable ? 3 : frostedAvailable ? 2 : 1) : 0, surfaces.length]
         for (const surface of surfaces) {
             // Modal materials cover underlying cards; preserve nesting within each priority.
             surface.regions.sort((a, b) => a.priority - b.priority
                 || b.values[2] * b.values[3] - a.values[2] * a.values[3])
             if (surface.regions.length > 32 || /\s/.test(surface.name + surface.monitor)) return
             values.push(surface.name, surface.monitor, surface.width, surface.height, surface.regions.length)
-            for (const region of surface.regions) values.push(...region.values)
+            if (darkeningVisibilityAvailable) values.push(surface.darkeningVisible ? 1 : 0)
+            for (const region of surface.regions) {
+                if (darkeningStrengthAvailable) values.push(region.id)
+                values.push(...region.values)
+                if (sectionDarkeningAvailable) values.push(...region.section)
+            }
         }
         const command = values.join(" ")
         if (command === regionsApplied || command === regionsRejected || command.length > 32768) return
@@ -333,6 +347,10 @@ Singleton {
                 const p = GlassProfiles.profile(key)
                 values.push(key, Number.isFinite(p.darkening) ? Math.max(0, Math.min(100, p.darkening)) / 100 : 0, p.automaticDarkening ? 1 : 0)
             }
+        }
+        if (darkeningAvailable && darkeningStrengthAvailable) {
+            values.push("strength")
+            for (const key of GlassProfiles.keys) values.push(key, GlassProfiles.darkeningStrength(GlassProfiles.profile(key)))
         }
         const command = values.join(" ")
         if (command === profilesApplied) return
@@ -426,7 +444,7 @@ Singleton {
     }
 
     readonly property string settings: JSON.stringify([
-        GlassProfiles.signature, Config.options.background.widgets.glass.enhanced, root.profilesAvailable, root.darkeningAvailable,
+        GlassProfiles.signature, Config.options.background.widgets.glass.enhanced, root.profilesAvailable, root.darkeningAvailable, root.darkeningStrengthAvailable,
         Config.options.background.widgets.glass.haze, Config.options.background.widgets.glass.pull,
         Config.options.background.widgets.glass.split, Config.options.background.widgets.glass.sheen,
         Config.options.background.widgets.glass.vividness, Appearance.m3colors.darkmode,
@@ -487,6 +505,9 @@ Singleton {
                     root.windowFrostedAvailable = result.windowFrosted ?? false
                     root.profilesAvailable = result.profiles ?? false
                     root.darkeningAvailable = result.darkening ?? false
+                    root.darkeningVisibilityAvailable = result.darkeningVisibility ?? false
+                    root.sectionDarkeningAvailable = result.sectionDarkening ?? false
+                    root.darkeningStrengthAvailable = result.darkeningStrength ?? false
                     root.uniformDarkeningAvailable = result.uniformDarkening ?? false
                     root.contrastAvailable = result.contrast ?? false
                     root.barVisibilityAvailable = result.barVisibility ?? false

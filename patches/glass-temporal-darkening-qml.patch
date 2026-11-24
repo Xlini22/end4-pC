@@ -1,0 +1,651 @@
+diff --git a/modules/common/functions/DarkeningWindow.js b/modules/common/functions/DarkeningWindow.js
+new file mode 100644
+index 0000000..0f6e92b
+--- /dev/null
++++ b/modules/common/functions/DarkeningWindow.js
+@@ -0,0 +1,23 @@
++.pragma library
++
++function create() { return {start: 0, last: 0, initialized: false, published: false}; }
++
++function advance(state, now) {
++    if (!state.initialized || now < state.last) {
++        state.start = state.last = now;
++        state.initialized = true;
++        state.published = false;
++        return [0, 0, -1, 0];
++    }
++    const elapsed = now - state.start;
++    const windows = Math.floor(elapsed / 1.5);
++    let before = (now - state.last) / 1.5, after = 0;
++    if (windows >= 1) {
++        before = Math.max(0, Math.min(1, (state.start + 1.5 - state.last) / 1.5));
++        state.start += windows * 1.5;
++        after = Math.max(0, Math.min(1, (now - state.start) / 1.5));
++        state.published = true;
++    }
++    state.last = now;
++    return [before, after, Math.min(windows, 2), 0];
++}
+diff --git a/modules/common/widgets/FrostedGlass.qml b/modules/common/widgets/FrostedGlass.qml
+index 94f114d..5fdc45b 100644
+--- a/modules/common/widgets/FrostedGlass.qml
++++ b/modules/common/widgets/FrostedGlass.qml
+@@ -1,4 +1,5 @@
+ import QtQuick
++import "../functions/DarkeningWindow.js" as DarkeningWindow
+ import qs
+ import qs.modules.common
+ 
+@@ -11,8 +12,8 @@ Item {
+     property bool topBarOptics: false
+     property var opticalProfile: null
+     property real frost: 0
+-    property bool debounceDarkening: false
+     property real darkening: Number.isFinite(opticalProfile?.darkening) ? Math.max(0, Math.min(100, opticalProfile.darkening)) / 100 : 0
++    property bool automaticDarkeningVisible: true
+     property real automaticDarkening: opticalProfile?.automaticDarkening ? 1 : 0
+     Behavior on darkening { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
+     Behavior on automaticDarkening { NumberAnimation { duration: 800; easing.type: Easing.InOutQuad } }
+@@ -48,7 +49,7 @@ Item {
+     }
+ 
+     function darkeningStatus() {
+-        return { enabled: root.debounceDarkening, automatic: root.automaticDarkening,
++        return { intervalMs: 1500, mode: "temporal-mean", automatic: root.automaticDarkening,
+             rect: [root.sourceRect.x, root.sourceRect.y, root.sourceRect.width, root.sourceRect.height],
+             detail: lumaState.item?.status() ?? null }
+     }
+@@ -65,94 +66,90 @@ Item {
+ 
+     Loader {
+         id: lumaState
+-        active: root.debounceDarkening && root.automaticDarkening > 0
++        active: root.automaticDarkening > 0
+         sourceComponent: Item {
+             id: state
+-            property var previousTexture: previous
+-            property var targetTexture: target
++            property var previousTexture: history
++            property var targetTexture: history
++            property var timeState: DarkeningWindow.create()
++            property vector4d step: Qt.vector4d(0, 0, -1, 0)
+             property real blend: 1
+-            property int motionSerial: 0
+-            property int sampleSerial: -1
+             property bool busy: false
+-
+-            function status() {
+-                return { motionSerial, sampleSerial, busy, waiting: settled.running,
+-                    fading: fade.running, blend, targetLive: target.live, previousLive: previous.live }
+-            }
+-            function moved() {
+-                motionSerial++
+-                fade.stop()
+-                settled.restart()
++            property bool historyReady: false
++            property bool restartPending: false
++            readonly property bool samplingVisible: root.visible && root.automaticDarkeningVisible
++            function visibilityChanged() {
++                fade.stop();
++                restartPending = true;
++                if (samplingVisible) sample();
+             }
+             Connections {
+                 target: root
+-                function onSourceRectChanged() { state.moved() }
+-                function onHazeChanged() { state.moved() }
+-                function onBlurSourceChanged() { state.moved() }
++                function onVisibleChanged() { state.visibilityChanged() }
++                function onAutomaticDarkeningVisibleChanged() { state.visibilityChanged() }
+             }
+-            Component.onCompleted: moved()
+-            Timer {
+-                id: settled
+-                interval: 1500
+-                repeat: false
+-                onTriggered: {
+-                    if (state.busy) { restart(); return }
+-                    state.busy = true
+-                    state.sampleSerial = state.motionSerial
+-                    previous.scheduleUpdate()
++
++            function status() {
++                return { busy, intervalMs: 1500, published: timeState.published, fading: fade.running, blend };
++            }
++            function sample() {
++                if (busy || !samplingVisible) return;
++                const resumeBlend = restartPending && historyReady ? blend : -1;
++                if (restartPending) {
++                    timeState = DarkeningWindow.create();
++                    restartPending = false;
+                 }
++                const plan = DarkeningWindow.advance(timeState, Date.now() / 1000);
++                step = Qt.vector4d(plan[0], plan[1], plan[2], resumeBlend);
++                busy = true;
++                history.scheduleUpdate();
++            }
++            Component.onCompleted: sample()
++            Timer {
++                interval: 100
++                running: state.samplingVisible
++                repeat: true
++                onTriggered: state.sample()
+             }
+             NumberAnimation {
+                 id: fade
+                 target: state
+                 property: "blend"
+-                from: 0
+                 to: 1
+                 duration: 800
+                 easing.type: Easing.InOutQuad
+             }
+             ShaderEffect {
+                 id: probe
++                blending: false
+                 width: 1; height: 1
+                 visible: false
+                 property var backdrop: capture
++                property var historyLuma: history
+                 property real haze: root.haze
+-                vertexShader: Qt.resolvedUrl("shaders/glassLuma.vert.qsb")
+-                fragmentShader: Qt.resolvedUrl("shaders/glassLuma.frag.qsb")
++                property vector4d temporalStep: state.step
++                vertexShader: Qt.resolvedUrl("shaders/glassLumaTemporal.vert.qsb")
++                fragmentShader: Qt.resolvedUrl("shaders/glassLumaTemporal.frag.qsb")
+             }
+             ShaderEffectSource {
+-                id: target
++                id: history
+                 sourceItem: probe
+                 textureSize: Qt.size(1, 1)
+-                // ponytail: only 1-pixel luma is held; the optical capture stays live.
+-                live: !settled.running && !state.busy && !fade.running
+-                visible: false
+-                onScheduledUpdateCompleted: {
+-                    if (!state.busy) return
+-                    state.busy = false
+-                    if (state.sampleSerial === state.motionSerial && !settled.running) fade.start()
+-                }
+-            }
+-            ShaderEffect {
+-                id: blended
+-                width: 1; height: 1
+-                visible: false
+-                property var previousLuma: previous
+-                property var targetLuma: target
+-                property real blend: state.blend
+-                fragmentShader: Qt.resolvedUrl("shaders/glassLumaBlend.frag.qsb")
+-            }
+-            ShaderEffectSource {
+-                id: previous
+-                sourceItem: blended
+-                textureSize: Qt.size(1, 1)
++                format: ShaderEffectSource.RGBA32F
+                 recursive: true
+                 live: false
+                 visible: false
+                 onScheduledUpdateCompleted: {
+-                    state.blend = 0
+-                    if (state.sampleSerial === state.motionSerial && !settled.running) target.scheduleUpdate()
+-                    else state.busy = false
++                    state.busy = false;
++                    state.historyReady = true;
++                    if (state.restartPending) { state.sample(); return; }
++                    if (!state.samplingVisible) return;
++                    if (state.step.z < 0) state.blend = 1;
++                    if (state.step.z > 0) {
++                        fade.stop();
++                        state.blend = 0;
++                        fade.start();
++                    }
+                 }
+             }
+         }
+diff --git a/modules/common/widgets/WindowGlass.qml b/modules/common/widgets/WindowGlass.qml
+index 5d0cfd2..0dd8386 100644
+--- a/modules/common/widgets/WindowGlass.qml
++++ b/modules/common/widgets/WindowGlass.qml
+@@ -34,6 +34,8 @@ Item {
+     readonly property var darkeningProfile: GlassProfiles.profile(
+         ["quickshell:popup", "quickshell:popupMorph"].includes(win?.WlrLayershell.namespace) ? "bar" : profileKey)
+     readonly property real materialFrost: opticalProfile && frost > 0 ? opticalProfile.blur : frost
++    property bool automaticDarkeningVisible: win?.automaticDarkeningVisible ?? true
++    onAutomaticDarkeningVisibleChanged: GlassCompositor.queueRegions()
+     readonly property bool live: (opticalProfile?.enable ?? true) && glassEnabled && (Config.options?.background?.widgets?.glass?.enable ?? false)
+     readonly property bool tracking: live && visible && (win?.visible ?? true)
+     readonly property bool windowBackdrop: live && Config.options.background.widgets.glass.source === "windows"
+@@ -133,7 +135,7 @@ Item {
+         // Rounded radii must still fit a thin visible slice during scrolling.
+         const maxRadius = Math.floor(Math.min(rounded[2], rounded[3]) * 500) / 1000
+         for (let i = 4; i < 8; i++) rounded[i] = Math.min(rounded[i], maxRadius)
+-        return { win, priority: nativePriority, name: floating ? "quickshell:dashboard" : win.WlrLayershell.namespace, monitor: win.screen.name,
++        return { win, darkeningVisible: root.automaticDarkeningVisible, priority: nativePriority, name: floating ? "quickshell:dashboard" : win.WlrLayershell.namespace, monitor: win.screen.name,
+             values: rounded }
+     }
+     readonly property string nativeShape: JSON.stringify([topLeftRadius, topRightRadius, bottomRightRadius,
+@@ -362,11 +364,11 @@ Item {
+                 id: opticalGlass
+                 anchors.fill: parent
+                 blurSource: backdrop
+-                debounceDarkening: root.profileKey === "settings"
+                 clearMaterial: root.clearMaterial
+                 opticalProfile: root.opticalProfile
+                 darkening: root.darkeningProfile?.enable && Number.isFinite(root.darkeningProfile.darkening)
+                     ? Math.max(0, Math.min(100, root.darkeningProfile.darkening)) / 100 : 0
++                automaticDarkeningVisible: root.automaticDarkeningVisible
+                 automaticDarkening: root.darkeningProfile?.enable && root.darkeningProfile.automaticDarkening ? 1 : 0
+                 topBarOptics: root.clearMaterial && root.win?.WlrLayershell.namespace === "quickshell:bar" && !Config.options.bar.bottom
+                 frost: root.frost
+diff --git a/modules/common/widgets/shaders/glassLumaTemporal.frag b/modules/common/widgets/shaders/glassLumaTemporal.frag
+new file mode 100644
+index 0000000..fc70b85
+--- /dev/null
++++ b/modules/common/widgets/shaders/glassLumaTemporal.frag
+@@ -0,0 +1,24 @@
++#version 440
++layout(location = 1) in float materialLuma;
++layout(location = 0) out vec4 fragColor;
++layout(std140, binding = 0) uniform buf {
++    mat4 qt_Matrix;
++    float qt_Opacity;
++    float haze;
++    vec4 temporalStep;
++};
++layout(binding = 2) uniform sampler2D historyLuma;
++void main() {
++    vec4 prior = texture(historyLuma, vec2(0.5));
++    if (temporalStep.z < 0.0) {
++        float held = temporalStep.w >= 0.0 ? mix(prior.b, prior.g, temporalStep.w) : 0.0;
++        fragColor = vec4(0.0, held, held, materialLuma);
++        return;
++    }
++    float sum = prior.r + prior.a * temporalStep.x;
++    if (temporalStep.z > 0.0) {
++        float mean = temporalStep.z > 1.0 ? prior.a : sum;
++        float from = temporalStep.z > 1.0 ? prior.a : prior.g;
++        fragColor = vec4(prior.a * temporalStep.y, mean, from, materialLuma);
++    } else fragColor = vec4(sum, prior.g, prior.b, materialLuma);
++}
+diff --git a/modules/common/widgets/shaders/glassLumaTemporal.frag.qsb b/modules/common/widgets/shaders/glassLumaTemporal.frag.qsb
+new file mode 100644
+index 0000000000000000000000000000000000000000..0054284d0e32c526e88d16fd48cd0f37ed08288f
+GIT binary patch
+literal 2218
+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
+Nqu1siv+eUG@c`P{cLx9f
+
+literal 0
+HcmV?d00001
+
+diff --git a/modules/common/widgets/shaders/glassLumaTemporal.vert b/modules/common/widgets/shaders/glassLumaTemporal.vert
+new file mode 100644
+index 0000000..a4f98e6
+--- /dev/null
++++ b/modules/common/widgets/shaders/glassLumaTemporal.vert
+@@ -0,0 +1,23 @@
++#version 440
++layout(location = 0) in vec4 qt_Vertex;
++layout(location = 1) in vec2 qt_MultiTexCoord0;
++layout(location = 0) out vec2 qt_TexCoord0;
++layout(location = 1) out float materialLuma;
++layout(std140, binding = 0) uniform buf {
++    mat4 qt_Matrix;
++    float qt_Opacity;
++    float haze;
++    vec4 temporalStep;
++};
++layout(binding = 1) uniform sampler2D backdrop;
++void main() {
++    gl_Position = qt_Matrix * qt_Vertex;
++    qt_TexCoord0 = qt_MultiTexCoord0;
++    materialLuma = 0.0;
++    float lod = log2(max(haze, 1.0));
++    for (int y = 0; y < 2; ++y)
++        for (int x = 0; x < 2; ++x) {
++            vec3 reference = textureLod(backdrop, vec2(float(x), float(y)) * 0.5 + 0.25, lod).rgb;
++            materialLuma = max(materialLuma, dot(max(reference, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722)));
++        }
++}
+diff --git a/modules/common/widgets/shaders/glassLumaTemporal.vert.qsb b/modules/common/widgets/shaders/glassLumaTemporal.vert.qsb
+new file mode 100644
+index 0000000000000000000000000000000000000000..24036165c6bbe7866701d70f0064047b6b6f6203
+GIT binary patch
+literal 2315
+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
+L>lv@OiJt@jzYwTc
+
+literal 0
+HcmV?d00001
+
+diff --git a/modules/common/widgets/shaders/liquidLens.vert b/modules/common/widgets/shaders/liquidLens.vert
+index 1c1f1ca..1cca90d 100644
+--- a/modules/common/widgets/shaders/liquidLens.vert
++++ b/modules/common/widgets/shaders/liquidLens.vert
+@@ -35,8 +35,8 @@ void main() {
+     materialLuma = 0.0;
+     if (automaticDarkening <= 0.0) return;
+     if (holdDarkening > 0.5) {
+-        materialLuma = mix(textureLod(previousLuma, vec2(0.5), 0.0).r,
+-            textureLod(targetLuma, vec2(0.5), 0.0).r, darkeningBlend);
++        materialLuma = mix(textureLod(previousLuma, vec2(0.5), 0.0).b,
++            textureLod(targetLuma, vec2(0.5), 0.0).g, darkeningBlend);
+         return;
+     }
+     float lod = log2(max(haze, 1.0));
+diff --git a/modules/common/widgets/shaders/liquidLens.vert.qsb b/modules/common/widgets/shaders/liquidLens.vert.qsb
+index a67443c5f5fad2655114bf59ed575e3518e716fe..a51e63589b04e910beced46337336d0ceccdfc3c 100644
+GIT binary patch
+literal 3387
+zcmZQzu&l0_^EUc!vGi5Z_|x&7LOsGvEM6zumV_udc}Sm@FMQLY65urV){%pXrjC)`
+z+S#2;M0abumlbg8^4pZY*mC({BfDJ1gGP3%x53N*JI4Rw|FZMHW3<)f%=0_H-?@5|
+z|EA`JOvyd-wtk!U*;@Ylo#OMhw~owO_V)UdsZGB(e4F+xJ2lsJvx)dToweLo6jT0p
+z>*+qM>N>J6Lv}5r|F$yUj<_o_KMJ?53R7TawqEIYATa2v|G~aGnX9vAY2GP2$SzzH
+z$<RN6ZCd%}z6QZuUY4v!E7wRKdi7r78Ata;(L^rZ#2!9@M>fv=tJ_Tu_{?bGwKtmc
+z+;VpO?=990U$<B>PXEQ&KS8=XN}5G$!OiPtnNr(5EF5>UAJFBP(32K>L1<l};l^cU
+zvUTB(#dA%z|IW_qKAJCZ;XS)gGk0#oO{S&`dG;^t46-L}=cw5&|6#*6#$RSF>vbEd
+zKPbDtd;7#qc7Yg&$BXK}3)mGEr5<!>o18wdcl}q+n5Z9jE?r}O!Txu_Z-;o%hO8?2
+zZ^a2Q6`EheS|*76STX;AM8%s!$37m33;59g`yf9v%kuK*8yj1{2R)fwr=;$<fcci}
+ztwJ-4vX%Xl{C{g!$~=4Gkg>Yf)&8~mFPEm%;tryHS8D9vtFKw-$m{JEt)rvX&m8<I
+z;^c{dl^&{`@{N&;*>}{{HC;%Ubiv|^_?<P|4|>KdFcX%zaq{Z#ol}@hp9}t4^G$)@
+zhku!0kJ1;0CHJdcY*~z59x^L5&9{$;h&xeTXKEjKh>7E+iG)OjfKiNO=BzUBjMm?V
+zJNggS#vFdaAgj=9DwzCzl9|jE_pd86m|dh3wuoG0^F061;rxV(W7#u4WbsTEDxGxM
+z&mg+}B-^EP#!+1v-aTd>TcUf+T((#(<`rIhHbdFvvt;g+j99nZ?pwA?=GtF;XBagr
+z<GtZ6#zlM2XRvpEV_a<Ou!UbTw<km1@K&?S?->`5b$;VqEUR>Dc~9AljQNJQoLzp$
+zthqnI!nFT#)QXS6IXyc+t4Pat_w-+`XgH>>{8;kR{G{Y{|7AY1-<<I|`-pr(^3i&Z
+zEz4Ny15P~tto)(n^_s(fH6FNU-ZgZWYrFruqy4(3)O+>6{s%04fBa37GkQL?Z_5N(
+zq1Tok*|y$~**n_Ij-5Eha8qJ&>5<nOJ;yzt3;e9;__Dm^tb3EGT<SJawU>5Vxa(W~
+z)OiHYUGhcxxO+$2pZ1rPbB?)Z@-1#T{xR9b`Jb@K^FS$k&&SR!$3Ge_Qj9<9^09Q=
+zwiEV_Hv}I&{-JWwpwHvKT(ou1>&r{{pYHen*WXdObW6I#JIh(yFC}}JK9_5rI!|S0
+z#?<h~?;F^IKUjK}E$g&%t$S3_mSK59($YTj@P(>MGxvX*Gm9tgjJfjUpNq8q#;xIh
+zrkh62z9O@Z<7M@8f&W|&k4yYxyLnh<^#r}GVxfn^XV{xQ<4=kX`d`E6)^U5mkJZr+
+zH<bN*x!wHPRf*`k(*1sOgCFbeu>bQ}|M`@8yHz%O+B|)4E%Mp3L-E&IKJPC--#bXE
+z#T%MU-x?S9sG_siP%K>eaj4m`ozW(Ba$Az_*)KY|_rrn+^_}kWs=s8ePCRZp^Z$N^
+znSm3<g+5!nJoxuRtnW3ZE5`iu>ZcbJZ#loQOjiA#q15Bgo?V)+4%(cXVDCR!=a`}Q
+z7kdV`XWN!6ymQ~-_-2vy^$c>AmOJJzz47p~z2dGPe{?nnD_Ea5w02$ef8LupYO@^6
+zyw31_QhT5`aW3bj=IX~iYTu7$3+VP-k6iTdp2x)d>l=Cn1({F!8~*$}>yEP5zsg0b
+zC*u|VG0eWLI_tKp*>>@cI)O5wzIc_HHa`m*4YGXWQVO*V@7k-})i=J&?PAYy@6iwU
+zCDzV+w42P8D!PwUPb$cGZ*=ivW#_Z@^WmEF_c6#%(>(X%XZVKSS~cq~R4M$o`nY~_
+ze6mtqk^P^xYoCw1>~_rVc${6Z-)qzL6YsP(|F-%Vr@lM?K>Ey^dtLuTpV8ZPXZ4wP
+zQWvMh%G_`H%{yuD$!l`^Q?JZeXZ5m3<C@t;k^jE47C*YLc1!5$W44nDf1kT#3*Aky
+zaGzYt|GvEQn%bJf*M8~xUQ?JlTkmJj4Uv!HipMwHt2|P!8OPjmP$K$BcvY?MwM~|*
+zZp!*z(>kLmb3f6t)n?7f{flfrn0<VowO8g&TE%<=t^M0F-<}frZ`A$VU*q0)hwn4g
+ze#b4@d${OvoQnCq1s}P3!)NR(&#axYZ@!T4%iUfk^B%9?wBt|Dqeb6T`wHXzP6t<Y
+z?0f&fq4s!7_K$91>1nTT`g!Y%alPE~eD~b0_3KNsUhdA6UAOF||BL*ePqml5zjZg#
+z@%9ES;a%BbxwCuU&xniV%jP})B`|GcZdgveF@xl;^!!MfC%4YNF1yOlxy`zlO}_eV
+z+uLHNyFA)AH<-W4I{j(Sgpj+NqRtepP24r@I7jK`t#Xq#ta`1uHH=$9boHrB)9WAq
+z7_7|NwSDchyHU?wHb1r&u-sjw*%@6fb=Adf!E2|(S&dWQ-YnU5c~f@Z?IWrePrEe+
+zzWP?RcWrgr=DQnW9#6VgwwCwy%L?wf%Pen;Kb`$<*VFesk;dBFSFgLwmb{Gr^}cH#
+zb$6cHuu6N{>*xub(#v*pt~-^%^mo?Py)P{CL}Pe3IiF4SJG@=eiSu-&^9r5oX402d
+ze`!k&FFkYJXWFKMy@7E>Hn)%4%sp)Iq<PAf`49aRXZ&V*!SZ^_jYeMw(N8Yhv#Z#6
+zk4z7+*G`CJoLu+tX;j_ur6ITZR&uP}Y{!3S>576Q-OKKtJz(RoFf}HsV3p*)WtM_x
+zd9qG&x_^qcv~78}Hdki%OyNTA<q>6N?U^UGW?F<6ta-Rbdgij5Q$IKH&bZvY!1VOy
+z@Kj%uMH7;$j^+LQr52R_@bQ|w1IJeeU(8@RvCgGTb<^qzi6*&EFF&X{TcmqqwSs6@
+z`zMX%=`I#6^JnU{xY*^UZJuB!q4IYM*NjHNX3zA`ch9c9Ibq`o7DJgiQ!cOW({B>7
+zP?`3ygiTyQ+D6)Su?h2Z!%!ox;H8gzUYZ0H%v{#x(3oA6w#gz_V(FnXS5h*AK5+%N
+zJrM1Ac{1ssL7G}x&!aCPnzK{8cbuK3KPl=?@Cu!mB~JogWF0j9GyUGegg3HW_g6S4
+zZhxHcygA`L#|>+yZ+#8<uLVD3m$CfWSk5v9#QiOpusvz({g*#HOXHP<x$V5(i2klS
+z`p;hTYjx{9@n3t5>i?(OEoJ?`srh>2Pp&KcGnzD%(-n5THWM*2-y9YYeX;c2l-bW_
+zZ-`QwBz%|i%-W)S`*{}^&beQfWqSUT@l+;%VNOwXCl)io_J@vwj#Hg1-P2xv>2OfD
+zydn@`6S8Q<pD>@LR@q7yR!Ru)FVN7~FWKB#tl8Fm`{-QJ=DVE-n}T(k=JrV+Tddo~
+zWv#)ie14Bak#?U*dm@X4uyK!iipUg$#L|Le3qE>Yu9R{V<2FnPc$9RZWvZvfN5hpZ
+zrCgz3XE@yXS#Y!0OJwt>Kl_&Ly0W>5|4h4I_CE32Io~$fOq*VN<8{?c=hG!g#e)2<
+zkHo6d-8||Im+fcwxf17dW!)=3kL`k&*Cuq%668CprZ;I7?;7zLy&EEw4@h2|r*f?O
+z8@r4^uHTB!v2nX<N|)9Me!8R`pSRW8ZtC$B>ISp3_4kw&7JhuS)G5RI=ozDwz-2B?
+zE06ZcZxo#uBVYVbSuv%<^6c(4#=kysb${NLb^1YcL;Ssk=GkRZGZQ}T{BUu?->kop
+zx>pvczKy%N;Oe{G&f4lF8HO)AlqW2F8<0G0`pZ2Dxe>iSkNnPX?){l(u6|c|ZuEx5
+zhdzCrD>ixB-I$-*FP@!pG!MVMcJAuG-+x;sTHU#*X@AJDD~u=O)040l_n%$eaQ?8E
+zKij9*uRj@>EHE;-x&Q3yw^yEDEzA0n6~F6p_jJCWd$q#$mS|MI4!e0Qee1?*)11D|
+zpFggTp6Ddjto}AX%tJ--VED>og3O$crqt~C)N-y>!Yr;t>0ir*i|bPtDlgc6T!}C5
+z^SLUI$^ZK&uB)9XT(<hsixAzvIhQ}3b-Vd_HE(sU-QC62Wt)G={5y61`NP+{+f7%d
+zn(6XOv3ZLJZRT7b*JNk&=~wG2t7=B)DR<)zUfB7`zLL{<+s|wXrP|=QBNu)pNQoGj
+zmRYO`54V;pvE*HTNh>A)-ka(K;~2vpZuwiQSLar_1e}rFeRaKOWGwH!^XW?SR7$mE
+z^kjwpHeM0+iLpzal6%*UJv4PkrSbCcIbuA~O4H{bGv@vA>Gkr0Mc>tSYgM1}@ZPh_
+z>rY+AwR_(-98Jl&u;$x@HiuQ~rp%6Go76pdqRpoD6KppJ#u&B)t1Z^pGMhJU^{RwN
+zw#)C|o#y@c$f@`*OK05e63bGLV^h^wX=D9S>qlt(#D(Ydf6mf5C|wgOmUTGghtbB;
+zMa_|W1+qKjoc2ub{F1mtVN;ED$Nl@+TVHHRJ{xiN%OB(PfBf+q-d>pyxWUPir}oCW
+zUWspsjt;#+W*nN^Qg(k&*&A`xdb3>r*L25VwR?x(URqT9Hvf^(C$l??T`#-rn=37L
+qdtTgm*SL#c|8aHvUFq9(_mz~&J%>G#KZC5c*zG#<HUH?VBRl|kJf)TZ
+
+literal 3384
+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
+
+diff --git a/modules/ii/bar/Bar.qml b/modules/ii/bar/Bar.qml
+index 1fdd581..0f51f4e 100644
+--- a/modules/ii/bar/Bar.qml
++++ b/modules/ii/bar/Bar.qml
+@@ -69,6 +69,7 @@ Scope {
+                         barRoot.showCorners = false
+                     }
+                 }
++                readonly property bool automaticDarkeningVisible: !Config.options.bar.autoHide.enable || mustShow
+                 property bool superShow: false
+                 property bool mustShow: hoverRegion.containsMouse || superShow
+                     || (Config.options.bar.autoHide.enable && GlobalStates.isFrameHovered(barRoot.screen?.name, Config.options.bar.bottom ? "bottom" : "top"))
+diff --git a/modules/ii/dock/Dock.qml b/modules/ii/dock/Dock.qml
+index 4bc5f74..f8698ee 100644
+--- a/modules/ii/dock/Dock.qml
++++ b/modules/ii/dock/Dock.qml
+@@ -86,6 +86,7 @@ Scope {
+             readonly property bool appOverlapActive: appOverlap.appOverlapEnabled && appOverlap.appOverlapActive
+             WlrLayershell.layer: appOverlapActive ? WlrLayer.Overlay : WlrLayer.Top
+ 
++            readonly property bool automaticDarkeningVisible: reveal
+             property bool reveal: {
+                 if (appOverlapActive)
+                     return true
+diff --git a/modules/ii/verticalBar/VerticalBar.qml b/modules/ii/verticalBar/VerticalBar.qml
+index 6c8f5e2..f838bb9 100644
+--- a/modules/ii/verticalBar/VerticalBar.qml
++++ b/modules/ii/verticalBar/VerticalBar.qml
+@@ -47,6 +47,7 @@ Scope {
+                         else { showBarTimer.stop(); barRoot.superShow = false; }
+                     }
+                 }
++                readonly property bool automaticDarkeningVisible: !Config.options.bar.autoHide.enable || mustShow
+                 property bool superShow: false
+                 property bool mustShow: hoverRegion.containsMouse || superShow
+                     || (Config.options.bar.autoHide.enable && GlobalStates.isFrameHovered(barRoot.screen?.name, Config.options.bar.bottom ? "right" : "left"))
+diff --git a/services/GlassCompositor.qml b/services/GlassCompositor.qml
+index df0bb92..a8a0e85 100644
+--- a/services/GlassCompositor.qml
++++ b/services/GlassCompositor.qml
+@@ -43,6 +43,7 @@ Singleton {
+     property bool windowFrostedAvailable: false
+     property bool profilesAvailable: false
+     property bool darkeningAvailable: false
++    property bool darkeningVisibilityAvailable: false
+     property bool uniformDarkeningAvailable: false
+     property bool contrastAvailable: false
+     property bool barVisibilityAvailable: false
+@@ -260,19 +261,21 @@ Singleton {
+                 let surface = surfaces.find(entry => entry.win === region.win)
+                 if (!surface) {
+                     surface = { win: region.win, name: region.name, monitor: region.monitor,
+-                        width: region.win.width, height: region.win.height, regions: [] }
++                        width: region.win.width, height: region.win.height, darkeningVisible: false, regions: [] }
+                     surfaces.push(surface)
+                 }
++                surface.darkeningVisible = surface.darkeningVisible || region.darkeningVisible !== false
+                 surface.regions.push(region)
+             }
+         }
+-        const values = ["end4glass", Quickshell.processId, enhancedActive ? (frostedAvailable ? 2 : 1) : 0, surfaces.length]
++        const values = ["end4glass", Quickshell.processId, enhancedActive ? (darkeningVisibilityAvailable ? 3 : frostedAvailable ? 2 : 1) : 0, surfaces.length]
+         for (const surface of surfaces) {
+             // Modal materials cover underlying cards; preserve nesting within each priority.
+             surface.regions.sort((a, b) => a.priority - b.priority
+                 || b.values[2] * b.values[3] - a.values[2] * a.values[3])
+             if (surface.regions.length > 32 || /\s/.test(surface.name + surface.monitor)) return
+             values.push(surface.name, surface.monitor, surface.width, surface.height, surface.regions.length)
++            if (darkeningVisibilityAvailable) values.push(surface.darkeningVisible ? 1 : 0)
+             for (const region of surface.regions) values.push(...region.values)
+         }
+         const command = values.join(" ")
+@@ -487,6 +490,7 @@ Singleton {
+                     root.windowFrostedAvailable = result.windowFrosted ?? false
+                     root.profilesAvailable = result.profiles ?? false
+                     root.darkeningAvailable = result.darkening ?? false
++                    root.darkeningVisibilityAvailable = result.darkeningVisibility ?? false
+                     root.uniformDarkeningAvailable = result.uniformDarkening ?? false
+                     root.contrastAvailable = result.contrast ?? false
+                     root.barVisibilityAvailable = result.barVisibility ?? false

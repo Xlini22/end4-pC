@@ -1,0 +1,42 @@
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -218,6 +218,8 @@
+     }
+ }
+ 
++static std::array<std::string, 4> s_parsedLayerNamespaceConfig;
++
+ static void parseLayerNamespaceFilters() {
+     const auto& config = g_pGlobalState->config;
+     parseCommaSeparated(config.layersNamespaces, g_pGlobalState->layerNamespaceFilter);
+@@ -232,6 +234,12 @@
+     parseKeyValuePairs(config.layersNamespaceMaskThresholds, '=', [&](const std::string& ns, const std::string& val) {
+         try { g_pGlobalState->layerNamespaceMaskThresholds.emplace(ns, std::stof(val)); } catch (...) {}
+     });
++    // Keep the signature coherent with every parse, including the config-reload callback.
++    s_parsedLayerNamespaceConfig = {
++        std::string(readStringConfig(config.layersNamespaces)),
++        std::string(readStringConfig(config.layersExcludeNamespaces)),
++        std::string(readStringConfig(config.layersNamespacePresets)),
++        std::string(readStringConfig(config.layersNamespaceMaskThresholds))};
+ }
+ 
+ static bool shouldGlassLayer(PHLLS layerSurface) {
+@@ -239,16 +247,13 @@
+         return false;
+ 
+     const auto& config = g_pGlobalState->config;
+-    static std::array<std::string, 4> previous;
+     const std::array<std::string, 4> current = {
+         std::string(readStringConfig(config.layersNamespaces)),
+         std::string(readStringConfig(config.layersExcludeNamespaces)),
+         std::string(readStringConfig(config.layersNamespacePresets)),
+         std::string(readStringConfig(config.layersNamespaceMaskThresholds))};
+-    if (current != previous) {
++    if (current != s_parsedLayerNamespaceConfig)
+         parseLayerNamespaceFilters();
+-        previous = current;
+-    }
+     const auto& ns = layerSurface->m_namespace;
+ 
+     // Exclusion takes priority

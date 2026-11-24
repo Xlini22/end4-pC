@@ -24,6 +24,7 @@ layout(std140, binding = 0) uniform buf {
     float automaticDarkening;
     float holdDarkening;
     float darkeningBlend;
+    float automaticDarkeningStrength;
 };
 
 layout(binding = 1) uniform sampler2D backdrop;
@@ -35,8 +36,8 @@ void main() {
     materialLuma = 0.0;
     if (automaticDarkening <= 0.0) return;
     if (holdDarkening > 0.5) {
-        materialLuma = mix(textureLod(previousLuma, vec2(0.5), 0.0).r,
-            textureLod(targetLuma, vec2(0.5), 0.0).r, darkeningBlend);
+        materialLuma = mix(textureLod(previousLuma, vec2(0.5), 0.0).b,
+            textureLod(targetLuma, vec2(0.5), 0.0).g, darkeningBlend);
         return;
     }
     float lod = log2(max(haze, 1.0));

@@ -83,10 +83,13 @@ Scope {
                 appOverlapEnabled: WM.compositor === "hyprland" && dockRoot.position === "bottom"
                     && Config.options.dock.appOverlap.enable
             }
+            readonly property bool preview: GlobalStates.glassyPreviewTargets.includes("dock")
             readonly property bool appOverlapActive: appOverlap.appOverlapEnabled && appOverlap.appOverlapActive
-            WlrLayershell.layer: appOverlapActive ? WlrLayer.Overlay : WlrLayer.Top
+            WlrLayershell.layer: appOverlapActive || preview ? WlrLayer.Overlay : WlrLayer.Top
 
+            readonly property bool automaticDarkeningVisible: reveal || (dockOffsetAnimation.animation?.running ?? false)
             property bool reveal: {
+                if (preview) return true
                 if (appOverlapActive)
                     return true
                 if (dockContextMenu.isOpen)
@@ -188,6 +191,7 @@ Scope {
                 property real offset: dockRoot.reveal ? 0 : hiddenOffset
 
                 Behavior on offset {
+                    id: dockOffsetAnimation
                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                 }
 

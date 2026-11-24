@@ -1,0 +1,123 @@
+--- a/src/GlassLayerSurface.cpp
++++ b/src/GlassLayerSurface.cpp
+@@ -214,20 +214,28 @@
+ 
+ void CGlassLayerSurface::scheduleDarkeningPublication() {
+     const auto& state = m_temporalDarkening;
+-    if (!needsDarkeningPublication()) {
++    const bool publication = needsDarkeningPublication();
++    const bool fading = m_darkeningVisible && state.transitioning();
++    if (!publication && !fading) {
+         if (m_darkeningTimer) m_darkeningTimer->updateTimeout(std::nullopt);
+         return;
+     }
+     if (!m_darkeningTimer) {
+         m_darkeningTimer = makeShared<CEventLoopTimer>(std::nullopt, [this](SP<CEventLoopTimer>, void*) {
+             updateDarkeningVisibility();
+-            if (needsDarkeningPublication()) damageMaterial();
++            if (!m_darkeningVisible) return;
++            // The final scheduled tick must paint blend=1 even if its deadline has just elapsed.
++            if (needsDarkeningPublication() || (m_temporalDarkening.clock.published && m_temporalDarkening.presentedBlend < 1))
++                damageMaterial();
+         }, nullptr);
+         g_pEventLoopManager->addTimer(m_darkeningTimer);
+     }
+     if (m_darkeningTimer->armed()) return;
+     const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+-    const auto delay = std::chrono::duration<double>(std::max(.001, state.clock.start + SDarkeningWindow::PERIOD - now));
++    double seconds = publication ? std::max(.001, state.clock.start + SDarkeningWindow::PERIOD - now) : 1.0 / 60;
++    // ponytail: cap fade-only ticks at 60 Hz; presentation callbacks could follow variable-refresh displays exactly.
++    if (fading) seconds = std::min(seconds, std::max(.001, std::min(1.0 / 60, state.clock.changed + SDarkeningWindow::FADE - now)));
++    const auto delay = std::chrono::duration<double>(seconds);
+     m_darkeningTimer->updateTimeout(std::chrono::duration_cast<Time::steady_dur>(delay));
+ }
+ 
+@@ -765,7 +773,6 @@
+             maskInfo.temporalSample = false;
+         }
+         scheduleDarkeningPublication();
+-        if (m_temporalDarkening.transitioning() && !layerSurface->m_fadingOut) damageMaterial();
+         return;
+     }
+ 
+@@ -776,5 +783,4 @@
+                                      cornerRadius, roundingPower, m_samplePaddingRatio, ctx,
+                                      &maskInfo);
+     scheduleDarkeningPublication();
+-    if (m_temporalDarkening.transitioning() && !layerSurface->m_fadingOut) damageMaterial();
+ }
+--- a/src/GlassRenderer.cpp
++++ b/src/GlassRenderer.cpp
+@@ -367,7 +367,7 @@
+     glUniform1i(uniforms.temporalMode, 0);
+     if (mask && mask->temporal) {
+         auto& state = *mask->temporal;
+-        if (mask->darkening[1] <= 0) { state.clock.reset(); state.resumeBlend = -1; }
++        if (mask->darkening[1] <= 0) { state.clock.reset(); state.resumeBlend = -1; state.presentedBlend = 1; }
+         else {
+             GLint activeTexture = 0, oldTexture = 0, oldSampler = 0, drawFB = 0, viewport[4]{}, scissorBox[4]{};
+             GLboolean colorMask[4]{};
+@@ -414,7 +414,8 @@
+                 glBindTexture(GL_TEXTURE_2D, state.textures[state.current]);
+                 glUniform1i(uniforms.temporalHistory, 3);
+                 glUniform1i(uniforms.temporalMode, 1);
+-                glUniform4f(uniforms.temporalStep, step.before, step.after, step.windows, state.resumeBlend);
++                glUniform4f(uniforms.temporalStep, step.before, step.after, step.windows,
++                    step.windows < 0 ? state.resumeBlend : state.presentedBlend);
+                 glUniform1f(uniforms.temporalBlend, float((now - state.clock.start) / SDarkeningWindow::PERIOD));
+                 state.resumeBlend = -1;
+                 std::array<GLint, 33> previousSlots{};
+@@ -450,7 +451,8 @@
+                 glBindTexture(GL_TEXTURE_2D, state.textures[state.current]);
+                 glUniform1i(uniforms.temporalHistory, 3);
+                 glUniform1i(uniforms.temporalMode, 2);
+-                glUniform1f(uniforms.temporalBlend, state.clock.blend(now));
++                const float presentedBlend = state.clock.blend(now);
++                glUniform1f(uniforms.temporalBlend, presentedBlend);
+                 uploadRegions(mask->regions);
+                 std::array<GLint, 33> slots{};
+                 for (size_t index = 0; index < mask->regions.size() && index < 32; ++index) {
+@@ -464,6 +466,7 @@
+                 glUniform1iv(uniforms.temporalSlots, 33, slots.data());
+                 // Keep history bound until all disjoint damage rectangles have been drawn.
+                 drawGlass();
++                state.presentedBlend = presentedBlend;
+                 return;
+             }
+             // Unsupported history buffers retain manual darkness instead of per-frame auto flashing.
+--- a/src/GlassRenderer.hpp
++++ b/src/GlassRenderer.hpp
+@@ -33,9 +33,10 @@
+     bool failed = false;
+     double lastDraw = -1;
+     float resumeBlend = -1;
++    float presentedBlend = 1;
+     void restart(double now, bool appearance = false) {
+         if (appearance) resumeBlend = -1;
+-        else if (clock.initialized) resumeBlend = clock.blend(now);
++        else if (clock.initialized) resumeBlend = presentedBlend;
+         clock.reset();
+         lastDraw = -1;
+     }
+--- a/src/Globals.hpp
++++ b/src/Globals.hpp
+@@ -69,7 +69,7 @@
+ inline constexpr std::string_view PLUGIN_NAME        = "hyprglass";
+ inline constexpr std::string_view PLUGIN_DESCRIPTION = "Apple-style Liquid Glass effect";
+ inline constexpr std::string_view PLUGIN_AUTHOR      = "Hyprnux";
+-inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r45-candidate";
++inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r46-candidate";
+ 
+ inline const SGlassOptics* glassOptics(int pid, const std::string& key) {
+     const auto client = g_pGlobalState->glassProfiles.find(pid);
+--- a/src/Shaders.hpp
++++ b/src/Shaders.hpp
+@@ -537,7 +537,7 @@
+         float sum = prior.r + prior.a * temporalStep.x;
+         if (temporalStep.z > 0.0) {
+             float mean = temporalStep.z > 1.0 ? prior.a : sum;
+-            float from = temporalStep.z > 1.0 ? prior.a : prior.g;
++            float from = temporalStep.w >= 0.0 ? mix(prior.b, prior.g, temporalStep.w) : prior.g;
+             fragColor = vec4(prior.a * temporalStep.y, mean, from, sampleLuma);
+         } else fragColor = vec4(sum, prior.g, prior.b, sampleLuma);
+         return;

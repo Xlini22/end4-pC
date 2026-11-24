@@ -51,7 +51,9 @@ struct Globals {
 auto g_pGlobalState = &globals;
 '''
 harness += r'''
+struct Timer {void cancel(){}};
 struct CGlassLayerSurface {
+    SP<Timer> m_darkeningTimer;
     SP<Render::IFramebuffer> m_savedCurrentFB;
     SP<Render::IFramebuffer> m_frostInputFramebuffer = std::make_shared<Render::IFramebuffer>();
     SP<Render::IFramebuffer> m_surfaceTempFramebuffer = std::make_shared<Render::IFramebuffer>();
@@ -128,13 +130,20 @@ int main() {
     assert(client.enhanced && client.pid == 42 && client.surfaces[0].regions.size() == 1);
     std::string satin = valid; satin.replace(satin.find("42 1"), 4, "42 2"); satin += " 8";
     assert(parseGlassRegions(satin, client) && client.surfaces[0].regions[0].frost == 8);
+    const std::string shape="0 0 300 50 10 10 10 10 0 0 0 0 0 1 8";
+    const std::string identified="end4glass 42 4 1 quickshell:bar eDP-1 1920 68 1 1 77 "+shape;
+    assert(parseGlassRegions(identified,client)&&client.surfaces[0].regions[0].id==77);
+    for(const auto& bad:{std::string("0"),std::string("-1"),std::string("2147483648")})
+        assert(!parseGlassRegions("end4glass 42 4 1 quickshell:bar eDP-1 1920 68 1 1 "+bad+" "+shape,client));
+    assert(!parseGlassRegions("end4glass 42 4 1 quickshell:bar eDP-1 1920 68 2 1 77 "+shape+" 77 "+shape,client));
+    assert(client.surfaces[0].regions[0].id==77);
     for (const auto& value : {"nan", "-1", "33", ""}) {
         assert(!parseGlassRegions(satin.substr(0, satin.size() - 1) + value, client));
         assert(client.surfaces[0].regions[0].frost == 8);
     }
     assert(parseGlassRegions(valid, client) && client.surfaces[0].regions[0].frost == 0);
     for (const auto& invalid : {
-        "end4glass 42 1 33", "end4glass 42 3 0", "end4glass -1 1 0",
+        "end4glass 42 1 33", "end4glass 42 6 0", "end4glass -1 1 0",
         "end4glass 42 1 1 quickshell:bar eDP-1 nan 68 0",
         "end4glass 42 1 1 other-app eDP-1 1920 68 0",
         "end4glass 42 1 1 quickshell:bar eDP-1 1920 68 33",

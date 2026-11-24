@@ -11,6 +11,8 @@ import Quickshell.Hyprland
 
 Scope { // Scope
     id: root
+    readonly property bool preview: GlobalStates.glassyPreviewTargets.includes("sidebar")
+    readonly property bool open: GlobalStates.sidebarLeftOpen || preview
     property bool detach: false
     property bool pin: false
     property Component contentComponent: SidebarLeftContent {}
@@ -100,16 +102,13 @@ Scope { // Scope
         onTriggered: if (!(Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable)) root.unload()
     }
 
-    Connections {
-        target: GlobalStates
-        function onSidebarLeftOpenChanged() {
-            if (GlobalStates.sidebarLeftOpen) root.load();
-            else unloadTimer.restart();
-        }
+    onOpenChanged: {
+        if (root.open) root.load();
+        else unloadTimer.restart();
     }
 
     Component.onCompleted: {
-        if (GlobalStates.sidebarLeftOpen) root.load();
+        if (root.open) root.load();
     }
 
     onDetachChanged: {
@@ -140,12 +139,12 @@ Scope { // Scope
             property bool reallyVisible: false
             visible: reallyVisible
 
-            Component.onCompleted: reallyVisible = GlobalStates.sidebarLeftOpen
+            Component.onCompleted: reallyVisible = root.open
 
             Connections {
-                target: GlobalStates
-                function onSidebarLeftOpenChanged() {
-                    if (GlobalStates.sidebarLeftOpen) {
+                target: root
+                function onOpenChanged() {
+                    if (root.open) {
                         closeAnimTimer.stop();
                         panelWindow.reallyVisible = true;
                     } else if (panelWindow.animatedEntrance) {
@@ -171,13 +170,13 @@ Scope { // Scope
             }
 
             exclusionMode: ExclusionMode.Normal
-            exclusiveZone: root.pin ? sidebarWidth : 0
+            exclusiveZone: root.preview && !GlobalStates.sidebarLeftOpen ? 0 : root.pin ? sidebarWidth : 0
             implicitWidth: ((Config.options.background.widgets.glass.enable && Config.options.background.widgets.glass.elements.sidebar.enable) && !animatedEntrance && !widthBehavior.animation?.running
                 ? Math.max(sidebarWidth, sidebarLeftBackground.width + Appearance.sizes.hyprlandGapsOut + Appearance.sizes.elevationMargin)
                 : Appearance.sizes.sidebarWidthExtended) + Appearance.sizes.elevationMargin
             WlrLayershell.namespace: "quickshell:sidebarLeft"
             // Hyprland 0.49: OnDemand is Exclusive, Exclusive just breaks click-outside-to-close
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+            WlrLayershell.keyboardFocus: root.preview ? WlrKeyboardFocus.None : WlrKeyboardFocus.OnDemand
             color: "transparent"
 
             anchors {
@@ -218,20 +217,27 @@ Scope { // Scope
             }
 
             mask: Region {
-                item: panelWindow.animatedEntrance ? fullMaskArea : sidebarLeftBackground
+                item: root.preview ? null : panelWindow.animatedEntrance ? fullMaskArea : sidebarLeftBackground
             }
 
             onVisibleChanged: {
-                if (visible) {
+                if (visible && !root.preview) {
                     GlobalFocusGrab.addDismissable(panelWindow);
                 } else {
                     GlobalFocusGrab.removeDismissable(panelWindow);
                 }
             }
             Connections {
+                target: root
+                function onPreviewChanged() {
+                    if (panelWindow.visible && !root.preview) GlobalFocusGrab.addDismissable(panelWindow);
+                    else GlobalFocusGrab.removeDismissable(panelWindow);
+                }
+            }
+            Connections {
                 target: GlobalFocusGrab
                 function onDismissed() {
-                    panelWindow.hide();
+                    if (!root.preview) panelWindow.hide();
                 }
             }
 
@@ -275,7 +281,7 @@ Scope { // Scope
                 radius: Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 1
 
                 readonly property bool animatedEntrance: panelWindow.animatedEntrance
-                readonly property bool sidebarOpen: GlobalStates.sidebarLeftOpen
+                readonly property bool sidebarOpen: root.open
                 x: Appearance.sizes.hyprlandGapsOut - (animatedEntrance && !sidebarOpen ? width : 0)
 
                 Behavior on x {
@@ -305,7 +311,7 @@ Scope { // Scope
 
                 Keys.onPressed: (event) => {
                     if (event.key === Qt.Key_Escape) {
-                        panelWindow.hide();
+                        if (!root.preview) panelWindow.hide();
                     }
                     if (event.modifiers === Qt.ControlModifier) {
                         if (event.key === Qt.Key_O) {
@@ -333,7 +339,7 @@ Scope { // Scope
             property var contentParent: detachedSidebarBackground
             color: "transparent"
 
-            visible: GlobalStates.sidebarLeftOpen
+            visible: root.open
             onVisibleChanged: {
                 if (!visible) GlobalStates.sidebarLeftOpen = false;
             }

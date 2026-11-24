@@ -1,0 +1,153 @@
+diff --git a/src/GlassLayerSurface.cpp b/src/GlassLayerSurface.cpp
+index b42e4ba..7171f68 100644
+--- a/src/GlassLayerSurface.cpp
++++ b/src/GlassLayerSurface.cpp
+@@ -722,6 +722,11 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
+         maskInfo.darkeningReference = {0, top / float(transformBox.h), 1, (bottom - top) / float(transformBox.h)};
+     }
+ 
++    // Probes must stay in the captured monitor area while a layer slides in from offscreen.
++    const auto visibleSample = transformBox.intersection(CBox{0, 0, monitorWidth, monitorHeight});
++    maskInfo.darkeningClip = {float((visibleSample.x - transformBox.x) / transformBox.w),
++        float((visibleSample.y - transformBox.y) / transformBox.h),
++        float(visibleSample.w / transformBox.w), float(visibleSample.h / transformBox.h)};
+     maskInfo.temporal = &m_temporalDarkening;
+     maskInfo.temporalRegions = maskInfo.regions;
+     maskInfo.temporalSample = m_darkeningVisible && !layerSurface->m_fadingOut;
+diff --git a/src/GlassRenderer.cpp b/src/GlassRenderer.cpp
+index 8a4cba4..4f7ec6b 100644
+--- a/src/GlassRenderer.cpp
++++ b/src/GlassRenderer.cpp
+@@ -267,6 +267,8 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
+     glUniform2f(uniforms.darkening, mask ? mask->darkening[0] : 0, mask ? mask->darkening[1] : 0);
+     const std::array<float, 4> reference = mask ? mask->darkeningReference : std::array<float, 4>{};
+     glUniform4fv(uniforms.darkeningReference, 1, reference.data());
++    const std::array<float, 4> lumaClip = mask ? mask->darkeningClip : std::array<float, 4>{0, 0, 1, 1};
++    glUniform4fv(uniforms.darkeningClip, 1, lumaClip.data());
+     const auto uploadRegions = [&](const std::vector<SGlassRegion>& regions) {
+         const int count = enhanced && mask ? static_cast<int>(regions.size()) : 0;
+         glUniform1i(uniforms.regionCount, count);
+@@ -411,6 +413,7 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
+                 glUniform1i(uniforms.temporalHistory, 3);
+                 glUniform1i(uniforms.temporalMode, 1);
+                 glUniform4f(uniforms.temporalStep, step.before, step.after, step.windows, state.resumeBlend);
++                glUniform1f(uniforms.temporalBlend, float((now - state.clock.start) / SDarkeningWindow::PERIOD));
+                 state.resumeBlend = -1;
+                 uploadRegions(mask->temporalRegions);
+                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+diff --git a/src/GlassRenderer.hpp b/src/GlassRenderer.hpp
+index 2b66f66..7a5b2f7 100644
+--- a/src/GlassRenderer.hpp
++++ b/src/GlassRenderer.hpp
+@@ -62,6 +62,7 @@ struct SMaskInfo {
+     std::vector<SGlassRegion> regions;
+     std::array<float, 2> darkening{};
+     std::array<float, 4> darkeningReference{};
++    std::array<float, 4> darkeningClip{0, 0, 1, 1};
+     SAdaptiveDarkening* temporal = nullptr;
+     std::vector<SGlassRegion> temporalRegions;
+     bool temporalSample = true;
+diff --git a/src/Globals.hpp b/src/Globals.hpp
+index 0da602a..80ab652 100644
+--- a/src/Globals.hpp
++++ b/src/Globals.hpp
+@@ -69,7 +69,7 @@ inline std::unique_ptr<SGlobalState> g_pGlobalState;
+ inline constexpr std::string_view PLUGIN_NAME        = "hyprglass";
+ inline constexpr std::string_view PLUGIN_DESCRIPTION = "Apple-style Liquid Glass effect";
+ inline constexpr std::string_view PLUGIN_AUTHOR      = "Hyprnux";
+-inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r42-candidate";
++inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r43-candidate";
+ 
+ inline const SGlassOptics* glassOptics(int pid, const std::string& key) {
+     const auto client = g_pGlobalState->glassProfiles.find(pid);
+diff --git a/src/ShaderManager.cpp b/src/ShaderManager.cpp
+index 8b424d7..3ac7dcc 100644
+--- a/src/ShaderManager.cpp
++++ b/src/ShaderManager.cpp
+@@ -55,6 +55,7 @@ bool CShaderManager::compileGlassShader() {
+     glassUniforms.tintAlpha           = glGetUniformLocation(program, "tintAlpha");
+     glassUniforms.darkening           = glGetUniformLocation(program, "darkening");
+     glassUniforms.darkeningReference = glGetUniformLocation(program, "darkeningReference");
++    glassUniforms.darkeningClip = glGetUniformLocation(program, "darkeningClip");
+     glassUniforms.temporalMode = glGetUniformLocation(program, "temporalMode");
+     glassUniforms.temporalHistory = glGetUniformLocation(program, "temporalHistory");
+     glassUniforms.temporalStep = glGetUniformLocation(program, "temporalStep");
+diff --git a/src/ShaderManager.hpp b/src/ShaderManager.hpp
+index 7e1bebc..d92a92e 100644
+--- a/src/ShaderManager.hpp
++++ b/src/ShaderManager.hpp
+@@ -17,7 +17,7 @@ struct SGlassUniforms {
+     GLint sampleUVOffset = -1, sampleUVScale = -1;
+     GLint tintColor = -1;
+     GLint tintAlpha = -1;
+-    GLint darkening = -1, darkeningReference = -1;
++    GLint darkening = -1, darkeningReference = -1, darkeningClip = -1;
+     GLint temporalMode = -1, temporalHistory = -1, temporalStep = -1, temporalBlend = -1, temporalSlots = -1;
+     GLint lensDistortion = -1;
+     GLint saturation = -1;
+diff --git a/src/Shaders.hpp b/src/Shaders.hpp
+index cf688ec..265c94e 100644
+--- a/src/Shaders.hpp
++++ b/src/Shaders.hpp
+@@ -16,6 +16,7 @@ uniform vec2 sampleUVOffset;
+ uniform vec2 sampleUVScale;
+ uniform vec2 darkening;
+ uniform vec4 darkeningReference;
++uniform vec4 darkeningClip;
+ uniform int temporalMode;
+ uniform sampler2D temporalHistory;
+ uniform vec4 temporalStep;
+@@ -28,10 +29,25 @@ uniform vec4 regionRects[32];
+ uniform vec4 regionDetails[32];
+ flat out highp vec4 materialLuma[9];
+ 
++vec4 visibleLumaBox(vec4 box) {
++    if (box.x >= darkeningClip.x && box.y >= darkeningClip.y
++        && box.x + box.z <= darkeningClip.x + darkeningClip.z
++        && box.y + box.w <= darkeningClip.y + darkeningClip.w) return box;
++    float left = max(box.x, darkeningClip.x), top = max(box.y, darkeningClip.y);
++    float right = min(box.x + box.z, darkeningClip.x + darkeningClip.z);
++    float bottom = min(box.y + box.w, darkeningClip.y + darkeningClip.w);
++    return vec4(left, top, max(0.0, right - left), max(0.0, bottom - top));
++}
++
+ float sampleMaterialLuma(int selected) {
+     vec4 box = selected >= 0 ? regionRects[selected] / fullSize.xyxy : vec4(0.0, 0.0, 1.0, 1.0);
+     float frost = selected >= 0 ? regionDetails[selected].z : 0.0;
+     if (darkeningReference.z > 0.0) { box = darkeningReference; frost = 0.0; }
++    vec4 clipped = visibleLumaBox(box);
++    if (clipped.z <= 0.0 || clipped.w <= 0.0) return -1.0;
++    // Blur near an offscreen edge includes cleared pixels; only the luma probes use the clear capture there.
++    if (clipped.x != box.x || clipped.y != box.y || clipped.z != box.z || clipped.w != box.w) frost = 0.0;
++    box = clipped;
+     // ponytail: four fixed probes estimate the brightest area; complete spatial coverage needs a cached reduction.
+     float brightest = 0.0;
+     for (int y = 0; y < 2; ++y)
+@@ -51,7 +67,7 @@ void main() {
+         vec2 pos = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
+         gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+     }
+-    for (int i = 0; i < 9; ++i) materialLuma[i] = vec4(0.0);
++    for (int i = 0; i < 9; ++i) materialLuma[i] = vec4(-1.0);
+     if (darkening.y <= 0.0) return;
+     if (temporalMode == 2) {
+         int count = enhanced == 1 ? clamp(regionCount, 0, 32) : 0;
+@@ -477,8 +493,17 @@ void main() {
+         int slot = int(gl_FragCoord.x);
+         float sampleLuma = materialLuma[slot / 4][slot % 4];
+         vec4 prior = texelFetch(temporalHistory, ivec2(slot, 0), 0);
++        if (sampleLuma < 0.0) {
++            fragColor = vec4(0.0, 0.0, 0.0, -1.0);
++            return;
++        }
++        if (temporalStep.z >= 0.0 && prior.a < 0.0) {
++            // ponytail: seed unseen time with current luma; exact previsibility history needs hidden-card sampling.
++            fragColor = vec4(sampleLuma * temporalBlend, sampleLuma, sampleLuma, sampleLuma);
++            return;
++        }
+         if (temporalStep.z < 0.0) {
+-            float held = temporalStep.w >= 0.0 ? mix(prior.b, prior.g, temporalStep.w) : sampleLuma;
++            float held = temporalStep.w >= 0.0 && prior.a >= 0.0 ? mix(prior.b, prior.g, temporalStep.w) : sampleLuma;
+             fragColor = vec4(0.0, held, held, sampleLuma);
+             return;
+         }

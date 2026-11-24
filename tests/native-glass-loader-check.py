@@ -54,6 +54,15 @@ with tempfile.TemporaryDirectory() as temporary:
     assert backend.status()['lua'] and backend.status()['enhanced'] and backend.status()['frosted'] and backend.status()['contrast']
     assert backend.status()['profiles'] and backend.status()['topBarOptics']
     assert backend.status()['barVisibility'] and backend.status()['darkening'] and backend.status()['uniformDarkening']
+    for version, temporal in [(backend.CANDIDATE_VERSION, False), (backend.PREVIOUS_TEMPORAL_VERSION, True), (backend.TEMPORAL_VERSION, True), (backend.VISIBILITY_VERSION, True), (backend.SCENE_VERSION, True), (backend.REFLECTIONS_VERSION, True), (backend.INITIAL_DARKENING_VERSION, True), (backend.SIDEBAR_DARKENING_VERSION, True), (backend.COHERENCE_VERSION, True), (backend.SECTION_VERSION, True), (backend.FADE_VERSION, True)]:
+        loaded[0]['version'] = version
+        status = backend.status()
+        assert status['available'] and status['uniformDarkening'] and status['windowFrosted']
+        assert status['sectionDarkening'] is (version in (backend.SECTION_VERSION, backend.FADE_VERSION))
+        assert status['fadeContinuity'] is (version == backend.FADE_VERSION)
+        assert status['temporalDarkening'] is temporal
+        assert status['darkeningStrength'] is (version in (backend.COHERENCE_VERSION, backend.SECTION_VERSION, backend.FADE_VERSION))
+        assert status['darkeningVisibility'] is (version in (backend.VISIBILITY_VERSION, backend.SCENE_VERSION, backend.REFLECTIONS_VERSION, backend.INITIAL_DARKENING_VERSION, backend.SIDEBAR_DARKENING_VERSION, backend.COHERENCE_VERSION, backend.SECTION_VERSION, backend.FADE_VERSION))
     loaded[0]['version'] = 'end4-live-0.6.4-r34'
     assert backend.status()['available'] and backend.status()['uniformDarkening'] and backend.status()['windowFrosted']
     loaded[0]['version'] = 'end4-live-0.6.4-r31'

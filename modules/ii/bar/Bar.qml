@@ -26,7 +26,7 @@ Scope {
         }
         LazyLoader {
             id: barLoader
-            active: GlobalStates.barOpen && !GlobalStates.screenLocked && !GlobalStates.startupLockPending
+            active: (GlobalStates.barOpen || GlobalStates.glassyPreviewTargets.includes("bar")) && !GlobalStates.screenLocked && !GlobalStates.startupLockPending
             required property ShellScreen modelData
             component: PanelWindow { // Bar window
                 id: barRoot
@@ -69,8 +69,12 @@ Scope {
                         barRoot.showCorners = false
                     }
                 }
+                readonly property bool automaticDarkeningVisible: !Config.options.bar.autoHide.enable || mustShow
+                    || (barTopAnimation.animation?.running ?? false) || (barBottomAnimation.animation?.running ?? false)
                 property bool superShow: false
-                property bool mustShow: hoverRegion.containsMouse || superShow
+                readonly property bool preview: GlobalStates.glassyPreviewTargets.includes("bar")
+                property bool mustShow: preview || normalMustShow
+                readonly property bool normalMustShow: hoverRegion.containsMouse || superShow
                     || (Config.options.bar.autoHide.enable && GlobalStates.isFrameHovered(barRoot.screen?.name, Config.options.bar.bottom ? "bottom" : "top"))
                 property var thisMonitorData: HyprlandData.monitors.find(m => m.name === barRoot.screen?.name)
                 property bool monitorHasFullscreen: HyprlandData.workspaceById[thisMonitorData?.activeWorkspace?.id]?.hasfullscreen ?? false
@@ -91,7 +95,7 @@ Scope {
                     classes: Config.options.bar.appOverlap.classes
                     appOverlapEnabled: barRoot.appOverlapEnabled
                 }
-                property int normalExclusiveZone: (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows))
+                property int normalExclusiveZone: (Config?.options.bar.autoHide.enable && (!normalMustShow || !Config?.options.bar.autoHide.pushWindows))
                     ? 0
                     : Appearance.sizes.baseBarHeight
                         + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)
@@ -102,7 +106,7 @@ Scope {
                     : (Config.options.bar.cornerStyle === 4 || Config.options.bar.cornerStyle === 5 || Config.options.bar.cornerStyle === 6) ? normalExclusiveZone + 4 : normalExclusiveZone
                 // The former top layer-shell margin contributed to the reserved area.
                 // Preserve that space now that the hover strip lives inside the window.
-                exclusiveZone: appOverlapEnabled && appOverlapActive ? 0
+                exclusiveZone: preview && !GlobalStates.barOpen ? 0 : appOverlapEnabled && appOverlapActive ? 0
                     : contentExclusiveZone > 0 ? contentExclusiveZone + islandTopInset : contentExclusiveZone
                 WlrLayershell.namespace: "quickshell:bar"
                 WlrLayershell.keyboardFocus: GlobalStates.diSessionOpen
@@ -110,7 +114,7 @@ Scope {
                     ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
                 // Overlay layer only while special workspace sits on top of a fullscreen window on this monitor,
                 // else Top layer so fullscreen apps cover the bar as normal (Hyprland buries Top layer under fullscreen+special).
-                WlrLayershell.layer: (monitorHasFullscreen && monitorHasSpecialOpen) ? WlrLayer.Overlay : WlrLayer.Top
+                WlrLayershell.layer: preview || (monitorHasFullscreen && monitorHasSpecialOpen) ? WlrLayer.Overlay : WlrLayer.Top
                 // Keep the Material bar's visual gap, but include it in the window
                 // so hovering above the island can reach its pointer handler.
                 readonly property int islandTopInset: GlobalStates.dynamicIslandEnabled

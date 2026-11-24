@@ -25,6 +25,7 @@ layout(std140, binding = 0) uniform buf {
     float automaticDarkening;
     float holdDarkening;
     float darkeningBlend;
+    float automaticDarkeningStrength;
 };
 
 layout(binding = 1) uniform sampler2D backdrop;
@@ -175,7 +176,7 @@ void main() {
     if (enhanced > 0.5) {
         float proximity = 1.0 - smoothstep(0.0, bezel, depth);
         float topBias = pow(max(1.0 - qt_TexCoord0.y, 0.0), 2.0);
-        rimLight = proximity * proximity * (0.35 * 0.15 + topBias * 0.5 * 0.08);
+        rimLight = proximity * proximity * sheen * (0.7 * 0.15 + topBias * 0.08);
         col *= 1.0 - pow(qt_TexCoord0.y, 2.0) * proximity * proximity * 0.06;
     } else {
     vec2 L = normalize(LIGHT);
@@ -203,10 +204,10 @@ void main() {
     if (automaticDarkening > 0.0) {
         float backdropLuma = materialLuma;
         float adaptiveBlack = max(0.0, 1.0 - 0.38 / max(backdropLuma, 0.38));
-        darkness = mix(darkening, adaptiveBlack, automaticDarkening);
+        darkness = mix(darkening, adaptiveBlack * automaticDarkeningStrength, automaticDarkening);
     }
     col *= 1.0 - darkness;
-    if (frosted < 0.5) col += vec3(rimLight);
+    col += vec3(rimLight);
 
     fragColor = vec4(clamp(col, 0.0, 1.0) * cover, cover) * qt_Opacity;
 }

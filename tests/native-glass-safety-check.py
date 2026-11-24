@@ -11,6 +11,8 @@ layer = (source / 'GlassLayerSurface.cpp').read_text()
 renderer = (source / 'GlassRenderer.cpp').read_text()
 main = (source / 'main.cpp').read_text()
 contrast_end = '\nvoid CGlassLayerSurface::damageMaterial()' if '\nvoid CGlassLayerSurface::damageMaterial()' in layer else '\nbool CGlassLayerSurface::enhanced()'
+if '\nvoid CGlassLayerSurface::updateDarkeningVisibility()' in layer:
+    contrast_end = '\nvoid CGlassLayerSurface::updateDarkeningVisibility()'
 contrast = layer[layer.index('std::string CGlassLayerSurface::contrastSample()'):layer.index(contrast_end)]
 acquire = renderer[renderer.index('void blurBackground('):].split('    // Fullscreen quad projection:', 1)[0] + '}\n'
 sample_acquire = renderer[renderer.index('void sampleBackground('):].split('    int srcX0', 1)[0].replace('SAMPLE_PADDING_PX', '60') + '}\n'

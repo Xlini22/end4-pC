@@ -149,14 +149,15 @@ ShellRoot {
             p.enable = true
             const slider = findControl(glassySettings, item => item.objectName === "glass-darkening")
             const automatic = findControl(glassySettings, item => item.objectName === "glass-automatic-darkening")
-            if (!slider || !automatic || !slider.enabled) throw new Error("Missing darkening controls")
+            const intensity = findControl(glassySettings, item => item.objectName === "glass-automatic-darkening-strength")
+            if (!slider || !automatic || !intensity || !slider.visible || intensity.visible) throw new Error("Missing darkening controls")
             slider.value = 37 + i
             slider.moved()
             if (p.darkening !== 37 + i) throw new Error("Manual darkening not saved")
-            automatic.checked = true
-            if (!p.automaticDarkening || slider.enabled || p.darkening !== 37 + i) throw new Error("Automatic must disable slider and retain value")
-            automatic.checked = false
-            if (!slider.enabled || p.darkening !== 37 + i) throw new Error("Manual darkening not restored")
+            automatic.clicked()
+            if (!p.automaticDarkening || slider.visible || !intensity.visible || p.darkening !== 37 + i) throw new Error("Automatic must replace slider and retain value")
+            automatic.clicked()
+            if (!slider.visible || intensity.visible || p.darkening !== 37 + i) throw new Error("Manual darkening not restored")
         }
         for (let i=0; i<GlassProfiles.keys.length; ++i) {
             if (GlassProfiles.profile(GlassProfiles.keys[i]).darkening !== 37+i) throw new Error("Darkening leaked between targets")

@@ -16,22 +16,22 @@ code = r'''
 #include <memory>
 #include <string>
 struct Layer {bool m_fadingOut=false;int pid=42;std::string m_namespace="quickshell:popup";int getPID()const{return pid;}};
-struct Optics {std::array<float,2> value;auto darkeningValue()const{return value;}bool darkeningTransition()const{return false;}};
+struct Optics {std::array<float,2> value;float strength=.5f;float strengthValue()const{return strength;}auto darkeningValue()const{return value;}bool darkeningTransition()const{return false;}};
 Optics optics{{.6f,0}};bool hasProfile=true;int lookups=0;
 const Optics* glassDarkeningOptics(int pid,const std::string& key){++lookups;assert(pid==42&&key=="bar");return hasProfile?&optics:nullptr;}
 std::string glassProfileKey(const std::string&){return "bar";}
-struct Mask {std::array<float,2> darkening{};};
+struct Mask {std::array<float,2> darkening{};float darkeningStrength=1;};
 void damageMaterial(){assert(false);}
-std::array<float,2> m_lastDarkening{};
+std::array<float,2> m_lastDarkening{};float m_lastDarkeningStrength=1;
 auto layerSurface=std::make_shared<Layer>();
 Mask frame(){Mask maskInfo;
 ''' + layer[start:end] + r'''
 return maskInfo;}
 int main(){
- assert(frame().darkening[0]==.6f);
+ assert(frame().darkening[0]==.6f&&frame().darkeningStrength==.5f);
  layerSurface->m_fadingOut=true;layerSurface->pid=-1;hasProfile=false;
- const int previous=lookups;
- for(int i=0;i<10;++i)assert(frame().darkening[0]==.6f);
+ const int previous=lookups;optics.strength=0;
+ for(int i=0;i<10;++i)assert(frame().darkening[0]==.6f&&frame().darkeningStrength==.5f);
  assert(lookups==previous);
  layerSurface->m_fadingOut=false;layerSurface->pid=42;hasProfile=true;
  optics.value={.2f,1};assert(frame().darkening[1]==1);

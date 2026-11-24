@@ -34,6 +34,18 @@ Item {
     readonly property var darkeningProfile: GlassProfiles.profile(
         ["quickshell:popup", "quickshell:popupMorph"].includes(win?.WlrLayershell.namespace) ? "bar" : profileKey)
     readonly property real materialFrost: opticalProfile && frost > 0 ? opticalProfile.blur : frost
+    property int nativeMaterialId: 0
+    readonly property Item darkeningSection: {
+        if (win?.WlrLayershell.namespace !== "quickshell:bar") return null
+        for (let item = parent; item; item = item.parent)
+            if (item.glassDarkeningSection > 0) return item.glassDarkeningSectionReference ?? item
+        return null
+    }
+    readonly property rect darkeningSectionGeometry: darkeningSection
+        ? Qt.rect(darkeningSection.x, darkeningSection.y, darkeningSection.width, darkeningSection.height) : Qt.rect(0, 0, 0, 0)
+    onDarkeningSectionGeometryChanged: GlassCompositor.queueRegions()
+    property bool automaticDarkeningVisible: win?.automaticDarkeningVisible ?? true
+    onAutomaticDarkeningVisibleChanged: GlassCompositor.queueRegions()
     readonly property bool live: (opticalProfile?.enable ?? true) && glassEnabled && (Config.options?.background?.widgets?.glass?.enable ?? false)
     readonly property bool tracking: live && visible && (win?.visible ?? true)
     readonly property bool windowBackdrop: live && Config.options.background.widgets.glass.source === "windows"
@@ -106,6 +118,8 @@ Item {
     function nativeRegion() {
         if (!enhancedNative || !tracking || width <= 0 || height <= 0 || !win?.screen) return null
         if (floating && (!GlassCompositor.windowFrostedAvailable || frost <= 0)) return null
+        const sectionBox = darkeningSection
+            ? darkeningSection.mapToItem(win.contentItem, Qt.rect(0, 0, darkeningSection.width, darkeningSection.height)) : null
         const full = mapToItem(win.contentItem, Qt.rect(0, 0, width, height))
         let rect = full
         if (nativeClip) {
@@ -133,8 +147,11 @@ Item {
         // Rounded radii must still fit a thin visible slice during scrolling.
         const maxRadius = Math.floor(Math.min(rounded[2], rounded[3]) * 500) / 1000
         for (let i = 4; i < 8; i++) rounded[i] = Math.min(rounded[i], maxRadius)
-        return { win, priority: nativePriority, name: floating ? "quickshell:dashboard" : win.WlrLayershell.namespace, monitor: win.screen.name,
-            values: rounded }
+        return { win, id: root.nativeMaterialId, darkeningVisible: root.automaticDarkeningVisible, priority: nativePriority, name: floating ? "quickshell:dashboard" : win.WlrLayershell.namespace, monitor: win.screen.name,
+            section: darkeningSection && sectionBox?.width > 0 && sectionBox?.height > 0
+                ? [darkeningSection.glassDarkeningSection, sectionBox.x, sectionBox.y,
+                    sectionBox.width, sectionBox.height].map(value => Math.round(value * 1000) / 1000)
+                : [0, 0, 0, 0, 0], values: rounded }
     }
     readonly property string nativeShape: JSON.stringify([topLeftRadius, topRightRadius, bottomRightRadius,
         bottomLeftRadius, flareLeft, flareRight, hangLeft, hangRight, edge, root.opacity, materialFrost, nativePriority])
@@ -362,11 +379,12 @@ Item {
                 id: opticalGlass
                 anchors.fill: parent
                 blurSource: backdrop
-                debounceDarkening: root.profileKey === "settings"
                 clearMaterial: root.clearMaterial
                 opticalProfile: root.opticalProfile
                 darkening: root.darkeningProfile?.enable && Number.isFinite(root.darkeningProfile.darkening)
                     ? Math.max(0, Math.min(100, root.darkeningProfile.darkening)) / 100 : 0
+                automaticDarkeningStrength: GlassProfiles.darkeningStrength(root.darkeningProfile)
+                automaticDarkeningVisible: root.automaticDarkeningVisible
                 automaticDarkening: root.darkeningProfile?.enable && root.darkeningProfile.automaticDarkening ? 1 : 0
                 topBarOptics: root.clearMaterial && root.win?.WlrLayershell.namespace === "quickshell:bar" && !Config.options.bar.bottom
                 frost: root.frost

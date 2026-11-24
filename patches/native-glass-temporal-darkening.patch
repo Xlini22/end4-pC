@@ -1,0 +1,748 @@
+diff --git a/src/DarkeningWindow.hpp b/src/DarkeningWindow.hpp
+new file mode 100644
+index 0000000..add6129
+--- /dev/null
++++ b/src/DarkeningWindow.hpp
+@@ -0,0 +1,35 @@
++#pragma once
++#include <algorithm>
++#include <cmath>
++
++// Piecewise-constant integration of the previous sample on fixed wall-clock windows.
++struct SDarkeningWindow {
++    struct Step { float before = 0, after = 0; int windows = -1; };
++    static constexpr double PERIOD = 1.5, FADE = .8;
++    double start = 0, last = 0, changed = 0;
++    bool initialized = false, published = false;
++    void reset() { initialized = published = false; }
++    Step advance(double now) {
++        if (!initialized || now < last) {
++            start = last = changed = now; initialized = true; published = false;
++            return {};
++        }
++        const double elapsed = now - start;
++        const double windows = std::floor(elapsed / PERIOD);
++        Step step;
++        step.windows = windows > 1 ? 2 : int(windows);
++        if (windows >= 1) {
++            step.before = float(std::clamp((start + PERIOD - last) / PERIOD, 0.0, 1.0));
++            start += windows * PERIOD;
++            step.after = float(std::clamp((now - start) / PERIOD, 0.0, 1.0));
++            published = true;
++            changed = now;
++        } else step.before = float((now - last) / PERIOD);
++        last = now;
++        return step;
++    }
++    float blend(double now) const {
++        const float t = published ? float(std::clamp((now - changed) / FADE, 0.0, 1.0)) : 1;
++        return t * t * (3 - 2 * t);
++    }
++};
+diff --git a/src/GlassDecoration.cpp b/src/GlassDecoration.cpp
+index 56c57bc..4ecf159 100644
+--- a/src/GlassDecoration.cpp
++++ b/src/GlassDecoration.cpp
+@@ -255,9 +255,12 @@ void CGlassDecoration::renderPass(PHLMONITOR monitor, const float& alpha) {
+     float cornerRadius  = window->rounding() * monitorScale;
+     float roundingPower = window->roundingPower();
+ 
++    material.temporal = &m_temporalDarkening;
++    material.temporalRegions = material.regions;
+     GlassRenderer::applyGlassEffect(m_sampleFramebuffer, source,
+                                      windowBox, transformBox, alpha,
+                                      cornerRadius, roundingPower, m_samplePaddingRatio, ctx, (surface || terminal || dimming) ? &material : nullptr, enhanced);
++    if (m_temporalDarkening.transitioning()) damageEntire();
+ }
+ 
+ eDecorationType CGlassDecoration::getDecorationType() {
+diff --git a/src/GlassDecoration.hpp b/src/GlassDecoration.hpp
+index 0b44755..d34cb42 100644
+--- a/src/GlassDecoration.hpp
++++ b/src/GlassDecoration.hpp
+@@ -34,6 +34,7 @@ class CGlassDecoration : public IHyprWindowDecoration {
+     SP<Render::IFramebuffer> m_blurTempFramebuffer;
+     SP<Render::IFramebuffer> m_frostFramebuffer, m_frostTempFramebuffer;
+     Vector2D     m_samplePaddingRatio;
++    GlassRenderer::SAdaptiveDarkening m_temporalDarkening;
+ 
+     // Track last rendered position/size to detect actual changes and seed damage
+     Vector2D m_lastPosition;
+diff --git a/src/GlassLayerSurface.cpp b/src/GlassLayerSurface.cpp
+index d60120a..de893cc 100644
+--- a/src/GlassLayerSurface.cpp
++++ b/src/GlassLayerSurface.cpp
+@@ -3,6 +3,7 @@
+ #include "GlassRenderer.hpp"
+ #include "Globals.hpp"
+ #include "LayerGeometry.hpp"
++#include <hyprland/src/managers/eventLoop/EventLoopManager.hpp>
+ 
+ #include <algorithm>
+ #include <cmath>
+@@ -28,6 +29,7 @@ CGlassLayerSurface::CGlassLayerSurface(PHLLS layerSurface)
+ }
+ 
+ CGlassLayerSurface::~CGlassLayerSurface() {
++    if (m_darkeningTimer) m_darkeningTimer->cancel();
+     // Framebuffer release binds framebuffer 0. Preserve the active frame even
+     // when a closing layer is reclaimed while another layer is being rendered.
+     GLint readFB = 0, drawFB = 0;
+@@ -166,12 +168,75 @@ void CGlassLayerSurface::sampleContrast(const SP<Render::IFramebuffer>& source,
+     damageMaterial();
+ }
+ 
++void CGlassLayerSurface::updateDarkeningVisibility() {
++    const auto layer = m_layerSurface.lock();
++    const auto* surface = enhancedSurface();
++    const bool visible = layer && layer->m_mapped && !layer->m_fadingOut && layer->m_alpha->value() >= .001f
++        && hasVisibleMaterial() && (!surface || surface->darkeningVisible);
++    if (visible != m_darkeningVisible) {
++        m_darkeningVisible = visible;
++        m_darkeningScenePending = false;
++        if (m_darkeningTimer) m_darkeningTimer->updateTimeout(std::nullopt);
++        if (visible) {
++            const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
++            m_temporalDarkening.restart(now);
++        }
++    }
++    if (!visible) return;
++    const auto monitor = layer->m_monitor.lock();
++    if (!monitor) return;
++    for (const auto& workspace : {monitor->m_activeWorkspace, monitor->m_activeSpecialWorkspace}) {
++        if (workspace && (workspace->m_renderOffset->isBeingAnimated() || workspace->m_alpha->isBeingAnimated())) {
++            noteDarkeningSceneChange(false);
++            break;
++        }
++    }
++}
++
++void CGlassLayerSurface::noteDarkeningSceneChange(bool repaint) {
++    if (!m_darkeningVisible) return;
++    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
++    // Reset once when an idle scene starts changing, never on every event/frame.
++    if (!m_darkeningScenePending) m_temporalDarkening.restart(now);
++    m_darkeningScenePending = true;
++    m_darkeningSceneChanged = now;
++    if (repaint) damageMaterial();
++}
++
++bool CGlassLayerSurface::needsDarkeningPublication() {
++    const auto& state = m_temporalDarkening;
++    if (!m_darkeningVisible || state.failed || !state.clock.initialized) return false;
++    // Drain the first complete window after the last external change; darker damage never marks the scene dirty.
++    if (m_darkeningScenePending && state.clock.start >= m_darkeningSceneChanged + SDarkeningWindow::PERIOD)
++        m_darkeningScenePending = false;
++    return !state.clock.published || m_darkeningScenePending;
++}
++
++void CGlassLayerSurface::scheduleDarkeningPublication() {
++    const auto& state = m_temporalDarkening;
++    if (!needsDarkeningPublication()) {
++        if (m_darkeningTimer) m_darkeningTimer->updateTimeout(std::nullopt);
++        return;
++    }
++    if (!m_darkeningTimer) {
++        m_darkeningTimer = makeShared<CEventLoopTimer>(std::nullopt, [this](SP<CEventLoopTimer>, void*) {
++            updateDarkeningVisibility();
++            if (needsDarkeningPublication()) damageMaterial();
++        }, nullptr);
++        g_pEventLoopManager->addTimer(m_darkeningTimer);
++    }
++    if (m_darkeningTimer->armed()) return;
++    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
++    const auto delay = std::chrono::duration<double>(std::max(.001, state.clock.start + SDarkeningWindow::PERIOD - now));
++    m_darkeningTimer->updateTimeout(std::chrono::duration_cast<Time::steady_dur>(delay));
++}
++
+ void CGlassLayerSurface::damageMaterial() {
+     const auto layer = m_layerSurface.lock();
+     if (!layer) return;
+     const auto monitor = layer->m_monitor.lock();
+     const auto position = layer->m_realPosition->value(), size = layer->m_realSize->value();
+-    if (monitor && monitor->m_transform == WL_OUTPUT_TRANSFORM_NORMAL && layer->m_namespace == "quickshell:settings") {
++    if (monitor && monitor->m_transform == WL_OUTPUT_TRANSFORM_NORMAL) {
+         if (const auto* surface = enhancedSurface()) {
+             if (const auto box = glassDamageBox(*surface, {position.x, position.y, size.x, size.y}, monitor->m_scale))
+                 g_pHyprRenderer->damageBox(CBox{(*box)[0], (*box)[1], (*box)[2], (*box)[3]});
+@@ -657,6 +722,10 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
+         maskInfo.darkeningReference = {0, top / float(transformBox.h), 1, (bottom - top) / float(transformBox.h)};
+     }
+ 
++    maskInfo.temporal = &m_temporalDarkening;
++    maskInfo.temporalRegions = maskInfo.regions;
++    maskInfo.temporalSample = m_darkeningVisible && !layerSurface->m_fadingOut;
++
+     // ponytail: 128-pixel horizontal bands bound per-fragment region scans without extra buffers.
+     // Dense overlapping cards still need the full scan; a spatial index would handle that case.
+     if (layerSurface->m_namespace == "quickshell:settings" && maskInfo.regions.size() > 2
+@@ -675,7 +744,10 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
+             maskInfo.clip = clip;
+             GlassRenderer::applyGlassEffect(m_sampleFramebuffer, target, rawBox, transformBox, alpha,
+                 cornerRadius, roundingPower, m_samplePaddingRatio, ctx, &maskInfo);
++            maskInfo.temporalSample = false;
+         }
++        scheduleDarkeningPublication();
++        if (m_temporalDarkening.transitioning() && !layerSurface->m_fadingOut) damageMaterial();
+         return;
+     }
+ 
+@@ -685,4 +757,6 @@ void CGlassLayerSurface::compositeAndRestore(PHLMONITOR monitor, float alpha) {
+                                      rawBox, transformBox, alpha,
+                                      cornerRadius, roundingPower, m_samplePaddingRatio, ctx,
+                                      &maskInfo);
++    scheduleDarkeningPublication();
++    if (m_temporalDarkening.transitioning() && !layerSurface->m_fadingOut) damageMaterial();
+ }
+diff --git a/src/GlassLayerSurface.hpp b/src/GlassLayerSurface.hpp
+index 038bd2b..7ec2a6f 100644
+--- a/src/GlassLayerSurface.hpp
++++ b/src/GlassLayerSurface.hpp
+@@ -4,6 +4,7 @@
+ #include "PluginConfig.hpp"
+ #include <GLES3/gl32.h>
+ #include <chrono>
++#include <hyprland/src/managers/eventLoop/EventLoopTimer.hpp>
+ 
+ #include <hyprland/src/desktop/view/LayerSurface.hpp>
+ #include <hyprland/src/render/Framebuffer.hpp>
+@@ -21,6 +22,8 @@ class CGlassLayerSurface {
+ 
+     void damageIfMoved();
+     void damageMaterial();
++    void updateDarkeningVisibility();
++    void noteDarkeningSceneChange(bool repaint = true);
+     std::string contrastSample();
+ 
+     [[nodiscard]] PHLLS getLayerSurface() const;
+@@ -55,6 +58,13 @@ class CGlassLayerSurface {
+     bool         m_lastTopBarOptics = false;
+     std::optional<SGlassOptics> m_lastOptics;
+     std::array<float, 2> m_lastDarkening{};
++    GlassRenderer::SAdaptiveDarkening m_temporalDarkening;
++    bool m_darkeningVisible = false;
++    bool m_darkeningScenePending = false;
++    double m_darkeningSceneChanged = 0;
++    bool needsDarkeningPublication();
++    SP<CEventLoopTimer> m_darkeningTimer;
++    void scheduleDarkeningPublication();
+     std::optional<SGlassSurface> m_lastSurface;
+ 
+     // Track last position/size to detect movement and expand damage
+diff --git a/src/GlassRegions.hpp b/src/GlassRegions.hpp
+index c21c7e8..e5fdf90 100644
+--- a/src/GlassRegions.hpp
++++ b/src/GlassRegions.hpp
+@@ -22,6 +22,7 @@ struct SGlassRegion {
+ struct SGlassSurface {
+     std::string name, monitor;
+     float width = 0, height = 0;
++    bool darkeningVisible = true;
+     std::vector<SGlassRegion> regions;
+     bool operator==(const SGlassSurface&) const = default;
+ };
+@@ -97,7 +98,7 @@ inline bool parseGlassRegions(const std::string& request, SGlassClient& result)
+     int enabled = 0, count = 0;
+     SGlassClient client;
+     if (!(input >> command >> client.pid >> enabled >> count) || command != "end4glass" || client.pid <= 0 ||
+-        (enabled < 0 || enabled > 2) || count < 0 || count > 32) return false;
++        (enabled < 0 || enabled > 3) || count < 0 || count > 32) return false;
+     client.enhanced = enabled;
+     for (int i = 0; i < count; ++i) {
+         SGlassSurface surface;
+@@ -106,6 +107,11 @@ inline bool parseGlassRegions(const std::string& request, SGlassClient& result)
+             surface.name.size() > 128 || !surface.name.starts_with("quickshell:") || surface.monitor.size() > 128 ||
+             !std::isfinite(surface.width) || !std::isfinite(surface.height) || surface.width <= 0 || surface.height <= 0 ||
+             surface.width > 32768 || surface.height > 32768 || regions < 0 || regions > MAX_GLASS_REGIONS) return false;
++        if (enabled == 3) {
++            int visible = 0;
++            if (!(input >> visible) || visible < 0 || visible > 1) return false;
++            surface.darkeningVisible = visible;
++        }
+         for (int j = 0; j < regions; ++j) {
+             SGlassRegion region;
+             for (auto* values : {&region.rect, &region.radii, &region.features})
+@@ -113,7 +119,7 @@ inline bool parseGlassRegions(const std::string& request, SGlassClient& result)
+                     if (!(input >> value) || !std::isfinite(value) || std::abs(value) > 65536) return false;
+             if (!(input >> region.edge >> region.opacity) || !std::isfinite(region.edge) || region.edge < 0 || region.edge > 3 || !std::isfinite(region.opacity) || region.opacity < 0 || region.opacity > 1 ||
+                 region.rect[2] <= 0 || region.rect[3] <= 0) return false;
+-            if (enabled == 2 && (!(input >> region.frost) || !std::isfinite(region.frost) || region.frost < 0 || region.frost > 32)) return false;
++            if (enabled >= 2 && (!(input >> region.frost) || !std::isfinite(region.frost) || region.frost < 0 || region.frost > 32)) return false;
+             for (float r : region.radii) if (r < 0 || r > std::min(region.rect[2], region.rect[3]) * .5f) return false;
+             for (float feature : region.features) if (feature < 0 || feature > 32768) return false;
+             surface.regions.push_back(region);
+diff --git a/src/GlassRenderer.cpp b/src/GlassRenderer.cpp
+index 9394113..8a4cba4 100644
+--- a/src/GlassRenderer.cpp
++++ b/src/GlassRenderer.cpp
+@@ -8,9 +8,40 @@
+ #include <GLES3/gl32.h>
+ #include <hyprland/src/render/OpenGL.hpp>
+ #include <hyprland/src/render/Renderer.hpp>
++#include <hyprutils/utils/ScopeGuard.hpp>
+ 
+ namespace GlassRenderer {
+ 
++SAdaptiveDarkening::~SAdaptiveDarkening() {
++    glDeleteFramebuffers(2, framebuffers.data());
++    glDeleteTextures(2, textures.data());
++}
++
++static bool temporalBuffers(SAdaptiveDarkening& state) {
++    if (state.failed) return false;
++    if (state.textures[0]) return true;
++    glGenTextures(2, state.textures.data());
++    glGenFramebuffers(2, state.framebuffers.data());
++    if (!state.textures[0] || !state.textures[1] || !state.framebuffers[0] || !state.framebuffers[1]) {
++        state.failed = true; return false;
++    }
++    for (int index = 0; index < 2; ++index) {
++        glBindTexture(GL_TEXTURE_2D, state.textures[index]);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 33, 1, 0, GL_RGBA, GL_FLOAT, nullptr);
++        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, state.framebuffers[index]);
++        glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, state.textures[index], 0);
++        if (glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
++            state.failed = true;
++            return false;
++        }
++    }
++    return true;
++}
++
+ static GLuint fbId(const SP<Render::IFramebuffer>& framebuffer) {
+     return dynamic_cast<Render::GL::CGLFramebuffer*>(framebuffer.get())->getFBID();
+ }
+@@ -236,24 +267,28 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
+     glUniform2f(uniforms.darkening, mask ? mask->darkening[0] : 0, mask ? mask->darkening[1] : 0);
+     const std::array<float, 4> reference = mask ? mask->darkeningReference : std::array<float, 4>{};
+     glUniform4fv(uniforms.darkeningReference, 1, reference.data());
+-    const int count = enhanced && mask ? static_cast<int>(mask->regions.size()) : 0;
+-    glUniform1i(uniforms.regionCount, count);
+-    if (count) {
+-        std::array<float, MAX_GLASS_REGIONS * 4> rects{}, radii{}, features{};
+-        std::array<float, MAX_GLASS_REGIONS * 4> edges{};
+-        for (int i = 0; i < count; ++i) {
+-            std::copy(mask->regions[i].rect.begin(), mask->regions[i].rect.end(), rects.begin() + i * 4);
+-            std::copy(mask->regions[i].radii.begin(), mask->regions[i].radii.end(), radii.begin() + i * 4);
+-            std::copy(mask->regions[i].features.begin(), mask->regions[i].features.end(), features.begin() + i * 4);
+-            edges[i * 4] = mask->regions[i].edge;
+-            edges[i * 4 + 1] = mask->regions[i].opacity;
+-            edges[i * 4 + 2] = mask->regions[i].frost;
++    const auto uploadRegions = [&](const std::vector<SGlassRegion>& regions) {
++        const int count = enhanced && mask ? static_cast<int>(regions.size()) : 0;
++        glUniform1i(uniforms.regionCount, count);
++        if (count) {
++            std::array<float, MAX_GLASS_REGIONS * 4> rects{}, radii{}, features{};
++            std::array<float, MAX_GLASS_REGIONS * 4> edges{};
++            for (int i = 0; i < count; ++i) {
++                std::copy(regions[i].rect.begin(), regions[i].rect.end(), rects.begin() + i * 4);
++                std::copy(regions[i].radii.begin(), regions[i].radii.end(), radii.begin() + i * 4);
++                std::copy(regions[i].features.begin(), regions[i].features.end(), features.begin() + i * 4);
++                edges[i * 4] = regions[i].edge;
++                edges[i * 4 + 1] = regions[i].opacity;
++                edges[i * 4 + 2] = regions[i].frost;
++            }
++            glUniform4fv(uniforms.regionRects, count, rects.data());
++            glUniform4fv(uniforms.regionRadii, count, radii.data());
++            glUniform4fv(uniforms.regionFeatures, count, features.data());
++            glUniform4fv(uniforms.regionEdges, count, edges.data());
+         }
+-        glUniform4fv(uniforms.regionRects, count, rects.data());
+-        glUniform4fv(uniforms.regionRadii, count, radii.data());
+-        glUniform4fv(uniforms.regionFeatures, count, features.data());
+-        glUniform4fv(uniforms.regionEdges, count, edges.data());
+-    }
++    };
++    const std::vector<SGlassRegion> noRegions;
++    uploadRegions(mask ? mask->regions : noRegions);
+     glUniform1f(uniforms.refractionStrength, enhanced ? (optics ? optics->refraction : topBarOptics ? 2.0f : 1.35f) : resolvePresetFloat(resolveContext, &SPresetValues::refractionStrength, &SOverridableConfig::refractionStrength));
+     glUniform1f(uniforms.chromaticAberration, enhanced ? .1f : resolvePresetFloat(resolveContext, &SPresetValues::chromaticAberration, &SOverridableConfig::chromaticAberration));
+     glUniform1f(uniforms.fresnelStrength,     enhanced ? (optics ? optics->reflections * .7f : .35f) : resolvePresetFloat(resolveContext, &SPresetValues::fresnelStrength, &SOverridableConfig::fresnelStrength));
+@@ -310,19 +345,115 @@ void applyGlassEffect(SP<Render::IFramebuffer> sampleFramebuffer, SP<Render::IFr
+     shader->setUniformFloat(SHADER_ROUNDING_POWER, roundingPower);
+ 
+     glBindVertexArray(shader->getUniformLocation(SHADER_SHADER_VAO));
+-    if (mask && mask->enhanced && g_pHyprRenderer->m_renderData.pMonitor->m_transform == WL_OUTPUT_TRANSFORM_NORMAL) {
+-        // Keep disjoint damage disjoint: Qt may not repaint controls between those rectangles.
+-        auto damage = g_pHyprRenderer->m_renderData.damage.copy().intersect(rawBox);
+-        if (mask->clip) damage.intersect(*mask->clip);
+-        damage.forEachRect([&](const auto& rect) {
+-            g_pHyprOpenGL->scissor(CBox{rect.x1, rect.y1, rect.x2 - rect.x1, rect.y2 - rect.y1}, false);
++    const auto drawGlass = [&] {
++        if (mask && mask->enhanced && g_pHyprRenderer->m_renderData.pMonitor->m_transform == WL_OUTPUT_TRANSFORM_NORMAL) {
++            // Keep disjoint damage disjoint: Qt may not repaint controls between those rectangles.
++            auto damage = g_pHyprRenderer->m_renderData.damage.copy().intersect(rawBox);
++            if (mask->clip) damage.intersect(*mask->clip);
++            damage.forEachRect([&](const auto& rect) {
++                g_pHyprOpenGL->scissor(CBox{rect.x1, rect.y1, rect.x2 - rect.x1, rect.y2 - rect.y1}, false);
++                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
++            });
++        } else {
++            g_pHyprOpenGL->scissor(rawBox);
+             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+-        });
+-    } else {
+-        g_pHyprOpenGL->scissor(rawBox);
+-        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
++        }
++        g_pHyprOpenGL->scissor(nullptr);
++    };
++    glUniform1i(uniforms.temporalMode, 0);
++    if (mask && mask->temporal) {
++        auto& state = *mask->temporal;
++        if (mask->darkening[1] <= 0) { state.clock.reset(); state.resumeBlend = -1; }
++        else {
++            GLint activeTexture = 0, oldTexture = 0, oldSampler = 0, drawFB = 0, viewport[4]{}, scissorBox[4]{};
++            GLboolean colorMask[4]{};
++            glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
++            glActiveTexture(GL_TEXTURE3);
++            glGetIntegerv(GL_TEXTURE_BINDING_2D, &oldTexture);
++            glGetIntegerv(GL_SAMPLER_BINDING, &oldSampler);
++            glGetIntegerv(GL_SCISSOR_BOX, scissorBox);
++            glGetBooleanv(GL_COLOR_WRITEMASK, colorMask);
++            const bool stencil = glIsEnabled(GL_STENCIL_TEST), depth = glIsEnabled(GL_DEPTH_TEST), cull = glIsEnabled(GL_CULL_FACE);
++            glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &drawFB);
++            glGetIntegerv(GL_VIEWPORT, viewport);
++            const bool blending = glIsEnabled(GL_BLEND), scissor = glIsEnabled(GL_SCISSOR_TEST);
++            const auto restore = Hyprutils::Utils::CScopeGuard([&] {
++                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFB);
++                glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
++                g_pHyprOpenGL->setCapStatus(GL_BLEND, blending);
++                g_pHyprOpenGL->scissor(scissorBox[0], scissorBox[1], scissorBox[2], scissorBox[3], false);
++                g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, scissor);
++                g_pHyprOpenGL->setCapStatus(GL_STENCIL_TEST, stencil);
++                g_pHyprOpenGL->setCapStatus(GL_DEPTH_TEST, depth);
++                g_pHyprOpenGL->setCapStatus(GL_CULL_FACE, cull);
++                glColorMask(colorMask[0], colorMask[1], colorMask[2], colorMask[3]);
++                glBindSampler(3, oldSampler);
++                glActiveTexture(GL_TEXTURE3);
++                glBindTexture(GL_TEXTURE_2D, oldTexture);
++                glActiveTexture(activeTexture);
++            });
++            const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
++            glBindSampler(3, 0);
++            const bool ready = temporalBuffers(state);
++            if (ready && mask->temporalSample && (!state.clock.initialized || now - state.lastDraw >= .001)) {
++                const auto step = state.clock.advance(now);
++                const int destination = 1 - state.current;
++                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, state.framebuffers[destination]);
++                glViewport(0, 0, 33, 1);
++                g_pHyprOpenGL->setCapStatus(GL_BLEND, false);
++                g_pHyprOpenGL->setCapStatus(GL_STENCIL_TEST, false);
++                g_pHyprOpenGL->setCapStatus(GL_DEPTH_TEST, false);
++                g_pHyprOpenGL->setCapStatus(GL_CULL_FACE, false);
++                glColorMask(true, true, true, true);
++                g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, false);
++                glActiveTexture(GL_TEXTURE3);
++                glBindTexture(GL_TEXTURE_2D, state.textures[state.current]);
++                glUniform1i(uniforms.temporalHistory, 3);
++                glUniform1i(uniforms.temporalMode, 1);
++                glUniform4f(uniforms.temporalStep, step.before, step.after, step.windows, state.resumeBlend);
++                state.resumeBlend = -1;
++                uploadRegions(mask->temporalRegions);
++                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
++                state.current = destination;
++                state.lastDraw = now;
++            }
++            // Both the success and allocation-failure paths must restore draw state before compositing.
++            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFB);
++            glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
++            g_pHyprOpenGL->setCapStatus(GL_BLEND, blending);
++            g_pHyprOpenGL->setCapStatus(GL_STENCIL_TEST, stencil);
++            g_pHyprOpenGL->setCapStatus(GL_DEPTH_TEST, depth);
++            g_pHyprOpenGL->setCapStatus(GL_CULL_FACE, cull);
++            glColorMask(colorMask[0], colorMask[1], colorMask[2], colorMask[3]);
++            if (ready && state.clock.initialized) {
++                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFB);
++                glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
++                g_pHyprOpenGL->setCapStatus(GL_BLEND, blending);
++                g_pHyprOpenGL->setCapStatus(GL_SCISSOR_TEST, scissor);
++                glActiveTexture(GL_TEXTURE3);
++                glBindTexture(GL_TEXTURE_2D, state.textures[state.current]);
++                glUniform1i(uniforms.temporalHistory, 3);
++                glUniform1i(uniforms.temporalMode, 2);
++                glUniform1f(uniforms.temporalBlend, state.clock.blend(now));
++                uploadRegions(mask->regions);
++                std::array<GLint, 33> slots{};
++                for (size_t index = 0; index < mask->regions.size() && index < 32; ++index) {
++                    const auto found = std::find_if(mask->temporalRegions.begin(), mask->temporalRegions.end(),
++                        [&](const auto& region) { return region.rect == mask->regions[index].rect; });
++                    if (found != mask->temporalRegions.end()) slots[index + 1] = int(found - mask->temporalRegions.begin()) + 1;
++                }
++                glUniform1iv(uniforms.temporalSlots, 33, slots.data());
++                // Keep history bound until all disjoint damage rectangles have been drawn.
++                drawGlass();
++                return;
++            }
++            // Unsupported history buffers retain manual darkness instead of per-frame auto flashing.
++            glUniform2f(uniforms.darkening, mask->darkening[0], 0);
++            glUniform1i(uniforms.temporalMode, 0);
++            uploadRegions(mask->regions);
++        }
+     }
+-    g_pHyprOpenGL->scissor(nullptr);
++    drawGlass();
+ }
+ 
+ } // namespace GlassRenderer
+diff --git a/src/GlassRenderer.hpp b/src/GlassRenderer.hpp
+index 869e246..89497de 100644
+--- a/src/GlassRenderer.hpp
++++ b/src/GlassRenderer.hpp
+@@ -2,6 +2,8 @@
+ 
+ #include "PluginConfig.hpp"
+ #include "GlassRegions.hpp"
++#include "DarkeningWindow.hpp"
++#include <chrono>
+ 
+ #include <GLES3/gl32.h>
+ #include <hyprland/src/render/Framebuffer.hpp>
+@@ -23,6 +25,28 @@ inline constexpr float BLUR_DOWNSCALE_THRESHOLD = 0.35f; // min blur_strength fo
+ // Layers only: alpha mask from the temp FBO that captured the rendered surface.
+ // Constrains the glass effect to regions where the layer has visible content.
+ // Windows do not use masking, they pass mask=nullptr to applyGlassEffect.
++struct SAdaptiveDarkening {
++    std::array<GLuint, 2> textures{}, framebuffers{};
++    SDarkeningWindow clock;
++    int current = 0;
++    bool failed = false;
++    double lastDraw = -1;
++    float resumeBlend = -1;
++    void restart(double now) {
++        if (clock.initialized) resumeBlend = clock.blend(now);
++        clock.reset();
++        lastDraw = -1;
++    }
++    bool transitioning() const {
++        const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
++        return clock.published && now - clock.changed < SDarkeningWindow::FADE;
++    }
++    ~SAdaptiveDarkening();
++    SAdaptiveDarkening() = default;
++    SAdaptiveDarkening(const SAdaptiveDarkening&) = delete;
++    SAdaptiveDarkening& operator=(const SAdaptiveDarkening&) = delete;
++};
++
+ struct SMaskInfo {
+     GLuint   textureId;
+     GLuint   frostTextureId = 0;
+@@ -37,6 +61,9 @@ struct SMaskInfo {
+     std::vector<SGlassRegion> regions;
+     std::array<float, 2> darkening{};
+     std::array<float, 4> darkeningReference{};
++    SAdaptiveDarkening* temporal = nullptr;
++    std::vector<SGlassRegion> temporalRegions;
++    bool temporalSample = true;
+     std::optional<CBox> clip;
+ };
+ 
+diff --git a/src/Globals.hpp b/src/Globals.hpp
+index 0c52c5c..51b6890 100644
+--- a/src/Globals.hpp
++++ b/src/Globals.hpp
+@@ -69,7 +69,7 @@ inline std::unique_ptr<SGlobalState> g_pGlobalState;
+ inline constexpr std::string_view PLUGIN_NAME        = "hyprglass";
+ inline constexpr std::string_view PLUGIN_DESCRIPTION = "Apple-style Liquid Glass effect";
+ inline constexpr std::string_view PLUGIN_AUTHOR      = "Hyprnux";
+-inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r36-candidate";
++inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r40-candidate";
+ 
+ inline const SGlassOptics* glassOptics(int pid, const std::string& key) {
+     const auto client = g_pGlobalState->glassProfiles.find(pid);
+diff --git a/src/ShaderManager.cpp b/src/ShaderManager.cpp
+index 08c91c3..8b424d7 100644
+--- a/src/ShaderManager.cpp
++++ b/src/ShaderManager.cpp
+@@ -55,6 +55,11 @@ bool CShaderManager::compileGlassShader() {
+     glassUniforms.tintAlpha           = glGetUniformLocation(program, "tintAlpha");
+     glassUniforms.darkening           = glGetUniformLocation(program, "darkening");
+     glassUniforms.darkeningReference = glGetUniformLocation(program, "darkeningReference");
++    glassUniforms.temporalMode = glGetUniformLocation(program, "temporalMode");
++    glassUniforms.temporalHistory = glGetUniformLocation(program, "temporalHistory");
++    glassUniforms.temporalStep = glGetUniformLocation(program, "temporalStep");
++    glassUniforms.temporalBlend = glGetUniformLocation(program, "temporalBlend");
++    glassUniforms.temporalSlots = glGetUniformLocation(program, "temporalSlots[0]");
+     glassUniforms.lensDistortion      = glGetUniformLocation(program, "lensDistortion");
+     glassUniforms.saturation          = glGetUniformLocation(program, "saturation");
+     glassUniforms.vibrancyDarkness    = glGetUniformLocation(program, "vibrancyDarkness");
+diff --git a/src/ShaderManager.hpp b/src/ShaderManager.hpp
+index a7b5ebd..7e1bebc 100644
+--- a/src/ShaderManager.hpp
++++ b/src/ShaderManager.hpp
+@@ -18,6 +18,7 @@ struct SGlassUniforms {
+     GLint tintColor = -1;
+     GLint tintAlpha = -1;
+     GLint darkening = -1, darkeningReference = -1;
++    GLint temporalMode = -1, temporalHistory = -1, temporalStep = -1, temporalBlend = -1, temporalSlots = -1;
+     GLint lensDistortion = -1;
+     GLint saturation = -1;
+     GLint vibrancyDarkness = -1;
+diff --git a/src/Shaders.hpp b/src/Shaders.hpp
+index 75611c7..00c5579 100644
+--- a/src/Shaders.hpp
++++ b/src/Shaders.hpp
+@@ -16,6 +16,12 @@ uniform vec2 sampleUVOffset;
+ uniform vec2 sampleUVScale;
+ uniform vec2 darkening;
+ uniform vec4 darkeningReference;
++uniform int temporalMode;
++uniform sampler2D temporalHistory;
++uniform vec4 temporalStep;
++uniform float temporalBlend;
++uniform int temporalSlots[33];
++
+ uniform int enhanced;
+ uniform int regionCount;
+ uniform vec4 regionRects[32];
+@@ -41,8 +47,20 @@ float sampleMaterialLuma(int selected) {
+ 
+ void main() {
+     hyprglassMain();
++    if (temporalMode == 1) {
++        vec2 pos = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
++        gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
++    }
+     for (int i = 0; i < 9; ++i) materialLuma[i] = vec4(0.0);
+     if (darkening.y <= 0.0) return;
++    if (temporalMode == 2) {
++        int count = enhanced == 1 ? clamp(regionCount, 0, 32) : 0;
++        for (int slot = 0; slot <= count; ++slot) {
++            vec4 history = texelFetch(temporalHistory, ivec2(temporalSlots[slot], 0), 0);
++            materialLuma[slot / 4][slot % 4] = mix(history.b, history.g, temporalBlend);
++        }
++        return;
++    }
+     if (darkeningReference.z > 0.0) {
+         float luma = sampleMaterialLuma(-1);
+         for (int i = 0; i < 9; ++i) materialLuma[i] = vec4(luma);
+@@ -120,6 +138,12 @@ uniform float maskAlphaThreshold;
+ 
+ in vec2 v_texcoord;
+ flat in highp vec4 materialLuma[9];
++uniform int temporalMode;
++uniform sampler2D temporalHistory;
++uniform vec4 temporalStep;
++uniform float temporalBlend;
++uniform int temporalSlots[33];
++
+ layout(location = 0) out vec4 fragColor;
+ 
+ // ============================================================================
+@@ -449,6 +473,23 @@ vec4 shadeGlass(vec2 uv, float cornerSdf, int selected, float selectedSdf) {
+ }
+ 
+ void main() {
++    if (temporalMode == 1) {
++        int slot = int(gl_FragCoord.x);
++        float sampleLuma = materialLuma[slot / 4][slot % 4];
++        vec4 prior = texelFetch(temporalHistory, ivec2(slot, 0), 0);
++        if (temporalStep.z < 0.0) {
++            float held = temporalStep.w >= 0.0 ? mix(prior.b, prior.g, temporalStep.w) : 0.0;
++            fragColor = vec4(0.0, held, held, sampleLuma);
++            return;
++        }
++        float sum = prior.r + prior.a * temporalStep.x;
++        if (temporalStep.z > 0.0) {
++            float mean = temporalStep.z > 1.0 ? prior.a : sum;
++            float from = temporalStep.z > 1.0 ? prior.a : prior.g;
++            fragColor = vec4(prior.a * temporalStep.y, mean, from, sampleLuma);
++        } else fragColor = vec4(sum, prior.g, prior.b, sampleLuma);
++        return;
++    }
+     vec2 uv = v_texcoord;
+ 
+     // Layers only: sample the temp FBO to get the rendered surface pixel.
+diff --git a/src/main.cpp b/src/main.cpp
+index 427b1ad..7da2387 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -28,9 +28,24 @@
+ #include <sstream>
+ #include <array>
+ 
++static void queueDarkeningSceneChange(PHLMONITOR monitor) {
++    if (!monitor) return;
++    for (const auto& [ptr, state] : g_pGlobalState->layerSurfaces) {
++        const auto layer = state->getLayerSurface();
++        if (layer && layer->m_monitor.lock() == monitor) {
++            state->updateDarkeningVisibility();
++            state->noteDarkeningSceneChange();
++        }
++    }
++}
++
+ // Observe compositor opacity, not workspace activation: swipes reveal Top layers before committing.
+ static void damageAdaptivePopups(PHLMONITOR monitor) {
+-    if (!monitor || monitor->m_transform != WL_OUTPUT_TRANSFORM_NORMAL) return;
++    if (!monitor) return;
++    for (const auto& [ptr, state] : g_pGlobalState->layerSurfaces)
++        if (const auto layer = state->getLayerSurface(); layer && layer->m_monitor.lock() == monitor)
++            state->updateDarkeningVisibility();
++    if (monitor->m_transform != WL_OUTPUT_TRANSFORM_NORMAL) return;
+     const auto incoming = monitor->m_damage.getBufferDamage(1);
+     if (incoming.empty()) return;
+     for (const auto& [ptr, state] : g_pGlobalState->layerSurfaces) {
+@@ -290,6 +305,7 @@ static void hkRenderLayer(Render::IHyprRenderer* thisptr, PHLLS layerSurface, PH
+             it = layerStates.emplace(rawPtr, std::make_shared<CGlassLayerSurface>(layerSurface)).first;
+         }
+ 
++        it->second->updateDarkeningVisibility();
+         float alpha = layerSurface->m_alpha->value();
+         if (alpha < 0.001f || !it->second->hasVisibleMaterial()) {
+             ((renderLayerFn)g_pGlobalState->renderLayerHook->m_original)(thisptr, layerSurface, monitor, now, popups, lockscreen);
+@@ -347,16 +363,19 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
+         std::erase_if(clocks, [](const auto& entry) { return entry.second.empty(); });
+     }));
+ 
+-    g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.window.open.listen([&](PHLWINDOW w) { onNewWindow(w); }));
++    g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.window.open.listen([&](PHLWINDOW w) { onNewWindow(w); if (w) queueDarkeningSceneChange(w->m_monitor.lock()); }));
+ 
+-    g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.window.close.listen([&](PHLWINDOW w) { onCloseWindow(w); }));
++    g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.window.close.listen([&](PHLWINDOW w) { onCloseWindow(w); if (w) queueDarkeningSceneChange(w->m_monitor.lock()); }));
+ 
+     g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.layer.closed.listen([&](PHLLS layerSurface) { clearLayerGlassOnClose(layerSurface); }));
+ 
+     // Z-order / visibility changes invalidate layer glass caches on the affected monitor only.
+     // Per-monitor to avoid triggering re-samples on idle monitors (feedback loop).
+     auto bumpWindowMonitor = [&](PHLWINDOW w) {
+-        if (w) if (auto mon = w->m_monitor.lock()) g_pGlobalState->bumpSceneGeneration(mon.get());
++        if (w) if (auto mon = w->m_monitor.lock()) {
++            g_pGlobalState->bumpSceneGeneration(mon.get());
++            queueDarkeningSceneChange(mon);
++        }
+     };
+     g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.window.active.listen(
+         [=](PHLWINDOW w, Desktop::eFocusReason) { bumpWindowMonitor(w); }));
+@@ -366,7 +385,10 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
+         [=](PHLWINDOW w, PHLWORKSPACE) { bumpWindowMonitor(w); }));
+     g_pGlobalState->listeners.emplace_back(Event::bus()->m_events.workspace.active.listen(
+         [&](PHLWORKSPACE ws) {
+-            if (ws) if (auto mon = ws->m_monitor.lock()) g_pGlobalState->bumpSceneGeneration(mon.get());
++            if (ws) if (auto mon = ws->m_monitor.lock()) {
++                g_pGlobalState->bumpSceneGeneration(mon.get());
++                queueDarkeningSceneChange(mon);
++            }
+         }));
+ 
+     // Clear pending presets/layers before config re-parse, commit after
+@@ -449,6 +471,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
+             // Only repaint changed surfaces: scrolling Dashboard must not invalidate the bar and dock.
+             for (const auto& [ptr, state] : g_pGlobalState->layerSurfaces) {
+                 if (auto layer = state->getLayerSurface(); layer && !layer->m_fadingOut && layer->getPID() == pid) {
++                    state->updateDarkeningVisibility();
+                     if (auto monitor = layer->m_monitor.lock(); monitor && glassSurfaceChanged(previous, current, layer->m_namespace, monitor->m_name)) {
+                         const auto size = layer->m_realSize->goal();
+                         const auto* oldSurface = glassSurfaceForLayer(previous, layer->m_namespace, monitor->m_name, size.x, size.y);
+@@ -503,6 +526,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
+             clients.insert_or_assign(pid, std::move(profiles));
+             for (const auto& [ptr, state] : g_pGlobalState->layerSurfaces) {
+                 if (auto layer = state->getLayerSurface(); layer && !layer->m_fadingOut && layer->getPID() == pid) {
++                    state->updateDarkeningVisibility();
+                     if (auto monitor = layer->m_monitor.lock()) g_pGlobalState->bumpSceneGeneration(monitor.get());
+                     g_pHyprRenderer->damageBox(CBox{layer->m_realPosition->value(), layer->m_realSize->value()});
+                 }

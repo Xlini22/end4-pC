@@ -12,6 +12,9 @@ Singleton {
     signal requestBluetoothDialog()
     property bool barOpen: true
     property bool barStyleEditorOpen: false
+    property Item glassyPreviewPage: null
+    readonly property var glassyPreviewTargets: settingsOpen && !screenLocked && glassyPreviewPage?.visible
+        && glassyPreviewPage.preview ? glassyPreviewPage.targets : []
     property bool crosshairOpen: false
     property bool equalizerOpen: false
     property bool sidebarLeftOpen: false

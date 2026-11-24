@@ -368,5 +368,21 @@
   "**Instructions**: Log into Mistral account, go to Keys on the sidebar, click Create new key": "**Istruzioni**: Accedi al tuo account Mistral, vai nella sezione \"Keys\" dal menu laterale, clicca \"Create new key\"",
   "Gives the model search capabilities (immediately)": "Abilita modalità ricerca del modello (immediatamente)",
   "Commands, edit configs, search.\nTakes an extra turn to switch to search mode if that's needed": "Comanda, modifica la richiesta, cerca.\nRichiede un turno in più per attivare la modalità ricerca se richiesta",
-  "Online | %1's model | Delivers fast, responsive and well-formatted answers. Disadvantages: not very eager to do stuff; might make up unknown function calls": "Online | Modello di %1 | Ritorna risposte veloci e formattate correttamente. Svantaggi: poca voglia di svolgere compiti; potrebbe fare chiamate di funzioni inesistenti"
+  "Online | %1's model | Delivers fast, responsive and well-formatted answers. Disadvantages: not very eager to do stuff; might make up unknown function calls": "Online | Modello di %1 | Ritorna risposte veloci e formattate correttamente. Svantaggi: poca voglia di svolgere compiti; potrebbe fare chiamate di funzioni inesistenti",
+    "Automatic darkening intensity": "Intensità dell’oscuramento automatico",
+    "Log out and back in to apply automatic darkening intensity to native glass.": "Esci e rientra nella sessione per applicare l’intensità dell’oscuramento automatico al vetro nativo.",
+  "Edit multiple profiles": "Modifica più profili",
+  "Edit one profile": "Modifica un profilo",
+  "Select at least one profile.": "Seleziona almeno un profilo.",
+  "Only the controls you change are applied to the selected profiles. Mixed values are preserved until edited.": "Le modifiche ai controlli si applicano ai profili selezionati. I valori misti restano invariati finché non li modifichi.",
+  "Selected profiles (%1)": "Profili selezionati (%1)",
+  "Enable Glassy for selected profiles": "Abilita Glassy per i profili selezionati",
+  "Mixed": "Misto",
+  "Automatic darkening is mixed. Choose a mode to show its slider; both saved values are preserved.": "L’oscuramento automatico ha uno stato misto. Scegli una modalità per mostrarne lo slider; entrambi i valori salvati vengono conservati.",
+  "Mixed values. Adjust to apply a value to the selected profiles.": "Valori misti. Regola il controllo per applicare un valore ai profili selezionati.",
+  "Reset selected profiles": "Ripristina i profili selezionati",
+  "Hide preview": "Nascondi anteprima",
+  "Show selected elements": "Mostra elementi selezionati",
+  "Preview keeps the selected bar, dock and sidebars visible while you edit. It ends when you leave this page.": "L’anteprima mantiene visibili barra, dock e sidebar selezionate mentre modifichi i valori. Termina quando lasci questa pagina.",
+  "For Terminal, use an open terminal. The lockscreen cannot be shown alongside Settings; preview does not lock the session.": "Per Terminale usa un terminale aperto. Il blocco schermo non può essere mostrato insieme alle Impostazioni; l’anteprima non blocca la sessione."
 }

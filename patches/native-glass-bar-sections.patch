@@ -1,0 +1,184 @@
+--- a/src/GlassLayerSurface.cpp
++++ b/src/GlassLayerSurface.cpp
+@@ -702,6 +702,8 @@
+         for (auto region : surface->regions) {
+             region.rect = {region.rect[0] * sx, region.rect[1] * sy, region.rect[2] * sx, region.rect[3] * sy};
+             region.frost *= std::min(sx, sy);
++            region.darkeningBox = {region.darkeningBox[0] * sx, region.darkeningBox[1] * sy,
++                region.darkeningBox[2] * sx, region.darkeningBox[3] * sy};
+             for (float& r : region.radii) r *= std::min(sx, sy);
+             for (float& f : region.features) f *= std::min(sx, sy);
+             maskInfo.regions.push_back(region);
+@@ -732,6 +734,14 @@
+         float(visibleSample.w / transformBox.w), float(visibleSample.h / transformBox.h)};
+     maskInfo.temporal = &m_temporalDarkening;
+     maskInfo.temporalRegions = maskInfo.regions;
++    if (layerSurface->m_namespace == "quickshell:bar") {
++        auto sections = glassBarDarkeningRegions(maskInfo.regions);
++        if (!sections.empty()) {
++            maskInfo.temporalRegions = std::move(sections);
++            maskInfo.darkeningReference = {};
++            maskInfo.sectionDarkening = true;
++        }
++    }
+     maskInfo.temporalSample = m_darkeningVisible && !layerSurface->m_fadingOut;
+ 
+     // ponytail: 128-pixel horizontal bands bound per-fragment region scans without extra buffers.
+--- a/src/GlassRegions.hpp
++++ b/src/GlassRegions.hpp
+@@ -18,8 +18,26 @@
+     std::array<float, 4> rect{}, radii{}, features{};
+     float edge = 0, opacity = 1, frost = 0;
+     int id = 0;
++    int darkeningGroup = 0, samplePoints = 0;
++    std::array<float, 4> darkeningBox{};
+     bool operator==(const SGlassRegion&) const = default;
+ };
++// One history identity and one sample row per bar section, independent of nested cards.
++inline std::vector<SGlassRegion> glassBarDarkeningRegions(const std::vector<SGlassRegion>& regions) {
++    std::vector<SGlassRegion> sections;
++    for (int group = 1; group <= 3; ++group) {
++        const auto found = std::find_if(regions.begin(), regions.end(), [&](const auto& region) {
++            return region.darkeningGroup == group && region.opacity > 0;
++        });
++        if (found == regions.end()) continue;
++        SGlassRegion section;
++        section.id = -group; // Internal history IDs; IPC material IDs are strictly positive.
++        section.rect = found->darkeningBox;
++        section.samplePoints = group == 2 ? 3 : 2;
++        sections.push_back(section);
++    }
++    return sections;
++}
+ struct SGlassSurface {
+     std::string name, monitor;
+     float width = 0, height = 0;
+@@ -99,7 +117,7 @@
+     int enabled = 0, count = 0;
+     SGlassClient client;
+     if (!(input >> command >> client.pid >> enabled >> count) || command != "end4glass" || client.pid <= 0 ||
+-        (enabled < 0 || enabled > 4) || count < 0 || count > 32) return false;
++        (enabled < 0 || enabled > 5) || count < 0 || count > 32) return false;
+     client.enhanced = enabled;
+     for (int i = 0; i < count; ++i) {
+         SGlassSurface surface;
+@@ -114,6 +132,7 @@
+             surface.darkeningVisible = visible;
+         }
+         std::unordered_set<int> ids;
++        std::array<std::optional<std::array<float, 4>>, 3> sectionBoxes;
+         for (int j = 0; j < regions; ++j) {
+             SGlassRegion region;
+             if (enabled >= 4 && (!(input >> region.id) || region.id <= 0 || !ids.insert(region.id).second)) return false;
+@@ -123,6 +142,18 @@
+             if (!(input >> region.edge >> region.opacity) || !std::isfinite(region.edge) || region.edge < 0 || region.edge > 3 || !std::isfinite(region.opacity) || region.opacity < 0 || region.opacity > 1 ||
+                 region.rect[2] <= 0 || region.rect[3] <= 0) return false;
+             if (enabled >= 2 && (!(input >> region.frost) || !std::isfinite(region.frost) || region.frost < 0 || region.frost > 32)) return false;
++            if (enabled >= 5) {
++                if (!(input >> region.darkeningGroup) || region.darkeningGroup < 0 || region.darkeningGroup > 3
++                    || (region.darkeningGroup && surface.name != "quickshell:bar")) return false;
++                for (float& value : region.darkeningBox)
++                    if (!(input >> value) || !std::isfinite(value) || std::abs(value) > 65536) return false;
++                if (region.darkeningGroup) {
++                    if (region.darkeningBox[2] <= 0 || region.darkeningBox[3] <= 0) return false;
++                    auto& box = sectionBoxes[region.darkeningGroup - 1];
++                    if (box && *box != region.darkeningBox) return false;
++                    box = region.darkeningBox;
++                } else if (region.darkeningBox != std::array<float, 4>{}) return false;
++            }
+             for (float r : region.radii) if (r < 0 || r > std::min(region.rect[2], region.rect[3]) * .5f) return false;
+             for (float feature : region.features) if (feature < 0 || feature > 32768) return false;
+             surface.regions.push_back(region);
+--- a/src/GlassRenderer.cpp
++++ b/src/GlassRenderer.cpp
+@@ -283,6 +283,7 @@
+                 edges[i * 4] = regions[i].edge;
+                 edges[i * 4 + 1] = regions[i].opacity;
+                 edges[i * 4 + 2] = regions[i].frost;
++                edges[i * 4 + 3] = regions[i].samplePoints;
+             }
+             glUniform4fv(uniforms.regionRects, count, rects.data());
+             glUniform4fv(uniforms.regionRadii, count, radii.data());
+@@ -422,7 +423,7 @@
+                 for (size_t index = 0; index < mask->temporalRegions.size() && index < 32; ++index) {
+                     const auto& current = mask->temporalRegions[index];
+                     const auto found = std::find_if(state.historyRegions.begin(), state.historyRegions.end(),
+-                        [&](const auto& old) { return current.id > 0 ? old.id == current.id : old.rect == current.rect; });
++                        [&](const auto& old) { return current.id != 0 ? old.id == current.id : old.rect == current.rect; });
+                     if (found != state.historyRegions.end()) previousSlots[index + 1] = int(found - state.historyRegions.begin()) + 1;
+                 }
+                 glUniform1iv(uniforms.temporalSlots, 33, previousSlots.data());
+@@ -453,8 +454,11 @@
+                 uploadRegions(mask->regions);
+                 std::array<GLint, 33> slots{};
+                 for (size_t index = 0; index < mask->regions.size() && index < 32; ++index) {
++                    const auto& material = mask->regions[index];
++                    const int historyID = mask->sectionDarkening ? -material.darkeningGroup : material.id;
++                    if (mask->sectionDarkening && !material.darkeningGroup) continue;
+                     const auto found = std::find_if(mask->temporalRegions.begin(), mask->temporalRegions.end(),
+-                        [&](const auto& region) { return mask->regions[index].id > 0 ? region.id == mask->regions[index].id : region.rect == mask->regions[index].rect; });
++                        [&](const auto& region) { return historyID != 0 ? region.id == historyID : region.rect == material.rect; });
+                     if (found != mask->temporalRegions.end()) slots[index + 1] = int(found - mask->temporalRegions.begin()) + 1;
+                 }
+                 glUniform1iv(uniforms.temporalSlots, 33, slots.data());
+--- a/src/GlassRenderer.hpp
++++ b/src/GlassRenderer.hpp
+@@ -68,6 +68,7 @@
+     SAdaptiveDarkening* temporal = nullptr;
+     std::vector<SGlassRegion> temporalRegions;
+     bool temporalSample = true;
++    bool sectionDarkening = false;
+     std::optional<CBox> clip;
+ };
+ 
+--- a/src/Globals.hpp
++++ b/src/Globals.hpp
+@@ -69,7 +69,7 @@
+ inline constexpr std::string_view PLUGIN_NAME        = "hyprglass";
+ inline constexpr std::string_view PLUGIN_DESCRIPTION = "Apple-style Liquid Glass effect";
+ inline constexpr std::string_view PLUGIN_AUTHOR      = "Hyprnux";
+-inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r44-candidate";
++inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r45-candidate";
+ 
+ inline const SGlassOptics* glassOptics(int pid, const std::string& key) {
+     const auto client = g_pGlobalState->glassProfiles.find(pid);
+--- a/src/Shaders.hpp
++++ b/src/Shaders.hpp
+@@ -49,6 +49,18 @@
+     // Blur near an offscreen edge includes cleared pixels; only the luma probes use the clear capture there.
+     if (clipped.x != box.x || clipped.y != box.y || clipped.z != box.z || clipped.w != box.w) frost = 0.0;
+     box = clipped;
++    int points = selected >= 0 ? int(regionDetails[selected].w) : 0;
++    if (points > 0) {
++        float total = 0.0;
++        for (int x = 0; x < 3; ++x) {
++            if (x >= points) break;
++            vec2 uv = box.xy + box.zw * vec2((float(x) + 0.5) / float(points), 0.5);
++            vec2 tuv = (uv * (1.0 - 2.0 * uvPadding) + uvPadding) * sampleUVScale + sampleUVOffset;
++            vec3 reference = textureLod(tex, clamp(tuv, 0.001, 0.999), 0.0).rgb;
++            total += dot(max(reference, vec3(0.0)), vec3(0.2126, 0.7152, 0.0722));
++        }
++        return total / float(points);
++    }
+     // ponytail: four fixed probes estimate the brightest area; complete spatial coverage needs a cached reduction.
+     float brightest = 0.0;
+     for (int y = 0; y < 2; ++y)
+@@ -78,6 +90,18 @@
+         }
+         return;
+     }
++    if (regionCount > 0 && regionDetails[0].w > 0.0) {
++        float total = 0.0;
++        for (int i = 0; i < 3; ++i) {
++            if (i >= regionCount) break;
++            float luma = sampleMaterialLuma(i);
++            materialLuma[(i + 1) / 4][(i + 1) % 4] = luma;
++            total += max(luma, 0.0);
++        }
++        // Unassigned background/corners reuse the section means, with no extra probes.
++        materialLuma[0].x = total / float(regionCount);
++        return;
++    }
+     if (darkeningReference.z > 0.0) {
+         float luma = sampleMaterialLuma(-1);
+         for (int i = 0; i < 9; ++i) materialLuma[i] = vec4(luma);

@@ -52,6 +52,13 @@ int main() {
         assert(!parseGlassProfiles(extended.substr(0,extended.find("darkening"))+tail,dim));
         assert(dim.values.at("bar").darkening==.4f && dim.values.at("dock").darkening==1);
     }
+    assert(dim.values.at("bar").automaticDarkeningStrength==1);
+    assert(parseGlassProfiles(extended+" strength bar .5 dock 0",dim));
+    assert(dim.values.at("bar").automaticDarkeningStrength==.5f && dim.values.at("dock").automaticDarkeningStrength==0);
+    for(const auto* tail:{" strength bar nan dock 0", " strength bar -.1 dock 0", " strength bar 1.01 dock 0", " strength bar .5 bar 0", " strength unknown .5 dock 0", " strength bar .5", " strength bar .5 dock 0 extra"}){
+        assert(!parseGlassProfiles(extended+tail,dim));
+        assert(dim.values.at("bar").automaticDarkeningStrength==.5f);
+    }
     auto& optical = dim.values.at("bar");
     optical.darkeningChanged = std::chrono::steady_clock::now();
     assert(optical.darkeningTransition() && optical.darkeningValue()[0]<.001f);

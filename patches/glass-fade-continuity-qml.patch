@@ -1,0 +1,160 @@
+diff --git a/modules/common/widgets/FrostedGlass.qml b/modules/common/widgets/FrostedGlass.qml
+index 227f6ad..3f14da2 100644
+--- a/modules/common/widgets/FrostedGlass.qml
++++ b/modules/common/widgets/FrostedGlass.qml
+@@ -102,7 +102,8 @@ Item {
+                     restartPending = false;
+                 }
+                 const plan = DarkeningWindow.advance(timeState, Date.now() / 1000);
+-                step = Qt.vector4d(plan[0], plan[1], plan[2], -1);
++                if (plan[2] > 0) fade.pause();
++                step = Qt.vector4d(plan[0], plan[1], plan[2], plan[2] < 0 ? -1 : blend);
+                 busy = true;
+                 history.scheduleUpdate();
+             }
+diff --git a/modules/common/widgets/shaders/glassLumaTemporal.frag b/modules/common/widgets/shaders/glassLumaTemporal.frag
+index 923dfa9..539bf48 100644
+--- a/modules/common/widgets/shaders/glassLumaTemporal.frag
++++ b/modules/common/widgets/shaders/glassLumaTemporal.frag
+@@ -18,7 +18,7 @@ void main() {
+     float sum = prior.r + prior.a * temporalStep.x;
+     if (temporalStep.z > 0.0) {
+         float mean = temporalStep.z > 1.0 ? prior.a : sum;
+-        float from = temporalStep.z > 1.0 ? prior.a : prior.g;
++        float from = temporalStep.w >= 0.0 ? mix(prior.b, prior.g, temporalStep.w) : prior.g;
+         fragColor = vec4(prior.a * temporalStep.y, mean, from, materialLuma);
+     } else fragColor = vec4(sum, prior.g, prior.b, materialLuma);
+ }
+diff --git a/modules/common/widgets/shaders/glassLumaTemporal.frag.qsb b/modules/common/widgets/shaders/glassLumaTemporal.frag.qsb
+index 9361ffe9a76df1b0a2bf8e69e3df015f04de89e4..a894bcc775ed868b06b27b8be56948e90b282a49 100644
+GIT binary patch
+literal 2256
+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
+DYyO)P
+
+literal 2218
+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
+MH@W|;31)kO0N1N>bpQYW
+
+diff --git a/modules/ii/bar/Bar.qml b/modules/ii/bar/Bar.qml
+index 98ed719..fb54cfc 100644
+--- a/modules/ii/bar/Bar.qml
++++ b/modules/ii/bar/Bar.qml
+@@ -70,6 +70,7 @@ Scope {
+                     }
+                 }
+                 readonly property bool automaticDarkeningVisible: !Config.options.bar.autoHide.enable || mustShow
++                    || (barTopAnimation.animation?.running ?? false) || (barBottomAnimation.animation?.running ?? false)
+                 property bool superShow: false
+                 readonly property bool preview: GlobalStates.glassyPreviewTargets.includes("bar")
+                 property bool mustShow: preview || normalMustShow
+diff --git a/modules/ii/dock/Dock.qml b/modules/ii/dock/Dock.qml
+index b820a32..4e6b625 100644
+--- a/modules/ii/dock/Dock.qml
++++ b/modules/ii/dock/Dock.qml
+@@ -87,7 +87,7 @@ Scope {
+             readonly property bool appOverlapActive: appOverlap.appOverlapEnabled && appOverlap.appOverlapActive
+             WlrLayershell.layer: appOverlapActive || preview ? WlrLayer.Overlay : WlrLayer.Top
+ 
+-            readonly property bool automaticDarkeningVisible: reveal
++            readonly property bool automaticDarkeningVisible: reveal || (dockOffsetAnimation.animation?.running ?? false)
+             property bool reveal: {
+                 if (preview) return true
+                 if (appOverlapActive)
+@@ -191,6 +191,7 @@ Scope {
+                 property real offset: dockRoot.reveal ? 0 : hiddenOffset
+ 
+                 Behavior on offset {
++                    id: dockOffsetAnimation
+                     animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                 }
+ 

@@ -1,0 +1,109 @@
+--- a/modules/ii/bar/BarContent.qml
++++ b/modules/ii/bar/BarContent.qml
+@@ -183,6 +183,8 @@
+ 
+     Rectangle {
+         id: centerPill
++        readonly property int glassDarkeningSection: 2
++        readonly property Item glassDarkeningSectionReference: absoluteCenter
+         WindowGlass {
+             anchors.fill: parent
+             anchors.leftMargin: -root.pillFlare
+@@ -258,6 +260,7 @@
+         // Left
+         Item {
+             id: leftSection
++            readonly property int glassDarkeningSection: 1
+             anchors.left: parent.left
+             anchors.leftMargin: root.hasTabs ? 0 : (root.useTabWrapper ? (Config.options.hyprland.general.gapsOut || 5) : (Config.options.bar.cornerStyle === 1 ? 4 : Config.options.bar.cornerStyle === 5 ? 4 : 8))
+             anchors.top: parent.top
+@@ -395,6 +398,7 @@
+         // Center
+         Item {
+             id: absoluteCenter
++            readonly property int glassDarkeningSection: 2
+             anchors.centerIn: parent
+             anchors.horizontalCenterOffset: root.dynamicIslandHorizontalOffset
+             width: root.useTabWrapper ? (centerMaterialPill.width + (root.hasTabs && root.effectiveMiddleLayout.length > 0 ? (centerLeftOutwardCorner.implicitSize + centerRightOutwardCorner.implicitSize) : 0)) : middleRow.implicitWidth
+@@ -599,6 +603,7 @@
+         // Right
+         Item {
+             id: rightSection
++            readonly property int glassDarkeningSection: 3
+             anchors.right: parent.right
+             anchors.rightMargin: root.hasTabs ? 0 : (root.useTabWrapper ? (Config.options.hyprland.general.gapsOut || 5) : (Config.options.bar.cornerStyle === 1 ? 4 : Config.options.bar.cornerStyle === 5 ? 4 : 8))
+             anchors.top: parent.top
+--- a/modules/common/widgets/WindowGlass.qml
++++ b/modules/common/widgets/WindowGlass.qml
+@@ -35,6 +35,15 @@
+         ["quickshell:popup", "quickshell:popupMorph"].includes(win?.WlrLayershell.namespace) ? "bar" : profileKey)
+     readonly property real materialFrost: opticalProfile && frost > 0 ? opticalProfile.blur : frost
+     property int nativeMaterialId: 0
++    readonly property Item darkeningSection: {
++        if (win?.WlrLayershell.namespace !== "quickshell:bar") return null
++        for (let item = parent; item; item = item.parent)
++            if (item.glassDarkeningSection > 0) return item.glassDarkeningSectionReference ?? item
++        return null
++    }
++    readonly property rect darkeningSectionGeometry: darkeningSection
++        ? Qt.rect(darkeningSection.x, darkeningSection.y, darkeningSection.width, darkeningSection.height) : Qt.rect(0, 0, 0, 0)
++    onDarkeningSectionGeometryChanged: GlassCompositor.queueRegions()
+     property bool automaticDarkeningVisible: win?.automaticDarkeningVisible ?? true
+     onAutomaticDarkeningVisibleChanged: GlassCompositor.queueRegions()
+     readonly property bool live: (opticalProfile?.enable ?? true) && glassEnabled && (Config.options?.background?.widgets?.glass?.enable ?? false)
+@@ -109,6 +118,8 @@
+     function nativeRegion() {
+         if (!enhancedNative || !tracking || width <= 0 || height <= 0 || !win?.screen) return null
+         if (floating && (!GlassCompositor.windowFrostedAvailable || frost <= 0)) return null
++        const sectionBox = darkeningSection
++            ? darkeningSection.mapToItem(win.contentItem, Qt.rect(0, 0, darkeningSection.width, darkeningSection.height)) : null
+         const full = mapToItem(win.contentItem, Qt.rect(0, 0, width, height))
+         let rect = full
+         if (nativeClip) {
+@@ -137,7 +148,10 @@
+         const maxRadius = Math.floor(Math.min(rounded[2], rounded[3]) * 500) / 1000
+         for (let i = 4; i < 8; i++) rounded[i] = Math.min(rounded[i], maxRadius)
+         return { win, id: root.nativeMaterialId, darkeningVisible: root.automaticDarkeningVisible, priority: nativePriority, name: floating ? "quickshell:dashboard" : win.WlrLayershell.namespace, monitor: win.screen.name,
+-            values: rounded }
++            section: darkeningSection && sectionBox?.width > 0 && sectionBox?.height > 0
++                ? [darkeningSection.glassDarkeningSection, sectionBox.x, sectionBox.y,
++                    sectionBox.width, sectionBox.height].map(value => Math.round(value * 1000) / 1000)
++                : [0, 0, 0, 0, 0], values: rounded }
+     }
+     readonly property string nativeShape: JSON.stringify([topLeftRadius, topRightRadius, bottomRightRadius,
+         bottomLeftRadius, flareLeft, flareRight, hangLeft, hangRight, edge, root.opacity, materialFrost, nativePriority])
+--- a/services/GlassCompositor.qml
++++ b/services/GlassCompositor.qml
+@@ -44,6 +44,7 @@
+     property bool profilesAvailable: false
+     property bool darkeningAvailable: false
+     property bool darkeningVisibilityAvailable: false
++    property bool sectionDarkeningAvailable: false
+     property bool darkeningStrengthAvailable: false
+     property int materialSerial: 0
+     property bool uniformDarkeningAvailable: false
+@@ -274,7 +275,7 @@
+                 surface.regions.push(region)
+             }
+         }
+-        const values = ["end4glass", Quickshell.processId, enhancedActive ? (darkeningStrengthAvailable ? 4 : darkeningVisibilityAvailable ? 3 : frostedAvailable ? 2 : 1) : 0, surfaces.length]
++        const values = ["end4glass", Quickshell.processId, enhancedActive ? (sectionDarkeningAvailable ? 5 : darkeningStrengthAvailable ? 4 : darkeningVisibilityAvailable ? 3 : frostedAvailable ? 2 : 1) : 0, surfaces.length]
+         for (const surface of surfaces) {
+             // Modal materials cover underlying cards; preserve nesting within each priority.
+             surface.regions.sort((a, b) => a.priority - b.priority
+@@ -285,6 +286,7 @@
+             for (const region of surface.regions) {
+                 if (darkeningStrengthAvailable) values.push(region.id)
+                 values.push(...region.values)
++                if (sectionDarkeningAvailable) values.push(...region.section)
+             }
+         }
+         const command = values.join(" ")
+@@ -504,6 +506,7 @@
+                     root.profilesAvailable = result.profiles ?? false
+                     root.darkeningAvailable = result.darkening ?? false
+                     root.darkeningVisibilityAvailable = result.darkeningVisibility ?? false
++                    root.sectionDarkeningAvailable = result.sectionDarkening ?? false
+                     root.darkeningStrengthAvailable = result.darkeningStrength ?? false
+                     root.uniformDarkeningAvailable = result.uniformDarkening ?? false
+                     root.contrastAvailable = result.contrast ?? false

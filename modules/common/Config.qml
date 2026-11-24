@@ -352,6 +352,7 @@ Singleton {
                                 property real reflections: 50
                                 property real darkening: 0
                                 property bool automaticDarkening: false
+                                property real automaticDarkeningStrength: 100
                             }
                             property JsonObject dock: JsonObject {
                                 property bool enable: true
@@ -361,6 +362,7 @@ Singleton {
                                 property real reflections: 50
                                 property real darkening: 0
                                 property bool automaticDarkening: false
+                                property real automaticDarkeningStrength: 100
                             }
                             property JsonObject sidebar: JsonObject {
                                 property bool enable: true
@@ -370,6 +372,7 @@ Singleton {
                                 property real reflections: 50
                                 property real darkening: 0
                                 property bool automaticDarkening: false
+                                property real automaticDarkeningStrength: 100
                             }
                             property JsonObject settings: JsonObject {
                                 property bool enable: true
@@ -379,6 +382,7 @@ Singleton {
                                 property real reflections: 50
                                 property real darkening: 0
                                 property bool automaticDarkening: false
+                                property real automaticDarkeningStrength: 100
                             }
                             property JsonObject lockscreen: JsonObject {
                                 property bool enable: true
@@ -388,6 +392,7 @@ Singleton {
                                 property real reflections: 50
                                 property real darkening: 0
                                 property bool automaticDarkening: false
+                                property real automaticDarkeningStrength: 100
                             }
                             property JsonObject terminal: JsonObject {
                                 property bool enable: false
@@ -397,6 +402,7 @@ Singleton {
                                 property real reflections: 50
                                 property real darkening: 0
                                 property bool automaticDarkening: false
+                                property real automaticDarkeningStrength: 100
                             }
                         }
                     }

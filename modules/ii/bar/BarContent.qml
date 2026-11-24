@@ -183,6 +183,8 @@ Item {
 
     Rectangle {
         id: centerPill
+        readonly property int glassDarkeningSection: 2
+        readonly property Item glassDarkeningSectionReference: absoluteCenter
         WindowGlass {
             anchors.fill: parent
             anchors.leftMargin: -root.pillFlare
@@ -258,6 +260,7 @@ Item {
         // Left
         Item {
             id: leftSection
+            readonly property int glassDarkeningSection: 1
             anchors.left: parent.left
             anchors.leftMargin: root.hasTabs ? 0 : (root.useTabWrapper ? (Config.options.hyprland.general.gapsOut || 5) : (Config.options.bar.cornerStyle === 1 ? 4 : Config.options.bar.cornerStyle === 5 ? 4 : 8))
             anchors.top: parent.top
@@ -395,6 +398,7 @@ Item {
         // Center
         Item {
             id: absoluteCenter
+            readonly property int glassDarkeningSection: 2
             anchors.centerIn: parent
             anchors.horizontalCenterOffset: root.dynamicIslandHorizontalOffset
             width: root.useTabWrapper ? (centerMaterialPill.width + (root.hasTabs && root.effectiveMiddleLayout.length > 0 ? (centerLeftOutwardCorner.implicitSize + centerRightOutwardCorner.implicitSize) : 0)) : middleRow.implicitWidth
@@ -599,6 +603,7 @@ Item {
         // Right
         Item {
             id: rightSection
+            readonly property int glassDarkeningSection: 3
             anchors.right: parent.right
             anchors.rightMargin: root.hasTabs ? 0 : (root.useTabWrapper ? (Config.options.hyprland.general.gapsOut || 5) : (Config.options.bar.cornerStyle === 1 ? 4 : Config.options.bar.cornerStyle === 5 ? 4 : 8))
             anchors.top: parent.top

@@ -25,11 +25,18 @@ Scope {
         }
         LazyLoader {
             id: barLoader
-            active: GlobalStates.barOpen && !GlobalStates.screenLocked
+            active: (GlobalStates.barOpen || GlobalStates.glassyPreviewTargets.includes("bar")) && !GlobalStates.screenLocked
             required property ShellScreen modelData
             component: PanelWindow {
                 id: barRoot
                 screen: barLoader.modelData
+                Binding {
+                    target: barRoot.WlrLayershell
+                    property: "layer"
+                    value: WlrLayer.Overlay
+                    when: barRoot.preview
+                    restoreMode: Binding.RestoreBindingOrValue
+                }
 
                 property var brightnessMonitor: Brightness.getMonitorForScreen(barLoader.modelData)
                 
@@ -47,17 +54,20 @@ Scope {
                         else { showBarTimer.stop(); barRoot.superShow = false; }
                     }
                 }
+                readonly property bool automaticDarkeningVisible: !Config.options.bar.autoHide.enable || mustShow
                 property bool superShow: false
-                property bool mustShow: hoverRegion.containsMouse || superShow
+                readonly property bool preview: GlobalStates.glassyPreviewTargets.includes("bar")
+                property bool mustShow: preview || normalMustShow
+                readonly property bool normalMustShow: hoverRegion.containsMouse || superShow
                     || (Config.options.bar.autoHide.enable && GlobalStates.isFrameHovered(barRoot.screen?.name, Config.options.bar.bottom ? "right" : "left"))
                 exclusionMode: ExclusionMode.Ignore
-                property int normalExclusiveZone: (Config?.options.bar.autoHide.enable && (!mustShow || !Config?.options.bar.autoHide.pushWindows))
+                property int normalExclusiveZone: (Config?.options.bar.autoHide.enable && (!normalMustShow || !Config?.options.bar.autoHide.pushWindows))
                     ? 0
                     : Appearance.sizes.baseVerticalBarWidth
                         + (Config.options.bar.cornerStyle === 1 ? Appearance.sizes.hyprlandGapsOut : 0)
                         + (Config.options.bar.cornerStyle === 3 ? (Appearance.sizes.hyprlandGapsOut || 5) : 0)
 
-                exclusiveZone: (barContent.centerOnly && Config.options.bar.centerOnlyReserveFrame)
+                exclusiveZone: preview && !GlobalStates.barOpen ? 0 : (barContent.centerOnly && Config.options.bar.centerOnlyReserveFrame)
                     ? Config.options.bar.frameThickness
                     : normalExclusiveZone
                 WlrLayershell.namespace: "quickshell:verticalBar"
