@@ -132,6 +132,7 @@ apply_named_scheme() {
             config_json_update "$SHELL_CONFIG_FILE" '.appearance.palette.namedScheme = ""'
             return 1
         }
+    python3 "$SCRIPT_DIR/hyprland-colors.py" || return 1
     "$SCRIPT_DIR"/applycolor.sh
     update_icon_scheme "$mode_flag"
     apply_named_qt &
@@ -424,6 +425,7 @@ switch() {
     colors_lock_json_path="$STATE_DIR/user/generated/colors-lock.json"
     colors_lock_watch_paths=(
         "$colors_json_path"
+        "$STATE_DIR/user/generated/hyprland-colors.lua"
         "$XDG_CONFIG_HOME/gtk-3.0/gtk.css"
         "$XDG_CONFIG_HOME/gtk-4.0/gtk.css"
     )
@@ -439,7 +441,11 @@ switch() {
         done
     fi
 
-    matugen "${matugen_args[@]}"
+    matugen "${matugen_args[@]}" || return 1
+
+    if [[ -z "$colors_lock_flag" ]]; then
+        python3 "$SCRIPT_DIR/hyprland-colors.py" || return 1
+    fi
 
     if [[ -n "$colors_lock_flag" ]]; then
         if [[ -f "$colors_json_path" ]]; then

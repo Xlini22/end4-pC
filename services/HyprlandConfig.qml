@@ -89,12 +89,14 @@ Singleton {
     // Also called by MaterialThemeLoader on every palette change.
     function applyBorderColors() {
         const entries = root.borderColorEntries()
-        if (Object.keys(entries).length > 0) root.setMany(entries)
+        if (!Config.ready || WM.compositor !== "hyprland") return
+        Quickshell.execDetached(["python3", Quickshell.shellPath("scripts/colors/hyprland-colors.py"),
+            "--borders", ...Object.values(entries)])
     }
 
     function resetBorderColors() {
         if (WM.compositor !== "hyprland") return
-        root.resetMany([root.borderActiveKey, root.borderInactiveKey])
+        root.applyBorderColors()
     }
 
     function setAnimPreset(preset: string) {
