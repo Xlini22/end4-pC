@@ -505,11 +505,15 @@ Singleton {
     // Thumbnail generation
     function generateThumbnail(size: string) {
         if (!["normal", "large", "x-large", "xx-large"].includes(size)) throw new Error("Invalid thumbnail size");
-        thumbgenProc.directory = root.directory
+        const directory = FileUtils.trimFileProtocol(root.directory);
+        if (thumbgenProc.running && thumbgenProc.directory === directory && thumbgenProc.size === size) return;
         thumbgenProc.running = false
+        thumbgenProc.directory = directory
+        thumbgenProc.size = size
         thumbgenProc.command = [
             "bash", "-c",
-            `${thumbgenScriptPath} --size ${size} --machine_progress -d ${FileUtils.trimFileProtocol(root.directory)} || ${generateThumbnailsMagickScriptPath} --size ${size} -d ${FileUtils.trimFileProtocol(root.directory)}`,
+            '"$1" --size "$3" --machine_progress -d "$4" || "$2" --size "$3" -d "$4"',
+            "_", thumbgenScriptPath, generateThumbnailsMagickScriptPath, size, directory,
         ]
         // console.log("[Wallpapers] Updating thumbnails with command ", thumbgenProc.command.join(" "))
         root.thumbnailGenerationProgress = 0
@@ -518,6 +522,7 @@ Singleton {
     Process {
         id: thumbgenProc
         property string directory
+        property string size
         stdout: SplitParser {
             onRead: data => {
                 // print("thumb gen proc:", data)
@@ -536,6 +541,7 @@ Singleton {
         }
         onExited: (exitCode, exitStatus) => {
             // print("[Wallpapers] Thumbnail generation completed with exit code", exitCode)
+            if (exitCode !== 0) console.warn("[Wallpapers] Some thumbnails could not be generated in", thumbgenProc.directory);
             root.thumbnailGenerated(thumbgenProc.directory)
         }
     }

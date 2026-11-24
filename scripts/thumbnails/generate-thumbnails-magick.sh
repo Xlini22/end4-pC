@@ -28,25 +28,10 @@ md5() {
     echo -n "$1" | md5sum | awk '{print $1}'
 }
 
-urlencode() {
-    # Percent-encode a string for use in a URI, but do not encode slashes
-    local str="$1"
-    local encoded=""
-    local c
-    for ((i=0; i<${#str}; i++)); do
-        c="${str:$i:1}"
-        case "$c" in
-            [a-zA-Z0-9.~_-]|/|'('|')'|'*') encoded+="$c" ;;
-            *) printf -v hex '%%%02X' "'${c}'"; encoded+="$hex" ;;
-        esac
-    done
-    echo "$encoded"
-}
-
 generate_thumbnail() {
     local src="$1"
     local abs_path
-    abs_path="$(realpath "$src")"
+    abs_path="$(realpath -s "$src")"
     # Skip files with multiple frames (GIFs, videos, etc.)
     case "${abs_path,,}" in
         *.gif|*.mp4|*.webm|*.mkv|*.avi|*.mov)
@@ -54,17 +39,26 @@ generate_thumbnail() {
             ;;
     esac
     local encoded_path
-    encoded_path="$(urlencode "$abs_path")"
+    encoded_path="$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe="/!~*\x27()"))' "$abs_path")"
     local uri
     uri="file://$encoded_path"
     local hash
     hash="$(md5 "$uri")"
     local out="$CACHE_DIR/$hash.png"
     mkdir -p "$CACHE_DIR"
-    if [ -f "$out" ]; then
+    if [ -s "$out" ]; then
         return
     fi
-    magick "$abs_path" -resize "${THUMBNAIL_SIZE}x${THUMBNAIL_SIZE}" "$out"
+    local tmp
+    tmp="$(mktemp "$CACHE_DIR/.thumbnail-XXXXXXXX.png")"
+    if magick "${abs_path}[0]" -thumbnail "${THUMBNAIL_SIZE}x${THUMBNAIL_SIZE}>" "$tmp"; then
+        mv -- "$tmp" "$out"
+        printf 'FILE %s\n' "$abs_path"
+    else
+        rm -f -- "$tmp"
+        printf 'Thumbnail failed: %s\n' "$abs_path" >&2
+        return 1
+    fi
 }
 
 # Parse arguments
@@ -96,7 +90,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 THUMBNAIL_SIZE="$(get_thumbnail_size "$SIZE_NAME")"
-CACHE_DIR="$HOME/.cache/thumbnails/$SIZE_NAME"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/thumbnails/$SIZE_NAME"
 
 if [ -z "$MODE" ] || [ -z "$TARGET" ]; then
     usage
@@ -115,11 +109,17 @@ case "$MODE" in
             echo "Directory not found: $TARGET"
             exit 2
         fi
+        failed=0
         for f in "$TARGET"/*; do
             [ -f "$f" ] || continue
-            generate_thumbnail "$f" &
+            case "${f,,}" in
+                *.jpg|*.jpeg|*.png|*.webp|*.avif|*.bmp|*.tif|*.tiff|*.svg) ;;
+                *) continue ;;
+            esac
+            # ponytail: one worker bounds decoding memory; add a bounded pool only if measured too slow.
+            generate_thumbnail "$f" || failed=1
         done
-        wait
+        exit "$failed"
         ;;
     *)
         usage

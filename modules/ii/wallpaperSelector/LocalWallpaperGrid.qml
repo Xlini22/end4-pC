@@ -24,6 +24,23 @@ Item {
     property int columns: Config.options.wallpaperSelector.columns || 4
     property real previewCellAspectRatio: 4 / 3
 
+    readonly property string thumbnailSizeName: Images.thumbnailSizeNameForDimensions(
+        cellWidth - 2 * (Appearance.sizes.wallpaperSelectorItemMargins + Appearance.sizes.wallpaperSelectorItemPadding),
+        cellHeight - 2 * (Appearance.sizes.wallpaperSelectorItemMargins + Appearance.sizes.wallpaperSelectorItemPadding))
+    onThumbnailSizeNameChanged: thumbnailTimer.restart()
+    Component.onCompleted: thumbnailTimer.restart()
+
+    Connections {
+        target: Wallpapers
+        function onEffectiveDirectoryChanged() { thumbnailTimer.restart() }
+    }
+
+    Timer {
+        id: thumbnailTimer
+        interval: 300
+        onTriggered: if (root.width > 0 && root.height > 0) Wallpapers.generateThumbnail(root.thumbnailSizeName)
+    }
+
     // Drag-and-drop state
     property bool isDragging: false
     property int dragFromIndex: -1
