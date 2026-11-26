@@ -242,7 +242,66 @@ Item {
         }
         Component {
             id: aiChat
-            AiChat {}
+            ColumnLayout {
+                spacing: 4
+                onFocusChanged: if (focus && chatBackend.item) chatBackend.item.forceActiveFocus()
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 16
+                    Layout.rightMargin: 16
+                    Layout.topMargin: 12
+                    implicitHeight: 48
+                    radius: Appearance.rounding.normal
+                    color: Appearance.colors.colLayer2
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        spacing: 4
+
+                        DialogButton {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            Layout.fillHeight: true
+                            buttonText: Translation.tr("Chat")
+                            buttonRadius: Appearance.rounding.small
+                            toggled: Config.options.ai.backend === "chat"
+                            colBackground: "transparent"
+                            colBackgroundHover: Appearance.colors.colLayer2Hover
+                            colBackgroundToggled: Appearance.colors.colSecondaryContainer
+                            colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
+                            colRippleToggled: Appearance.colors.colSecondaryContainerActive
+                            colText: toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colSubtext
+                            onClicked: Config.options.ai.backend = "chat"
+                        }
+                        DialogButton {
+                            Layout.fillWidth: true
+                            Layout.preferredWidth: 1
+                            Layout.fillHeight: true
+                            buttonText: "Codex"
+                            buttonRadius: Appearance.rounding.small
+                            toggled: Config.options.ai.backend === "codex"
+                            colBackground: "transparent"
+                            colBackgroundHover: Appearance.colors.colLayer2Hover
+                            colBackgroundToggled: Appearance.colors.colSecondaryContainer
+                            colBackgroundToggledHover: Appearance.colors.colSecondaryContainerHover
+                            colRippleToggled: Appearance.colors.colSecondaryContainerActive
+                            colText: toggled ? Appearance.colors.colOnSecondaryContainer : Appearance.colors.colSubtext
+                            enabled: Config.options.policies.ai === 1
+                            onClicked: Config.options.ai.backend = "codex"
+                        }
+                    }
+                }
+                Loader {
+                    id: chatBackend
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    sourceComponent: Config.options.ai.backend === "codex" && Config.options.policies.ai === 1
+                        ? codexPage : legacyChatPage
+                }
+                Component { id: codexPage; CodexChat {} }
+                Component { id: legacyChatPage; AiChat {} }
+            }
         }
         Component {
             id: translator

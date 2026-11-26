@@ -176,7 +176,7 @@ Scope { // Scope
                 : Appearance.sizes.sidebarWidthExtended) + Appearance.sizes.elevationMargin
             WlrLayershell.namespace: "quickshell:sidebarLeft"
             // Hyprland 0.49: OnDemand is Exclusive, Exclusive just breaks click-outside-to-close
-            WlrLayershell.keyboardFocus: root.preview ? WlrKeyboardFocus.None : WlrKeyboardFocus.OnDemand
+            WlrLayershell.keyboardFocus: root.preview || Codex.fileDialogOpen ? WlrKeyboardFocus.None : WlrKeyboardFocus.OnDemand
             color: "transparent"
 
             anchors {
@@ -217,14 +217,21 @@ Scope { // Scope
             }
 
             mask: Region {
-                item: root.preview ? null : panelWindow.animatedEntrance ? fullMaskArea : sidebarLeftBackground
+                item: root.preview || Codex.fileDialogOpen ? null : panelWindow.animatedEntrance ? fullMaskArea : sidebarLeftBackground
             }
 
             onVisibleChanged: {
-                if (visible && !root.preview) {
+                if (visible && !root.preview && !Codex.fileDialogOpen) {
                     GlobalFocusGrab.addDismissable(panelWindow);
                 } else {
                     GlobalFocusGrab.removeDismissable(panelWindow);
+                }
+            }
+            Connections {
+                target: Codex
+                function onFileDialogOpenChanged() {
+                    if (panelWindow.visible && !root.preview && !Codex.fileDialogOpen) GlobalFocusGrab.addDismissable(panelWindow);
+                    else GlobalFocusGrab.removeDismissable(panelWindow);
                 }
             }
             Connections {
@@ -237,7 +244,7 @@ Scope { // Scope
             Connections {
                 target: GlobalFocusGrab
                 function onDismissed() {
-                    if (!root.preview) panelWindow.hide();
+                    if (!root.preview && !Codex.fileDialogOpen) panelWindow.hide();
                 }
             }
 
@@ -314,15 +321,21 @@ Scope { // Scope
                         if (!root.preview) panelWindow.hide();
                     }
                     if (event.modifiers === Qt.ControlModifier) {
-                        if (event.key === Qt.Key_O) {
-                            panelWindow.extend = !panelWindow.extend;
-                        } else if (event.key === Qt.Key_D) {
+                        if (event.key === Qt.Key_D) {
                             root.toggleDetach();
                         } else if (event.key === Qt.Key_P) {
                             root.togglePin();
                         }
                         event.accepted = true;
                     }
+                }
+
+                Shortcut {
+                    sequence: "Ctrl+O"
+                    context: Qt.WindowShortcut
+                    enabled: root.open && !root.preview && !Codex.fileDialogOpen
+                    autoRepeat: false
+                    onActivated: panelWindow.extend = !panelWindow.extend
                 }
             }
         }

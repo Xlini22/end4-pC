@@ -40,6 +40,7 @@ Item {
     function subtitleFor(key) {
         switch (key) {
         case "ai": {
+            if (Config.options.ai.backend === "codex" && Config.options.policies.ai === 1) return "Codex";
             const name = Ai.models[Ai.currentModelId]?.name ?? "";
             const count = Ai.messageIDs.length;
             return count > 0 ? `${name} · ${Translation.tr("%1 messages").arg(count)}` : name;
