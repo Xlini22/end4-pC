@@ -135,7 +135,7 @@ ShellRoot {
     }
     function checkGlassy() {
         Config.options.background.widgets.glass.enable = true
-        if (GlassProfiles.keys.join(",") !== "bar,dock,sidebar,settings,lockscreen,terminal") throw new Error("Missing Glassy tabs")
+        if (GlassProfiles.keys.join(",") !== "bar,dock,sidebar,settings,lockscreen,terminal,overview") throw new Error("Missing Glassy tabs")
         for (let i=0; i<GlassProfiles.keys.length; ++i) {
             const key = GlassProfiles.keys[i]
             glassySettings.selectedTab = i
@@ -178,7 +178,6 @@ ShellRoot {
         glassySettings.selectedTab = 0
         root.glassKnob = findControl(glassySettings, item => item.objectName === "glass-refraction")
         if (!root.glassKnob) throw new Error("Glassy controls did not instantiate")
-        root.glassKnob.value = 175
         GlobalStates.settingsSubpage = "glassy"
         findControl(glassySettings, item => item.objectName === "glassy-back").clicked()
         if (GlobalStates.settingsSubpage !== "") throw new Error("Back navigation did not return to settings")
@@ -276,6 +275,11 @@ ShellRoot {
         onTriggered: {
             checkHoverFade()
             checkRightSidebar()
+            Config.options.background.widgets.glass.enable = true
+            Config.options.background.widgets.glass.enhanced = true
+            root.glassKnob = findControl(glassySettings, item => item.objectName === "glass-refraction")
+            root.glassKnob.animateValue = false
+            root.glassKnob.value = 175
             root.glassKnob.moved()
             if (Math.abs(GlassProfiles.profile("bar").refraction-175)>.01 || GlassProfiles.profile("dock").refraction!==135)
                 throw new Error("Glassy controls must update only the selected element")

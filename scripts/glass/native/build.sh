@@ -21,6 +21,8 @@ git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glas
 git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glass-bar-sections.patch"
 git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glass-fade-continuity.patch"
 git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glass-reload-filters.patch"
+git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glass-overview.patch"
+git -C "$task_build/source" apply "$task_script_dir/../../../patches/native-glass-overview-frost.patch"
 python3 "$task_script_dir/../../../tests/native-glass-reload-filters-check.py" "$task_build/source"
 python3 "$task_script_dir/../../../tests/darker-fade-continuity-check.py" "$task_build/source"
 python3 "$task_script_dir/../../../tests/bar-section-darkening-check.py" "$task_build/source"
@@ -52,7 +54,7 @@ headers = json.loads(subprocess.check_output(['Hyprland', '--version-json'], tex
 assert running['abiHash'] == headers['abiHash'], 'Running compositor and installed headers differ'
 metadata = {'abiHash': running['abiHash'], 'source': '22acd5db6ef73fa34cad2d5ce8b76cf37e9acaa5',
             'sha256': hashlib.sha256((directory / 'hyprglass.so').read_bytes()).hexdigest(),
-            'buildRevision': 'reload-filter-cache-r46-2026-11-24', 'namespaceFilterReloadFix': True,
+            'buildRevision': 'overview-frost-r49-2026-11-26', 'overviewProfiles': True, 'namespaceFilterReloadFix': True,
             'namespaceFilterReloadPatchSha256': hashlib.sha256(pathlib.Path(sys.argv[2]).with_name('native-glass-reload-filters.patch').read_bytes()).hexdigest(),
             'temporalDarkeningVisibility': True, 'temporalDarkeningWindowMs': 1500,
             'temporalDarkeningPatchSha256': hashlib.sha256(pathlib.Path(sys.argv[2]).read_bytes()).hexdigest(),

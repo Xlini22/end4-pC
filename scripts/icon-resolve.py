@@ -16,18 +16,21 @@ def data_dirs():
 
 
 def find_theme_roots(theme):
-    return [os.path.join(d, theme) for d in data_dirs() if os.path.isfile(os.path.join(d, theme, "index.theme"))]
+    return [os.path.join(d, theme) for d in data_dirs() if os.path.isdir(os.path.join(d, theme))]
 
 
 def load_theme(theme):
     roots = find_theme_roots(theme)
+    index_path = next((os.path.join(root, "index.theme") for root in roots
+                       if os.path.isfile(os.path.join(root, "index.theme"))), "")
     entries = []
     inherits = []
     for root in roots:
         parser = configparser.ConfigParser(interpolation=None, strict=False)
         parser.optionxform = str
         try:
-            parser.read(os.path.join(root, "index.theme"), encoding="utf-8")
+            own_index = os.path.join(root, "index.theme")
+            parser.read(own_index if os.path.isfile(own_index) else index_path, encoding="utf-8")
         except configparser.Error:
             continue
         if not parser.has_section("Icon Theme"):

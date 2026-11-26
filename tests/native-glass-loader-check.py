@@ -63,6 +63,11 @@ with tempfile.TemporaryDirectory() as temporary:
         assert status['temporalDarkening'] is temporal
         assert status['darkeningStrength'] is (version in (backend.COHERENCE_VERSION, backend.SECTION_VERSION, backend.FADE_VERSION))
         assert status['darkeningVisibility'] is (version in (backend.VISIBILITY_VERSION, backend.SCENE_VERSION, backend.REFLECTIONS_VERSION, backend.INITIAL_DARKENING_VERSION, backend.SIDEBAR_DARKENING_VERSION, backend.COHERENCE_VERSION, backend.SECTION_VERSION, backend.FADE_VERSION))
+    for version in (backend.OVERVIEW_VERSION, backend.OVERVIEW_FROST_VERSION):
+        loaded[0]['version'] = version
+        current = backend.status()
+        assert all(current[key] for key in ('available', 'overviewProfiles', 'profiles', 'frosted', 'sectionDarkening', 'fadeContinuity', 'darkeningStrength'))
+        assert not any(call[:2] == ('plugin', 'unload') for call in calls)
     loaded[0]['version'] = 'end4-live-0.6.4-r34'
     assert backend.status()['available'] and backend.status()['uniformDarkening'] and backend.status()['windowFrosted']
     loaded[0]['version'] = 'end4-live-0.6.4-r31'

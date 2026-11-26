@@ -12,6 +12,7 @@ layer = (source/'GlassLayerSurface.cpp').read_text()
 reuse = re.search(r'if \((affected && m_frostMapping[\s\S]*?)\) \{', layer)[1]
 assert 'GL_DRAW_FRAMEBUFFER, dynamic_cast<Render::GL::CGLFramebuffer*>(m_frostInputFramebuffer.get())' in layer
 assert '&clip, 64, m_frostInputFramebuffer)' in layer
+selection = re.search(r'                const int factor = .*?;', layer)[0]
 code = r'''
 #include <algorithm>
 #include <array>
@@ -21,6 +22,7 @@ code = r'''
 #include <memory>
 #include <optional>
 #include <vector>
+#include <string_view>
 #include <hyprutils/math/Box.hpp>
 using Hyprutils::Math::CBox;
 template<class T> using SP = std::shared_ptr<T>;
@@ -75,7 +77,24 @@ void glDrawArrays(int,int,int) {
     }
 }
 '''+blur+r'''
+int frostFactor(float support, std::string_view name) {
+    struct { std::string_view m_namespace; } layer{name};
+    auto layerSurface = &layer;
+    SELECTION
+    return factor;
+}
+
 int main() {
+    assert(frostFactor(0,"quickshell:overview")==1);
+    assert(frostFactor(5.99,"quickshell:overview")==1);
+    assert(frostFactor(6,"quickshell:overview")==2);
+    assert(frostFactor(7.5,"quickshell:overview")==2); // User blur sigma 2.5: previously full resolution.
+    for(float support : {6.f,7.5f,11.99f}) {
+        for(auto name : {"quickshell:settings","quickshell:bar","quickshell:dock"})
+            assert(frostFactor(support,name)==1);
+    }
+    for(auto name : {"quickshell:overview","quickshell:settings","quickshell:dock"})
+        assert(frostFactor(12,name)==2);
     auto raw=std::make_shared<Render::IFramebuffer>();raw->alloc(12,12,1);
     for(int y=0;y<12;++y) for(int x=0;x<12;++x) raw->texture.pixels[y*12+x]=(x<6?.1f:.9f)+(y%3)*.01f;
     auto output=std::make_shared<Render::IFramebuffer>();output->alloc(12,12,1);
@@ -113,11 +132,11 @@ int main() {
     m_frostMapping.reset();assert(!reusable());
 }
 '''
-code = code.replace('REUSE', reuse)
+code = code.replace('REUSE', reuse).replace('SELECTION', selection)
 with tempfile.TemporaryDirectory(prefix='native-frost-check-') as directory:
     cpp=Path(directory)/'check.cpp';cpp.write_text(code)
     flags=subprocess.check_output(['pkg-config','--cflags','--libs','hyprutils'],text=True).split()
     binary=Path(directory)/'check'
     subprocess.run(['g++','-std=c++23','-O0',str(cpp),'-o',str(binary),*flags],check=True)
     subprocess.run([str(binary)],check=True)
-print('PASS: actual blur dispatch with mock GL preserves untouched pixels, matches full filtering inside damage and invalidates moved/resized/changed frost mappings.')
+print('PASS: actual blur dispatch with mock GL preserves untouched pixels, matches full filtering inside damage, invalidates frost mappings and bounds Overview downsampling to wide blur.')

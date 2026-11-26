@@ -7,7 +7,7 @@ import qs.modules.common
 
 Singleton {
     id: root
-    readonly property var keys: ["bar", "dock", "sidebar", "settings", "lockscreen", "terminal"]
+    readonly property var keys: ["bar", "dock", "sidebar", "settings", "lockscreen", "terminal", "overview"]
     readonly property string signature: JSON.stringify(keys.map(key => {
         const p = profile(key)
         return [key, p.enable, p.rim, p.refraction, p.blur, p.reflections, p.darkening, p.automaticDarkening, p.automaticDarkeningStrength]
@@ -18,6 +18,7 @@ Singleton {
         if (fullscreen) return "lockscreen"
         if (["quickshell:bar", "quickshell:verticalBar"].includes(namespace)) return "bar"
         if (namespace === "quickshell:dock") return "dock"
+        if (namespace === "quickshell:overview") return "overview"
         if (["quickshell:sidebarLeft", "quickshell:sidebarRight"].includes(namespace)) return "sidebar"
         if (["quickshell:settings", "quickshell:dashboard"].includes(namespace)) return "settings"
         return ""

@@ -15,6 +15,7 @@ import Quickshell.Hyprland
 Item {
     id: root
     required property var screen
+    property bool previewsLive: true
     readonly property HyprlandMonitor monitor: Hyprland.monitorFor(screen)
     readonly property var toplevels: ToplevelManager.toplevels
     // Clamp to avoid lock-screen temp workspace (2147483647 - N) leaking into UI
@@ -48,6 +49,13 @@ Item {
     property int draggingFromWorkspace: -1
     property int draggingTargetWorkspace: -1
 
+    onVisibleChanged: {
+        if (!visible) {
+            draggingFromWorkspace = -1;
+            draggingTargetWorkspace = -1;
+        }
+    }
+
     implicitWidth: overviewBackground.implicitWidth + Appearance.sizes.elevationMargin * 2
     implicitHeight: overviewBackground.implicitHeight + Appearance.sizes.elevationMargin * 2
 
@@ -75,10 +83,11 @@ Item {
     Rectangle { // Background
         id: overviewBackground
         WindowGlass {
+            id: overviewGlass
             anchors.fill: parent
-            glassEnabled: (parent?.color.a ?? 0) > 0
-            cardRadius: parent?.radius ?? 0
-            tint: parent?.color ?? 'transparent'
+            cardRadius: overviewBackground.radius
+            tint: Appearance.colors.colUiSurfaceContainer
+            frost: 8
         }
         property real padding: 10
         anchors.fill: parent
@@ -87,7 +96,7 @@ Item {
         implicitWidth: workspaceColumnLayout.implicitWidth + padding * 2
         implicitHeight: workspaceColumnLayout.implicitHeight + padding * 2
         radius: root.largeWorkspaceRadius + padding
-        color: Appearance.colors.colUiSurfaceContainer
+        color: overviewGlass.live ? "transparent" : Appearance.colors.colUiSurfaceContainer
 
         Column { // Workspaces
             id: workspaceColumnLayout
@@ -110,7 +119,9 @@ Item {
                             required property int index
                             property int colIndex: index
                             property int workspaceValue: root.workspaceGroup * root.workspacesShown + getWsInCell(row.index, colIndex)
-                            property color defaultWorkspaceColor: Appearance.colors.colSurfaceContainerLow
+                            property color defaultWorkspaceColor: overviewGlass.live
+                                ? ColorUtils.applyAlpha(Appearance.colors.colSurfaceContainerLow, 0.12)
+                                : Appearance.colors.colSurfaceContainerLow
                             property color hoveredWorkspaceColor: ColorUtils.mix(defaultWorkspaceColor, Appearance.colors.colLayer1Hover, 0.1)
                             property color hoveredBorderColor: Appearance.colors.colLayer2Hover
                             property bool hoveredWhileDragging: false
@@ -198,6 +209,7 @@ Item {
                     property var monitor: HyprlandData.monitors.find(m => m.id == monitorId)
                     property var address: `0x${modelData.HyprlandToplevel.address}`
                     toplevel: modelData
+                    previewsLive: root.previewsLive
                     monitorData: this.monitor
                     scale: root.scale
                     widgetMonitor: HyprlandData.monitors.find(m => m.id == root.monitor.id)
@@ -208,6 +220,17 @@ Item {
                     property bool atInitPosition: (initX == x && initY == y)
                     property real dragStartX: 0
                     property real dragStartY: 0
+
+                    onVisibleChanged: {
+                        if (visible) {
+                            window.x = Qt.binding(() => window.initX);
+                            window.y = Qt.binding(() => window.initY);
+                        } else {
+                            window.pressed = false;
+                            window.dragging = false;
+                            window.Drag.active = false;
+                        }
+                    }
 
                     // Offset on the canvas
                     property int workspaceColIndex: getWsColumn(windowData?.workspace.id)

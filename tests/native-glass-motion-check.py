@@ -249,7 +249,7 @@ if sys.argv[1] == '--plugin':
     directory = base / 'config/illogical-impulse'
     directory.mkdir()
     # Legacy false must not disable the always-live windows source.
-    (directory / 'config.json').write_text(json.dumps({'background': {'widgets': {'glass': {'enable': True, 'source': 'windows', 'haze': 4, 'trueGlassy': False}}}}))
+    (directory / 'config.json').write_text(json.dumps({'background': {'widgets': {'glass': {'enable': True, 'nativePlugin': True, 'source': 'windows', 'haze': 4, 'trueGlassy': False}}}}))
     (shell / 'shell.qml').write_text(FIXTURE)
     nested_env.pop('QS_DISABLE_COMPOSITOR_GLASS', None)
     nested_env['QT_QPA_PLATFORM'] = 'wayland'

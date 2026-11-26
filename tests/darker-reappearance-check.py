@@ -308,7 +308,7 @@ assert.equal(a.nativeMaterialId,1);assert.equal(b.nativeMaterialId,2);
 registry.glassItems=[];registry.registerGlass(a);assert.equal(a.nativeMaterialId,1);assert.equal(registry.materialSerial,2);
 registry.materialSerial=2147483647;assert.throws(()=>registry.registerGlass({nativeMaterialId:0}));
 """
-    assert (qml / 'modules/common/Config.qml').read_text().count('property real automaticDarkeningStrength: 100') == 6
+    assert (qml / 'modules/common/Config.qml').read_text().count('property real automaticDarkeningStrength: 100') == 7
     (tmp / 'check.js').write_text(runner)
     subprocess.run(['node', str(tmp / 'check.js')], check=True)
 assert 'queueDarkeningSceneChange(mon)' in body(main, 'auto bumpWindowMonitor =')

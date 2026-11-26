@@ -79,7 +79,8 @@ ContentPage {
         for (const key of targets) GlassProfiles.reset(key);
     }
     readonly property var tabs: [Translation.tr("Bar"), Translation.tr("Dock"), Translation.tr("Sidebar"),
-        Translation.tr("Settings"), Translation.tr("Lockscreen"), Translation.tr("Terminal")]
+        Translation.tr("Settings"), Translation.tr("Lockscreen"), Translation.tr("Terminal"), Translation.tr("Overview")]
+
 
     RowLayout {
         Layout.fillWidth: true
@@ -97,6 +98,14 @@ ContentPage {
             adaptiveGlass: true
         }
     }
+    StyledText {
+        Layout.fillWidth: true
+        visible: root.targets.includes("overview") && GlassCompositor.active && !GlassCompositor.overviewProfilesAvailable
+        text: Translation.tr("Overview optics require the updated HyprGlass build. Log out and back in after installing it.")
+        wrapMode: Text.WordWrap
+        color: Appearance.colors.colSubtext
+    }
+
     ContentSection {
         title: Translation.tr("General")
         icon: "water_drop"
@@ -266,7 +275,7 @@ ContentPage {
     ContentSection {
         visible: root.targets.length > 0
         title: root.multiEdit ? Translation.tr("Selected profiles (%1)").arg(root.targets.length) : root.tabs[root.selectedTab]
-        icon: root.multiEdit ? "checklist" : ["toast", "dock_to_bottom", "side_navigation", "settings", "lock", "terminal"][root.selectedTab]
+        icon: root.multiEdit ? "checklist" : ["toast", "dock_to_bottom", "side_navigation", "settings", "lock", "terminal", "apps"][root.selectedTab]
         collapsible: false
         GroupedList {
             ConfigSwitch {

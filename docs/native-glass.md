@@ -2764,3 +2764,75 @@ NODELETE e sostituendo atomicamente i file: non viene ricaricata a caldo.
 Installazione r21 completata con verifica ABI/hash. La sessione resta sulla
 r20; backup della versione precedente:
 `/home/xlini/.cache/end4-pC/native-glass-backup-r20-_shv_q36`.
+
+### Overview: costo del blur 2–4 px (26 novembre 2026)
+
+Il profilo effettivo dell'Overview usava blur 2,5. `WindowGlass.materialFrost`
+prende questo valore dal profilo: `frost: 8` nel componente identifica il
+materiale ma non impone sigma 8. Il filtro nativo passava a mezza risoluzione
+solo con supporto gaussiano >=12, cioè sigma >=4; sigma 2,5 elaborava quindi
+quattro volte i pixel di sigma 4, nonostante richiedesse meno sfocatura.
+
+`native-glass-overview-frost.patch` abbassa la soglia a supporto >=6
+(sigma fisico >=2) per il solo namespace Overview. Riusa il prefiltraggio
+lineare 2x, il Gaussian separabile e i buffer esistenti; rifrazione e sorgente
+nitida restano a risoluzione piena. Blur più stretti e altri elementi
+mantengono la soglia precedente. La versione è `r49-overview-frost`; il loader
+continua a riconoscere r47 e ne conserva tutte le capacità.
+
+Con lo shader effettivo su Vega 8, 1920x1080, sigma 2,5, preparazione input e
+passaggi Gaussian richiedono 2,65 ms a piena risoluzione contro 0,59 ms a metà.
+Nel confronto del desktop, errore medio 0,40/255 e percentile 99 di 3/255
+(massimo 12/255); le strisce alternate di 2 px differiscono di 1/255 senza
+aliasing. Il confronto esclude il bordo esterno oltre il supporto del filtro,
+che nel renderer reale è coperto dal padding. Sono misure del filtro, non
+FPS dell'Overview. Dati e limiti sono in
+`diagnostics/overview-workspaces-20261126/frost-report.txt`.
+
+La disattivazione temporanea del solo profilo nativo portava la consegna dei
+frame da mediana 33 a 17 ms, ma alcune ripetizioni con vetro raggiungevano
+anch'esse 17 ms. Il workspace iniziale non era un predittore stabile.
+L'oscuramento automatico disattivato lasciava la mediana a 33 ms. Nessuna di
+queste disattivazioni è parte della correzione. Le sonde temporanee e il
+tentativo di ridurre la finestra trasparente sono stati rimossi.
+
+Controllo minimo: `python3 tests/native-glass-frost-check.py SOURCE_DIR`
+esegue l'espressione C++ della soglia sui confini, include sigma 2,5 e verifica
+che gli altri namespace conservino il comportamento precedente; mantiene i
+controlli sul filtro reale, sul damage e sull'invalidazione della cache.
+`tests/overview-native-glass-check.py PLUGIN --workspaces` prova scala .18,
+blur 2,5, rim 40, refrazione 170 e darker automatico nei quattro casi di
+apertura/cambio workspace, oltre a ricerca, pagine, toggle e riaperture.
+
+Il binario richiede una nuova sessione grafica: non effettuare sostituzioni a
+caldo del plugin NODELETE. La verifica dei tempi complessivi nel desktop
+principale con r49 resta da eseguire dopo questa transizione.
+
+
+### Overview: chiusura anticipata e geometria trasparente (26 novembre 2026)
+
+Nella sessione r49, quattro chiusure su quattro nascondevano la finestra con
+le animazioni ancora attive: opacità circa 0,00075 e scala 0,8535 anziché
+0 e 0,85. Le durate dei `Behavior` dipendevano da `contentShown`: il job
+poteva partire con le precedenti durate di apertura, mentre il timer di
+unmap usava già quelle di chiusura. Ora le durate dipendono da
+`Behavior.targetValue`; il timer effettua l'unmap solo dopo il completamento
+effettivo di entrambe le animazioni, con 20 ms per il frame trasparente.
+
+`WindowGlass.nativeRegion()` conserva inoltre la geometria con opacità zero
+finché la finestra resta mappata. La geometria assente significa sconosciuta
+per HyprGlass e consente il fallback; una regione nota trasparente è invece
+già supportata dal protocollo e fa saltare il pass nativo tramite
+`hasVisibleMaterial`. Al vero unmap materiali e catture vengono rilasciati
+come prima. Non serve sostituire il plugin o modificare gli effetti.
+
+`tests/overview-performance-check.py` controlla il completamento sul segnale
+`visibleChanged`: falliva prima della correzione e passa dopo.
+`tests/overview-native-glass-check.py` verifica la permanenza delle tre
+regioni trasparenti durante una finestra ancora mappata, ripristina il
+binding dell'opacità e ripete toggle, ricerca, pagine e riaperture.
+Le tracce live successive arrivano a 0 / 0,85 / animazioni terminate prima
+dell'unmap. Registrazioni e limiti di riproduzione visiva sono documentati in
+`diagnostics/overview-close-20261126/report.txt`: la registrazione iniziale
+non ha isolato un rettangolo nero inequivocabile; il passaggio anticipato è
+stato riprodotto sia nella sessione sia nel controllo di regressione.

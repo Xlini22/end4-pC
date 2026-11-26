@@ -352,6 +352,16 @@ Singleton {
                         property real vividness: 1.3
                         property real sheen: 0.55
                         property JsonObject elements: JsonObject {
+                            property JsonObject overview: JsonObject {
+                                property bool enable: true
+                                property real rim: 7
+                                property real refraction: 135
+                                property real blur: Math.max(8, root.options.background.widgets.glass.haze)
+                                property real reflections: 50
+                                property real darkening: 0
+                                property bool automaticDarkening: false
+                                property real automaticDarkeningStrength: 100
+                            }
                             property JsonObject bar: JsonObject {
                                 property bool enable: true
                                 property real rim: 24

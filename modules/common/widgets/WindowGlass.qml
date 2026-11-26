@@ -131,7 +131,7 @@ Item {
         if (rect.width <= 0 || rect.height <= 0) return null
         let opacity = root.opacity
         for (let item = parent; item; item = item.parent) opacity *= item.opacity
-        if (opacity <= 0.001) return null
+        // Keep zero-opacity geometry until unmap: missing geometry enables the native fallback.
         const scale = Math.min(full.width / width, full.height / height)
         const radius = value => Math.max(0, Math.min(value * scale, rect.width / 2, rect.height / 2))
         const values = [rect.x, rect.y, rect.width, rect.height,

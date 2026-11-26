@@ -1,0 +1,39 @@
+diff --git a/src/GlassRegions.hpp b/src/GlassRegions.hpp
+--- a/src/GlassRegions.hpp
++++ b/src/GlassRegions.hpp
+@@ -197,6 +197,7 @@
+ inline std::string glassProfileKey(std::string_view name) {
+     if (name == "quickshell:bar" || name == "quickshell:verticalBar") return "bar";
+     if (name == "quickshell:dock") return "dock";
++    if (name == "quickshell:overview") return "overview";
+     if (name == "quickshell:sidebarLeft" || name == "quickshell:sidebarRight") return "sidebar";
+     if (name == "quickshell:settings" || name == "quickshell:dashboard") return "settings";
+     return "";
+@@ -208,13 +209,13 @@
+     int active = 0, count = 0;
+     SGlassProfiles profiles;
+     if (!(input >> command >> profiles.pid >> active >> count) || command != "end4profiles" ||
+-        profiles.pid <= 0 || active < 0 || active > 1 || count < 0 || count > 6) return false;
++        profiles.pid <= 0 || active < 0 || active > 1 || count < 0 || count > 7) return false;
+     profiles.active = active;
+     for (int i = 0; i < count; ++i) {
+         SGlassOptics optics;
+         int enabled = 0;
+         if (!(input >> key >> enabled >> optics.rim >> optics.refraction >> optics.blur >> optics.reflections) ||
+-            (key != "bar" && key != "dock" && key != "sidebar" && key != "settings" && key != "lockscreen" && key != "terminal") ||
++            (key != "bar" && key != "dock" && key != "sidebar" && key != "settings" && key != "lockscreen" && key != "terminal" && key != "overview") ||
+             profiles.values.contains(key) || enabled < 0 || enabled > 1 ||
+             !std::isfinite(optics.rim) || optics.rim < 0 || optics.rim > .4f ||
+             !std::isfinite(optics.refraction) || optics.refraction < 0 || optics.refraction > 2 ||
+diff --git a/src/Globals.hpp b/src/Globals.hpp
+--- a/src/Globals.hpp
++++ b/src/Globals.hpp
+@@ -70,7 +70,7 @@
+ inline constexpr std::string_view PLUGIN_NAME        = "hyprglass";
+ inline constexpr std::string_view PLUGIN_DESCRIPTION = "Apple-style Liquid Glass effect";
+ inline constexpr std::string_view PLUGIN_AUTHOR      = "Hyprnux";
+-inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r46-candidate";
++inline constexpr std::string_view PLUGIN_VERSION     = "end4-live-0.6.4-r47-overview";
+ 
+ inline const SGlassOptics* glassOptics(int pid, const std::string& key) {
+     const auto client = g_pGlobalState->glassProfiles.find(pid);

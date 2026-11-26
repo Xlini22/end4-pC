@@ -56,9 +56,7 @@ Item {
         if (root.swipeCoolingDown) return;
 
         root.swipeCoolingDown = true;
-        const pageDelta = Config.options.hyprland.input.touchpad.naturalScroll
-            ? -horizontalDelta : horizontalDelta;
-        root.showRelativePage(pageDelta > 0 ? 1 : -1);
+        root.showRelativePage(horizontalDelta < 0 ? 1 : -1);
     }
 
     function launchApplication(entry) {
@@ -132,8 +130,16 @@ Item {
         implicitWidth: root.gridWidth
         implicitHeight: 232
         radius: Appearance.rounding.verylarge
-        color: Appearance.colors.colBackgroundSurfaceContainer
+        color: gridGlass.live ? "transparent" : Appearance.colors.colBackgroundSurfaceContainer
         clip: true
+
+        WindowGlass {
+            id: gridGlass
+            anchors.fill: parent
+            cardRadius: gridBackground.radius
+            tint: Appearance.colors.colBackgroundSurfaceContainer
+            frost: 8
+        }
 
         MouseArea {
             id: swipeArea
@@ -155,7 +161,10 @@ Item {
                 bottomMargin: pageIndicators.height + 13
             }
             orientation: ListView.Horizontal
-            model: root.pageCount
+            // Zero-width pages all fit in the viewport; wait for layout before creating delegates.
+            model: width > 0 && height > 0 ? root.pageCount : 0
+            reuseItems: true
+            cacheBuffer: 0
             interactive: false
             clip: true
             spacing: 0
@@ -192,11 +201,14 @@ Item {
                     rowSpacing: 4
 
                     Repeater {
-                        model: appPage.pageApps
+                        // ponytail: recycle 14 slots with each page; a data model rebuilds every button on reuse.
+                        model: root.appsPerPage
 
                         delegate: RippleButton {
                             id: appButton
-                            required property var modelData
+                            required property int index
+                            readonly property var entry: appPage.pageApps[index] ?? null
+                            visible: entry !== null
                             width: (appPage.width - 6 * 4) / root.columns
                             height: (appPage.height - 4) / root.rows
                             buttonRadius: Appearance.rounding.large
@@ -204,15 +216,29 @@ Item {
                             colBackgroundHover: Appearance.colors.colLayer1Hover
                             colRipple: Appearance.colors.colLayer1Active
 
-                            onClicked: root.launchApplication(modelData)
+                            onClicked: if (entry) root.launchApplication(entry)
 
                             contentItem: ColumnLayout {
                                 spacing: 5
 
-                                AppIcon {
+                                Image {
                                     Layout.alignment: Qt.AlignHCenter
-                                    implicitSize: 48
-                                    source: Quickshell.iconPath(appButton.modelData.icon, "image-missing")
+                                    Layout.preferredWidth: 48
+                                    Layout.preferredHeight: 48
+                                    sourceSize: Qt.size(48, 48)
+                                    fillMode: Image.PreserveAspectFit
+                                    // ponytail: paths are already resolved; decode off-thread and reuse Qt's image cache.
+                                    asynchronous: true
+                                    source: {
+                                        void SystemAppearance.iconRevision;
+                                        const name = appButton.entry?.icon || "application-x-executable";
+                                        if (name.startsWith("/") || name.startsWith("file:")) return name;
+                                        const icons = SystemAppearance.resolvedIcons[SystemAppearance.iconTheme] ?? {};
+                                        if (!(name in icons)) SystemAppearance.queueIcon(name);
+                                        if (!("application-x-executable" in icons)) SystemAppearance.queueIcon("application-x-executable");
+                                        const path = icons[name] || icons["application-x-executable"];
+                                        return path ? "file://" + path : "";
+                                    }
                                 }
 
                                 StyledText {
@@ -221,14 +247,15 @@ Item {
                                     verticalAlignment: Text.AlignVCenter
                                     font.pixelSize: Appearance.font.pixelSize.small
                                     color: Appearance.colors.colOnLayer1
-                                    text: appButton.modelData.name
+                                    text: appButton.entry?.name ?? ""
                                     elide: Text.ElideRight
                                     maximumLineCount: 1
                                 }
                             }
 
                             StyledToolTip {
-                                text: appButton.modelData.name
+                                extraVisibleCondition: appPage.ListView.isCurrentItem && !pageSlideAnimation.running && root.visible
+                                text: appButton.entry?.name ?? ""
                                 delay: 500
                             }
                         }
@@ -269,20 +296,19 @@ Item {
                     colBackgroundHover: "transparent"
                     onClicked: root.showPage(index)
 
-                    contentItem: Rectangle {
-                        anchors.centerIn: parent
-                        width: pageButton.selected ? 8 : 6
-                        height: width
-                        radius: width / 2
-                        color: pageButton.selected
-                            ? Appearance.colors.colPrimary
-                            : Appearance.colors.colOutlineVariant
+                    contentItem: Item {
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: pageButton.selected ? 8 : 6
+                            height: width
+                            radius: width / 2
+                            color: pageButton.selected
+                                ? Appearance.colors.colPrimary
+                                : Appearance.colors.colOutlineVariant
 
-                        Behavior on width {
-                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
-                        }
-                        Behavior on height {
-                            NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                            Behavior on width {
+                                NumberAnimation { duration: 180; easing.type: Easing.OutCubic }
+                            }
                         }
                     }
                 }

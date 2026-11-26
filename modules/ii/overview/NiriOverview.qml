@@ -329,14 +329,25 @@ Item {
                         width: parent.width * Config.options.overview.scale
                         height: parent.height
                         radius: Appearance.rounding.large
-                        color: "red"
+                        color: niriCardGlass.live ? "transparent" : "red"
+
+                        WindowGlass {
+                            id: niriCardGlass
+                            anchors.fill: parent
+                            cardRadius: wsCard.radius
+                            tint: Appearance.colors.colUiSurfaceContainer
+                            frost: 8
+                            nativeClip: flickable
+                        }
 
                         Behavior on color { ColorAnimation { duration: 200 } }
                         Behavior on border.color { ColorAnimation { duration: 200 } }
 
                         Image {
                             id: ovBgSource
+                            visible: !niriCardGlass.live
                             anchors.fill: parent
+                            sourceSize: Qt.size(width, height)
                             source: Config.options.background.wallpaperPath
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
@@ -424,6 +435,7 @@ Item {
 
                             OverviewWindow {
                                 id: ovWin
+                                previewsLive: !(root.panelWindow?.overviewAnimating ?? false)
                                 anchors.fill: parent
 
                                 toplevel: root.getToplevelForWindow(winContainer.win)

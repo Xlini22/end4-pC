@@ -186,10 +186,11 @@ Item { // Wrapper
     Rectangle { // Background
         id: searchWidgetContent
         WindowGlass {
+            id: searchGlass
             anchors.fill: parent
-            glassEnabled: (parent?.color.a ?? 0) > 0
-            cardRadius: parent?.radius ?? 0
-            tint: parent?.color ?? 'transparent'
+            cardRadius: searchWidgetContent.radius
+            tint: Appearance.colors.colUiSurfaceContainer
+            frost: 8
         }
         anchors {
             top: parent.top
@@ -200,7 +201,7 @@ Item { // Wrapper
         implicitWidth: columnLayout.implicitWidth
         implicitHeight: columnLayout.implicitHeight
         radius: searchBar.height / 2 + searchBar.verticalPadding
-        color: Appearance.colors.colUiSurfaceContainer
+        color: searchGlass.live ? "transparent" : Appearance.colors.colUiSurfaceContainer
 
         Behavior on implicitHeight {
             id: searchHeightBehavior

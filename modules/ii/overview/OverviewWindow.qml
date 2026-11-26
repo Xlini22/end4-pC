@@ -12,6 +12,7 @@ import Quickshell.Wayland
 Item { // Window
     id: root
     property var toplevel
+    property bool previewsLive: true
     property var windowAddresses: HyprlandData.addresses
     property var windowByAddress: HyprlandData.windowByAddress
     property var windowData
@@ -107,11 +108,11 @@ Item { // Window
     }
 
     Behavior on x {
-        enabled: !window.Drag.active && !window.dragging
+        enabled: !root.Drag.active && !root.dragging
         animation: Appearance.animation.elementMoveEnter.numberAnimation.createObject(this)
     }
     Behavior on y {
-        enabled: !window.Drag.active && !window.dragging
+        enabled: !root.Drag.active && !root.dragging
         animation: Appearance.animation.elementMoveEnter.numberAnimation.createObject(this)
     }
     Behavior on width {
@@ -124,8 +125,9 @@ Item { // Window
     ScreencopyView {
         id: windowPreview
         anchors.fill: parent
-        captureSource: GlobalStates.overviewOpen ? root.toplevel : null
-        live: true
+        // ponytail: freeze one frame during motion; keep it through the closing fade, release when hidden.
+        captureSource: root.visible ? root.toplevel : null
+        live: GlobalStates.overviewOpen && root.visible && root.previewsLive
 
         // Color overlay for interactions
         Rectangle {
@@ -161,6 +163,7 @@ Item { // Window
             // mipmap: true
             Layout.alignment: Qt.AlignHCenter
             source: root.iconPath
+            asynchronous: true
             width: iconSize
             height: iconSize
             sourceSize: Qt.size(iconSize, iconSize)

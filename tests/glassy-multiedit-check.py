@@ -44,7 +44,7 @@ profile_source = (repo / 'services/GlassProfiles.qml').read_text()
 defaults = 'function defaults(key){' + body(profile_source, 'function defaults(') + '}'
 script = r'''
 const vm=require('vm'),assert=require('assert/strict');
-const keys=['bar','dock','sidebar','settings','lockscreen','terminal'];
+const keys=['bar','dock','sidebar','settings','lockscreen','terminal','overview'];
 const writes=[];const profiles={};
 for(const key of keys){
  const values={enable:true,rim:7,refraction:135,blur:key==='bar'?7:12,reflections:key==='bar'?25:75,

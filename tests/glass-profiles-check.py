@@ -26,6 +26,11 @@ TERMINAL
 int main() {
     SGlassProfiles p;
     assert(parseGlassProfiles("end4profiles 123 1 6 bar 1 .24 2 1 .5 dock 1 .07 1.35 8 .5 sidebar 1 .07 1.35 8 .5 settings 1 .07 1.35 8 .5 lockscreen 1 .07 1.35 3 .5 terminal 0 .07 1.35 3 .5",p));
+    SGlassProfiles overview;
+    assert(parseGlassProfiles("end4profiles 124 1 7 bar 1 .24 2 1 .5 dock 1 .07 1.35 8 .5 sidebar 1 .07 1.35 8 .5 settings 1 .07 1.35 8 .5 lockscreen 1 .07 1.35 3 .5 terminal 0 .07 1.35 3 .5 overview 1 .09 1.6 12 .7 darkening 1 bar 0 0 dock 0 0 sidebar 0 0 settings 0 0 lockscreen 0 0 terminal 0 0 overview .3 1 strength bar 1 dock 1 sidebar 1 settings 1 lockscreen 1 terminal 1 overview .8", overview));
+    assert(glassProfileKey("quickshell:overview") == "overview");
+    assert(overview.values.at("overview").blur == 12 && overview.values.at("overview").automaticDarkening);
+    assert(!parseGlassProfiles("end4profiles 124 1 8", overview));
     const auto valid = p;
     for (const auto* bad : {
         "end4profiles 0 1 0", "end4profiles 123 2 0", "end4profiles 123 1 7", "end4profiles 123 1 -1",

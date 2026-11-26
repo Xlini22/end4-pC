@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import qs
 import qs.services
 import qs.modules.common
@@ -14,12 +16,18 @@ import Quickshell.Hyprland
 Scope {
     id: overviewScope
     property bool dontAutoCancelSearch: false
+    readonly property bool preview: GlobalStates.glassyPreviewTargets.includes("overview")
 
     PanelWindow {
         id: panelWindow
         property string searchingText: ""
         property bool presented: GlobalStates.overviewOpen
         property bool contentShown: GlobalStates.overviewOpen
+        readonly property bool overviewAnimating: overviewOpacityAnimation.running || overviewScaleAnimation.running
+        onOverviewAnimatingChanged: {
+            if (!overviewAnimating && !GlobalStates.overviewOpen)
+                closeAnimationTimer.restart()
+        }
         readonly property HyprlandMonitor monitor: Hyprland.monitorFor(panelWindow.screen)
         readonly property bool barCenterOnly: Config.options.bar.layouts.leftLayout.length === 0
             && Config.options.bar.layouts.rightLayout.length === 0
@@ -30,11 +38,11 @@ Scope {
             && !Config.options.bar.bottom
             && !Config.options.bar.autoHide.enable
         property bool monitorIsFocused: (Hyprland.focusedMonitor?.id == monitor?.id)
-        visible: panelWindow.presented
+        visible: panelWindow.presented || overviewScope.preview
 
         WlrLayershell.namespace: "quickshell:overview"
         WlrLayershell.layer: WlrLayer.Top
-        WlrLayershell.keyboardFocus: GlobalStates.overviewOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: GlobalStates.overviewOpen && !overviewScope.preview ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         color: "transparent"
 
         // While a window preview is being dragged, take input over the whole screen.
@@ -89,9 +97,10 @@ Scope {
 
         Timer {
             id: closeAnimationTimer
-            interval: 420
+            // Keep the final transparent frame mapped before Hyprland takes its close snapshot.
+            interval: 20
             onTriggered: {
-                if (!GlobalStates.overviewOpen)
+                if (!GlobalStates.overviewOpen && !panelWindow.overviewAnimating)
                     panelWindow.presented = false;
             }
         }
@@ -150,9 +159,9 @@ Scope {
         Column {
             id: columnLayout
             z: 1
-            visible: panelWindow.presented
-            opacity: panelWindow.contentShown ? 1 : 0
-            scale: panelWindow.contentShown ? 1 : 0.85
+            visible: panelWindow.presented || overviewScope.preview
+            opacity: panelWindow.contentShown || overviewScope.preview ? 1 : 0
+            scale: panelWindow.contentShown || overviewScope.preview ? 1 : 0.85
             transformOrigin: Item.Top
             anchors {
                 horizontalCenter: parent.horizontalCenter
@@ -164,10 +173,12 @@ Scope {
             spacing: 6
 
             Behavior on opacity {
-                NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+                id: opacityBehavior
+                NumberAnimation { id: overviewOpacityAnimation; duration: opacityBehavior.targetValue === 1 ? 220 : 140; easing.type: Easing.OutCubic }
             }
             Behavior on scale {
-                NumberAnimation { duration: 400; easing.type: Easing.BezierSpline; easing.bezierCurve: Appearance.animationCurves.expressiveDefaultSpatial }
+                id: scaleBehavior
+                NumberAnimation { id: overviewScaleAnimation; duration: scaleBehavior.targetValue === 1 ? 280 : 180; easing.type: Easing.OutCubic }
             }
 
             Keys.onPressed: event => {
@@ -192,13 +203,17 @@ Scope {
 
             Loader {
                 id: overviewLoader
-                active: panelWindow.visible && (Config?.options.overview.enable ?? true)
+                anchors.horizontalCenter: parent.horizontalCenter
+                // ponytail: retain one tree per screen; async preload avoids rebuilding on every Super press.
+                active: Config?.options.overview.enable ?? true
+                asynchronous: true
                 sourceComponent: (Config?.options.overview.style ?? "default") === "niri" ? niriComponent : defaultComponent
 
                 Component {
                     id: defaultComponent
                     OverviewWidget {
                         screen: panelWindow.screen
+                        previewsLive: !panelWindow.overviewAnimating
                         visible: panelWindow.searchingText === ""
                     }
                 }

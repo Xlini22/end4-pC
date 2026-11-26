@@ -42,6 +42,8 @@ Singleton {
     property bool frostedAvailable: false
     property bool windowFrostedAvailable: false
     property bool profilesAvailable: false
+    property bool overviewProfilesAvailable: false
+    readonly property var nativeProfileKeys: GlassProfiles.keys.filter(key => key !== "overview" || overviewProfilesAvailable)
     property bool darkeningAvailable: false
     property bool darkeningVisibilityAvailable: false
     property bool sectionDarkeningAvailable: false
@@ -339,18 +341,18 @@ Singleton {
     property bool profilesBusy: false
     function sendProfiles() {
         if (!profilesAvailable || profilesBusy) return
-        const values = ["end4profiles", Quickshell.processId, enhancedActive ? 1 : 0, GlassProfiles.keys.length]
-        for (const key of GlassProfiles.keys) values.push(key, GlassProfiles.profile(key).enable ? 1 : 0, ...GlassProfiles.optics(key))
+        const values = ["end4profiles", Quickshell.processId, enhancedActive ? 1 : 0, root.nativeProfileKeys.length]
+        for (const key of root.nativeProfileKeys) values.push(key, GlassProfiles.profile(key).enable ? 1 : 0, ...GlassProfiles.optics(key))
         if (darkeningAvailable) {
             values.push("darkening", active ? 1 : 0)
-            for (const key of GlassProfiles.keys) {
+            for (const key of root.nativeProfileKeys) {
                 const p = GlassProfiles.profile(key)
                 values.push(key, Number.isFinite(p.darkening) ? Math.max(0, Math.min(100, p.darkening)) / 100 : 0, p.automaticDarkening ? 1 : 0)
             }
         }
         if (darkeningAvailable && darkeningStrengthAvailable) {
             values.push("strength")
-            for (const key of GlassProfiles.keys) values.push(key, GlassProfiles.darkeningStrength(GlassProfiles.profile(key)))
+            for (const key of root.nativeProfileKeys) values.push(key, GlassProfiles.darkeningStrength(GlassProfiles.profile(key)))
         }
         const command = values.join(" ")
         if (command === profilesApplied) return
@@ -444,7 +446,7 @@ Singleton {
     }
 
     readonly property string settings: JSON.stringify([
-        GlassProfiles.signature, Config.options.background.widgets.glass.enhanced, root.profilesAvailable, root.darkeningAvailable, root.darkeningStrengthAvailable,
+        GlassProfiles.signature, Config.options.background.widgets.glass.enhanced, root.profilesAvailable, root.overviewProfilesAvailable, root.darkeningAvailable, root.darkeningStrengthAvailable,
         Config.options.background.widgets.glass.haze, Config.options.background.widgets.glass.pull,
         Config.options.background.widgets.glass.split, Config.options.background.widgets.glass.sheen,
         Config.options.background.widgets.glass.vividness, Appearance.m3colors.darkmode,
@@ -504,6 +506,7 @@ Singleton {
                     root.frostedAvailable = result.frosted ?? false
                     root.windowFrostedAvailable = result.windowFrosted ?? false
                     root.profilesAvailable = result.profiles ?? false
+                    root.overviewProfilesAvailable = result.overviewProfiles ?? false
                     root.darkeningAvailable = result.darkening ?? false
                     root.darkeningVisibilityAvailable = result.darkeningVisibility ?? false
                     root.sectionDarkeningAvailable = result.sectionDarkening ?? false
